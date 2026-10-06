@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
       }
     } else {
       std::fprintf(stderr, "usage: jit_emit --forms | --sweep | --hex w[,w...]\n"
-                          "                 [--exec | --block] [--thumb] [--pc a] [--cpsr v]\n"
+                          "                 [--exec | --translate] [--thumb] [--pc a] [--cpsr v]\n"
                           "                 [--regs r0,r1,...] [--steps n] [--auto]\n"
                           "                 [--poke a:v[,...]] [--peek a[,...]]\n");
       return 2;
@@ -251,8 +251,36 @@ int main(int argc, char** argv) {
   cfg.ram_size = 1u << 20;
   brain_emu_t* e = brain_emu_create(&cfg);
   if (!e) { std::fprintf(stderr, "create failed\n"); return 2; }
+  /* The load and the register seed are shared by both modes - and they have to come
+   * before anything runs.  `brain_load_raw` *enters* the payload, and the core treats
+   * regs[15] as the instruction it has already prefetched, so the seed goes on top of
+   * the entry: an emulator whose R15 was left at 0 fetches from the vector table and
+   * the program under test is never executed, which reads back as "state unchanged"
+   * and a differential test then reports the seed as the core's answer.  Seeding R15
+   * is also an interworking branch as far as the core is concerned (a load into PC
+   * takes the state from bit[0] while SCTLR.L4 = 0), so the Thumb case asks for
+   * `pc | 1`; without that the halfwords are decoded as ARM instructions instead.
+   * Values the caller omitted default to `0x1000 + 0x1111 * index`, except R15, which
+   * has to land on the first word. */
+  if (thumb) {
+    std::vector<uint16_t> hw;
+    for (uint32_t w : words) {
+      if (w > 0xFFFFu) { hw.push_back((uint16_t)(w >> 16)); hw.push_back((uint16_t)w); }
+      else hw.push_back((uint16_t)w);
+    }
+    brain_load_raw(e, hw.data(), hw.size() * 2u, pc, 1);
+    cpsr |= 0x20u;
+  } else {
+    brain_load_raw(e, words.data(), words.size() * 4u, pc, 0);
+  }
   brain_set_reg(e, BRAIN_REG_CPSR, cpsr);
-  for (int i = 0; i < 13; ++i) brain_set_reg(e, i, regs[i]);
+  for (uint32_t i = 0; i < 16; ++i) {
+    const uint32_t v = i < nregs ? regs[i]
+                                 : (i == 15u ? pc : 0x1000u + i * 0x1111u);
+    brain_set_reg(e, (int)i, v);
+  }
+  if (nregs <= 15) brain_set_reg(e, 15, thumb ? (pc | 1u) : pc);
+  for (auto& kv : pokes) brain_poke32(e, kv.first, kv.second);
 
   /* --exec (implied by --thumb): seed state, run N instructions through the
    * interpreter and print the state, with no translation attempt at all.  This is
@@ -263,39 +291,12 @@ int main(int argc, char** argv) {
    * instruction and is stored as its two halfwords in order (first halfword at the
    * lower address, as the assembler emits it). */
   if (exec_only) {
-    /* brain_load_raw *enters* the payload, so it has to happen before the seed
-     * registers are written: the core treats regs[15] as an already-prefetched
-     * instruction, and seeding on top of an entry that was taken loses that first
-     * instruction (a one-instruction probe then reports the state unchanged). */
-    if (thumb) {
-      std::vector<uint16_t> hw;
-      for (uint32_t w : words) {
-        if (w > 0xFFFFu) { hw.push_back((uint16_t)(w >> 16)); hw.push_back((uint16_t)w); }
-        else hw.push_back((uint16_t)w);
-      }
-      brain_load_raw(e, hw.data(), hw.size() * 2u, pc, 1);
-      cpsr |= 0x20u;                                       /* T, and we load/enter */
-    } else {
-      brain_load_raw(e, words.data(), words.size() * 4u, pc, 0);
-    }
-    brain_set_reg(e, BRAIN_REG_CPSR, cpsr);
-    /* R15 has to be seeded too: regs[15] names the instruction the core has already
-     * prefetched, so an emulator whose PC was left at 0 runs from the vector table
-     * and the program under test is never executed - the state then reads back
-     * unchanged, which a differential test mistakes for agreement.  R13/R14 come
-     * from the same list so both engines start identically.  Anything the caller
-     * omitted defaults to `pc + 4 * index`, which keeps R15 on the first word. */
-    for (uint32_t i = 0; i < 16; ++i) {
-      const uint32_t v = i < nregs ? regs[i]
-                                   : (i == 15u ? pc : 0x1000u + i * 0x1111u);
-      brain_set_reg(e, (int)i, v);
-    }
-    /* Seeding R15 is an interworking branch as far as the core is concerned (a load
-     * into PC takes the state from bit[0] when SCTLR.L4 = 0), so the Thumb case has
-     * to ask for it: writing the bare word address here would silently drop out of
-     * Thumb state and every halfword program would be decoded as ARM instead. */
-    if (nregs <= 15) brain_set_reg(e, 15, thumb ? (pc | 1u) : pc);
-    for (auto& kv : pokes) brain_poke32(e, kv.first, kv.second);
+    /* --exec (implied by --thumb): run N instructions through the interpreter and
+     * print the state, with no translation attempt at all.  This is how
+     * tests/test_oracle.py and tests/test_shifter.py compare the core against a
+     * reference model; the JIT path below prints PRE/POST around a *translated*
+     * block instead, and in --thumb mode a value wider than 16 bits is a 32-bit
+     * Thumb instruction stored as its two halfwords in order. */
     const uint32_t n = steps ? steps : (uint32_t)words.size();
     std::printf("MODE %s\n", thumb ? "thumb" : "arm");
     std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
@@ -313,8 +314,6 @@ int main(int argc, char** argv) {
     brain_emu_destroy(e);
     return 0;
   }
-
-  for (auto& kv : pokes) brain_poke32(e, kv.first, kv.second);
 
   uint32_t skip = steps;
   IrBlock blk{};
@@ -361,10 +360,8 @@ int main(int argc, char** argv) {
   /* In --steps mode the translate attempt above is only a side probe; what this
    * section has to do is run the block's own words, so that PRE/POST bracket a real
    * execution of them (tests/test_jit_arm64.py layer 2 compares that against the
-   * emitted AArch64 block).  --block says "run the block, don't bother translating",
-   * which is also what tests/test_shifter.py wants: the front end legitimately
-   * refuses many of the shapes it probes, and a refusal must not look like a
-   * difference in the interpreter. */
+   * emitted AArch64 block).  --translate says "probe the front end, don't run", and
+   * is only useful when the interpreter's answer is already known. */
   uint32_t run_n = words.size() - (translate_only ? 0u : skip);
   if (used && blk.guest_insns) run_n = blk.guest_insns;
   if (run_n == 0) run_n = 1;
