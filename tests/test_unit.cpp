@@ -598,6 +598,99 @@ void test_push_pop_return() {
   brain_emu_destroy(e);
 }
 
+/* Exception entry: which vector, which mode, what the link and SPSR hold.
+ *
+ * Nothing external can be an oracle for this - Unicorn takes exceptions on QEMU's
+ * own terms and cannot be asked to fault a chosen fetch - so this pins the rule
+ * recorded in docs/ARCHITECTURE.md, from DDI 0198E 4.1.1: on entry the core saves
+ * the whole CPSR (including the mirrored T bit, which is how a return gets back to
+ * Thumb) into SPSR_<mode>, puts `address of the instruction that raised the
+ * exception + a per-kind adjustment` into R14_<mode>, changes to the mode, forces
+ * ARM state, sets I, and leaves F alone because only FIQ touches it.  The
+ * adjustment is 4 for ARM and 2 for Thumb on an undefined instruction and on SWI,
+ * so that `MOVS PC, R14` resumes after the instruction, and 8 on a data abort on
+ * both states, so that `SUBS PC, R14, #8` re-executes the faulting access.
+ *
+ * The vector is proved by running something: each vector slot gets a marker and
+ * the row's gets `MOV R12, #<exception number>`, so a core that enters the right
+ * state at the wrong address, or the right address with the wrong link, is caught.
+ * A prefetch abort is deliberately not a row here: a faulting fetch retires
+ * without executing (see `test_fetch_abort_terminates`), which makes the marker
+ * dance ambiguous, and the mapping behaviour it depends on belongs to
+ * tests/test_mmu.cpp.  IRQ and FIQ cannot be raised through the public API at all.
+ * Encodings verified with keystone: CDP is undefined on this core (no
+ * coprocessor), `IT` is an ARMv6T2 encoding an ARM926EJ-S does not have, and an
+ * LDR from outside the RAM window is an external data abort.
+ */
+void test_exception_entry() {
+  std::printf("[exception entry]\n");
+  struct Row { int exc; uint32_t off; int mode; uint32_t adj_arm, adj_thumb;
+               uint32_t trig_arm; uint16_t trig_thumb; };
+  const Row rows[] = {
+      {BRAIN_EXC_UNDEF, 0x04u, 0x1B, 4, 2, 0xED000A10u, 0xBFE8u},
+      {BRAIN_EXC_SWI,   0x08u, 0x13, 4, 2, 0xEF000000u, 0xDF00u},
+      {BRAIN_EXC_DABORT, 0x10u, 0x17, 8, 8, 0xE5912000u, 0x680Au},
+  };
+
+  for (size_t r = 0; r < sizeof rows / sizeof rows[0]; ++r) {
+    const Row& w = rows[r];
+    for (int thumb = 0; thumb < 2; ++thumb) {
+      for (int high = 0; high < 2; ++high) {
+        /* c1[13] (V) picks 0xFFFF0000 at reset, so the vectors move - and with
+         * them the RAM window, which has to reach them for the marker to exist. */
+        brain_config_t cfg;
+        std::memset(&cfg, 0, sizeof cfg);
+        cfg.ram_size = high ? (2u << 20) : (1u << 20);
+        if (high) cfg.ram_base = 0xFFE00000u;
+        cfg.high_vectors = high;
+        brain_emu_t* e = brain_emu_create(&cfg);
+        CHECK(e != nullptr);
+        if (!e) continue;
+        const uint32_t code = high ? 0xFFE08000u : 0x8000u;
+        const uint32_t vbase = high ? 0xFFFF0000u : 0u;
+
+        for (int i = 0; i < 8; ++i)
+          brain_poke32(e, vbase + (uint32_t)(i * 4u), 0xEAFFFFFEu);
+        brain_poke32(e, vbase + w.off, 0xE3A0C000u + (uint32_t)w.exc);
+
+        /* One preamble instruction so the trigger sits at a known address.  It
+         * deliberately does *not* touch the flags (an ARM `MOV`, and in Thumb the
+         * hi-register `MOV R8, R0`, neither of which writes CPSR), because the
+         * seeded flags are what SPSR has to carry into the handler. */
+        const uint32_t prog_arm[] = {0xE3A00000u, w.trig_arm, 0xEAFFFFFEu};
+        const uint16_t prog_th[] = {0x4680u, w.trig_thumb, 0xE7FEu};
+        const uint32_t trig = code + (thumb ? 2u : 4u);
+        CHECK(brain_set_reg(e, BRAIN_REG_CPSR, 0x40000010u) == 0);   /* Z set, USR */
+        CHECK(brain_set_reg(e, 1, 0x40000000u) == 0);  /* outside either window    */
+        CHECK(brain_load_raw(e, thumb ? (const void*)prog_th : (const void*)prog_arm,
+                             thumb ? sizeof prog_th : sizeof prog_arm, code,
+                             thumb) == 0);
+        const uint32_t pre = brain_get_reg(e, BRAIN_REG_CPSR);
+
+        /* the preamble, the trigger, then the marker the vector holds. */
+        CHECK(brain_run_insns(e, 3) == 3);
+
+        brain_stats_t st;
+        brain_get_stats(e, &st);
+        const uint32_t cpsr = brain_get_reg(e, BRAIN_REG_CPSR);
+        const uint32_t spsr = brain_get_reg(e, BRAIN_REG_SPSR);
+        CHECK(st.exc[w.exc] == 1u);
+        for (int o = 0; o < BRAIN_EXC_COUNT; ++o)
+          if (o != w.exc) CHECK(st.exc[o] == 0u);
+        CHECK(brain_get_reg(e, 12) == (uint32_t)w.exc);          /* the vector ran */
+        CHECK((cpsr & 0x1Fu) == (uint32_t)w.mode);               /* the mode       */
+        CHECK((cpsr & 0x80u) != 0u);                             /* I set          */
+        CHECK((cpsr & 0x40u) == 0u);                              /* F only for FIQ */
+        CHECK((cpsr & 0x20u) == 0u);                       /* ARM at the vector    */
+        CHECK((cpsr & 0xF0000000u) == (pre & 0xF0000000u));      /* N Z C V carried */
+        CHECK(spsr == pre);                                       /* the whole thing  */
+        CHECK(brain_get_reg(e, 14) == trig + (thumb ? w.adj_thumb : w.adj_arm));
+        brain_emu_destroy(e);
+      }
+    }
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -610,6 +703,7 @@ int main() {
   test_fetch_abort_terminates();
   test_load_pc_and_l4();
   test_push_pop_return();
+  test_exception_entry();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

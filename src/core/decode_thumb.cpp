@@ -321,11 +321,19 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
     return 0;
 
   case 22: {
-    if (((hw >> 10) & 1u) == 0) {                     /* ADD/SUB SP, #imm7*4 */
+    /* A6.3.5/A6.3.9: bit[10:9] = 00 is `ADD/SUB SP, #imm7*4` and 10 is PUSH;
+     * 01 and 11 (`1011 001x`, `1011 011x`) are ARMv6T2's LDM/STM-without-writeback
+     * and are unallocated here.  Testing only bit 10 made both of those execute -
+     * `1011 011x` as a PUSH - which is how the BKPT/IT mix-up below went unseen. */
+    if ((hw >> 9) == 0b1011000) {                     /* ADD/SUB SP, #imm7*4 */
       const u32 imm7 = bits(hw, 6, 0);
       mk_dp(d, ((hw >> 8) & 1u) ? DP_SUB : DP_ADD, 0, 13, 13);
       d->op2 = OP2_IMM;
       d->imm12 = imm7 << 2;
+      return 0;
+    }
+    if ((hw >> 9) != 0b1011010) {                     /* ARMv6T2 LDM/STM: here */
+      d->op = AOP_UNDEF;
       return 0;
     }
     {                                                 /* PUSH {imm8[,LR]}      */
@@ -344,7 +352,7 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
   }
 
   case 23: {
-    if ((hw >> 10) == 0b101111) {                      /* POP {imm8[,PC]}     */
+    if ((hw >> 9) == 0b1011110) {                      /* POP {imm8[,PC]}     */
       const u32 M = (hw >> 8) & 1u;
       d->op = AOP_LDM;
       d->l = 1;

@@ -59,6 +59,15 @@ machine.
 * `CDP` (no coprocessor to send it to), and `LDC/STC` for any `cp != 15`.
 * `DMB DSB ISB WFI WFE SEV YIELD WFE` and the other ARMv6/v7 hints, plus
   `MRS/MSR` of the banked SP_*SR registers (ARMv6+).
+* In Thumb, the three holes that surround the stack instructions:
+  `1011 001x xxxx xxxx` and `1011 011x xxxx xxxx` (ARMv6T2 `LDM`/`STM` without
+  writeback, around `ADD/SUB SP` and `PUSH`) and `1011 1111 xxxx xxxx` (`IT` and
+  friends, around `POP`).  Those four groups differ only in bit 9, so keying the
+  `PUSH`/`POP` decode on bit 10 alone made the holes execute as a stack op - and
+  made the `BKPT` test below it unreachable, since `1011 1110` was already
+  claimed.  All three holes now take an undefined instruction; `BKPT` reaches its
+  own operation again.  `tests/test_unit.cpp::test_exception_entry()` uses `IT AL`
+  (`0xBFE8`) as its Thumb undefined trigger, so the group stays honest.
 * **Jazelle (T16)** is not implemented: no bytecodes are decoded. With
   `cfg.jazelle_trap` set (the default) an `MSR` that would set `CPSR.J`, and a
   `BX` whose target has bit[1] set from ARM state, take an undefined instruction;
@@ -91,7 +100,14 @@ machine.
    instructions (`insns_jit`) instead of trusting the flag.
 2. `LDC/STC` for p15 (the ARM926EJ-S uses these for a handful of cache/debug
    operations), and unaligned accesses to `PG_DEVICE` pages.
-3. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
+3. No way to drive an interrupt.  The core keeps `irq_line`/`fiq_line` but the
+   public API has nothing that raises them, so IRQ and FIQ *entry* is untested:
+   `test_exception_entry()` covers the three exceptions a guest instruction can
+   raise (undefined instruction, SWI, external data abort) in both states and for
+   both vector bases, and the FIQ register window is pinned by
+   `test_exception_banking()`, but the FIQ-only `F` masking and the 8/6 link
+   adjustment for IRQ/FIQ have no test until something can assert the lines.
+4. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
    item is closed: `Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15
    as well as for the `MOV`-style PC writes, c1[15] is writable and reads back, and
    `tests/test_unit.cpp` pins both settings.)
