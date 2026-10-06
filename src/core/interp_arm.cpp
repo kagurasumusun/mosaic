@@ -34,27 +34,13 @@ ALWAYS_INLINE Shifted Cpu::arm_op2(const ArmDec& d) const {
     case OP2_REG_SHIFT:
       return shift_arm(regs[d.rm], d.sh, d.amt, cin);
     default: {
-      /* shifted by a register: the amount is Rs<7:0> (B2.2.3) */
-      const u32 x = regs[d.rm];
+      /* Shifted by a register: the amount is Rs<7:0> (B2.2.3).  A zero there is a
+       * shift by zero - no value change and C left alone - because the #0
+       * re-encodings are a property of the immediate field, see decode_op2_reg.
+       * Going through shift_arm() is the point: this is the same primitive the JIT
+       * front end reads, so the two engines cannot disagree about a shift. */
       const u32 amt = regs[d.rs] & 0xFF;
-      if (amt == 0) return Shifted{x, cin};
-      switch (d.sh) {
-        case SH_LSL:
-          if (amt >= 32) return Shifted{0, amt == 32 ? (x & 1) : 0};
-          return Shifted{x << amt, (x >> (32 - amt)) & 1};
-        case SH_LSR:
-          if (amt >= 32) return Shifted{0, amt == 32 ? ((x >> 31) & 1) : 0};
-          return Shifted{x >> amt, (x >> (amt - 1)) & 1};
-        case SH_ASR:
-          if (amt >= 32)
-            return Shifted{(s32)x < 0 ? 0xFFFFFFFFu : 0, (x >> 31) & 1};
-          return Shifted{(u32)((s32)x >> amt), (u32)(((s32)x >> (amt - 1)) & 1)};
-        default: {
-          const u32 n = amt & 31;
-          if (n == 0) return Shifted{x, (x >> 31) & 1};
-          return Shifted{ror32(x, n), (x >> (n - 1)) & 1};
-        }
-      }
+      return shift_arm(regs[d.rm], d.sh, amt, cin);
     }
   }
 }

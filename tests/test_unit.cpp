@@ -8,6 +8,8 @@
  */
 #include <brainemu/brainemu.h>
 
+#include "core/ops.h"   /* shift_arm(), the primitive both engines share */
+
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -691,6 +693,133 @@ void test_exception_entry() {
   }
 }
 
+/* shift_arm(), the barrel-shifter primitive that the interpreter and the JIT front
+ * end share (src/core/ops.h).  Pinned here as a table because the two places that
+ * would otherwise catch a regression can miss it: the corpus contains no instruction
+ * using the re-encoded shift spellings, and tests/test_shifter.py can only compare
+ * against a model when unicorn is installed.  The expected values are ARM DDI 0084D
+ * s4.5.2 / DDI 0406 A1.8.1 read directly: a right-ward shift by 32 leaves C from bit
+ * 31 and by more than 32 gives zero with C cleared, ASR saturates to the sign, a
+ * rotate folds as (n - 1) MOD 32 + 1, and a zero amount leaves the carry alone.
+ * `0x80000001` is the discriminating seed: bit 0 and bit 31 differ from the middle
+ * bits, so a rule that reads the wrong one shows up. */
+static void test_shifter_primitive() {
+  struct Row {
+    uint32_t x, type, amt, cin, val, carry;
+  };
+  static const Row kRows[] = {
+      {0x80000001, brain::SH_LSL,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::SH_LSL,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_LSL,   1, 1, 0x00000002, 1},
+      {0x80000001, brain::SH_LSL,   2, 1, 0x00000004, 0},
+      {0x80000001, brain::SH_LSL,  15, 1, 0x00008000, 0},
+      {0x80000001, brain::SH_LSL,  16, 1, 0x00010000, 0},
+      {0x80000001, brain::SH_LSL,  30, 1, 0x40000000, 0},
+      {0x80000001, brain::SH_LSL,  31, 1, 0x80000000, 0},
+      {0x80000001, brain::SH_LSL,  32, 1, 0x00000000, 1},
+      {0x80000001, brain::SH_LSL,  33, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_LSL,  64, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_LSL, 255, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_LSR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::SH_LSR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_LSR,   1, 1, 0x40000000, 1},
+      {0x80000001, brain::SH_LSR,   2, 1, 0x20000000, 0},
+      {0x80000001, brain::SH_LSR,  15, 1, 0x00010000, 0},
+      {0x80000001, brain::SH_LSR,  16, 1, 0x00008000, 0},
+      {0x80000001, brain::SH_LSR,  30, 1, 0x00000002, 0},
+      {0x80000001, brain::SH_LSR,  31, 1, 0x00000001, 0},
+      {0x80000001, brain::SH_LSR,  32, 1, 0x00000000, 1},
+      {0x80000001, brain::SH_LSR,  33, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_LSR,  64, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_LSR, 255, 1, 0x00000000, 0},
+      {0x80000001, brain::SH_ASR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::SH_ASR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_ASR,   1, 1, 0xC0000000, 1},
+      {0x80000001, brain::SH_ASR,   2, 1, 0xE0000000, 0},
+      {0x80000001, brain::SH_ASR,  15, 1, 0xFFFF0000, 0},
+      {0x80000001, brain::SH_ASR,  16, 1, 0xFFFF8000, 0},
+      {0x80000001, brain::SH_ASR,  30, 1, 0xFFFFFFFE, 0},
+      {0x80000001, brain::SH_ASR,  31, 1, 0xFFFFFFFF, 0},
+      {0x80000001, brain::SH_ASR,  32, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::SH_ASR,  33, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::SH_ASR,  64, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::SH_ASR, 255, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::SH_ROR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::SH_ROR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_ROR,   1, 1, 0xC0000000, 1},
+      {0x80000001, brain::SH_ROR,   2, 1, 0x60000000, 0},
+      {0x80000001, brain::SH_ROR,  15, 1, 0x00030000, 0},
+      {0x80000001, brain::SH_ROR,  16, 1, 0x00018000, 0},
+      {0x80000001, brain::SH_ROR,  30, 1, 0x00000006, 0},
+      {0x80000001, brain::SH_ROR,  31, 1, 0x00000003, 0},
+      {0x80000001, brain::SH_ROR,  32, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_ROR,  33, 1, 0xC0000000, 1},
+      {0x80000001, brain::SH_ROR,  64, 1, 0x80000001, 1},
+      {0x80000001, brain::SH_ROR, 255, 1, 0x00000003, 0},
+      {0x80000001, brain::SH_RRX,   0, 0, 0x40000000, 1},
+      {0x80000001, brain::SH_RRX,   0, 1, 0xC0000000, 1},
+      {0x12345678, brain::SH_LSL,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::SH_LSL,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::SH_LSL,   1, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::SH_LSL,   2, 1, 0x48D159E0, 0},
+      {0x12345678, brain::SH_LSL,  15, 1, 0x2B3C0000, 0},
+      {0x12345678, brain::SH_LSL,  16, 1, 0x56780000, 0},
+      {0x12345678, brain::SH_LSL,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSL,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSL,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSL,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSL,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSL, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::SH_LSR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::SH_LSR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::SH_LSR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::SH_LSR,  15, 1, 0x00002468, 1},
+      {0x12345678, brain::SH_LSR,  16, 1, 0x00001234, 0},
+      {0x12345678, brain::SH_LSR,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_LSR, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::SH_ASR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::SH_ASR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::SH_ASR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::SH_ASR,  15, 1, 0x00002468, 1},
+      {0x12345678, brain::SH_ASR,  16, 1, 0x00001234, 0},
+      {0x12345678, brain::SH_ASR,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ASR, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::SH_ROR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::SH_ROR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::SH_ROR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::SH_ROR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::SH_ROR,  15, 1, 0xACF02468, 1},
+      {0x12345678, brain::SH_ROR,  16, 1, 0x56781234, 0},
+      {0x12345678, brain::SH_ROR,  30, 1, 0x48D159E0, 0},
+      {0x12345678, brain::SH_ROR,  31, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::SH_ROR,  32, 1, 0x12345678, 0},
+      {0x12345678, brain::SH_ROR,  33, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::SH_ROR,  64, 1, 0x12345678, 0},
+      {0x12345678, brain::SH_ROR, 255, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::SH_RRX,   0, 0, 0x091A2B3C, 0},
+      {0x12345678, brain::SH_RRX,   0, 1, 0x891A2B3C, 0},
+  };
+  for (size_t i = 0; i < sizeof kRows / sizeof kRows[0]; ++i) {
+    const Row& r = kRows[i];
+    const brain::Shifted g = brain::shift_arm(r.x, r.type, r.amt, r.cin);
+    char nm[96];
+    std::snprintf(nm, sizeof nm,
+                  "shift_arm(%08x, type %u, amt %u, cin %u) -> %08x c=%u", r.x,
+                  r.type, r.amt, r.cin, r.val, r.carry);
+    check(g.val == r.val && g.carry == r.carry, nm);
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -704,6 +833,7 @@ int main() {
   test_load_pc_and_l4();
   test_push_pop_return();
   test_exception_entry();
+  test_shifter_primitive();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

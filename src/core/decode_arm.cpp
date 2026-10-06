@@ -38,10 +38,21 @@ static inline void decode_op2_reg(u32 insn, ArmDec* d) {
     d->rs = BF(insn, 11, 8);
     return;
   }
+  /* The five-bit shift amount cannot say #32, so ARM state re-encodes a zero
+   * field: for the two right-ward shifts it means a 32-bit shift ("the form of
+   * the shift field which might be expected to correspond to LSR #0 is used to
+   * encode LSR #32, which has a zero result with bit 31 of Rm as the carry
+   * output" - ARM DDI 0084D s4.5.2, the same rule as DDI 0406 A1.8.1), and for
+   * ROR it means RRX.  Only LSL #0 is really "no shift", and it leaves C alone,
+   * which is what OP2_REG below says.  A register-supplied amount is *not*
+   * re-encoded: `LSR Rm, R0` with R0 = 0 is a shift by zero (DDI 0406 A1.8.1's
+   * note that the #0 spellings are an assembler convenience for LSL only is the
+   * same rule seen from the other side).  The Thumb-1 group already did this. */
   const u32 amt = BF(insn, 11, 7);
   if (amt) { d->op2 = OP2_REG_SHIFT; d->amt = amt; }
   else if (d->sh == SH_LSL) { d->op2 = OP2_REG; }
-  else { d->op2 = OP2_REG_SHIFT; d->amt = 0; }  /* ROR #0 == RRX */
+  else if (d->sh == SH_ROR) { d->op2 = OP2_REG_SHIFT; d->sh = SH_RRX; }
+  else { d->op2 = OP2_REG_SHIFT; d->amt = 32; }
 }
 
 /* the "extra" load/store space: LDRH STRH LDRSB LDRSH LDRD STRD.

@@ -255,24 +255,30 @@ int main(int argc, char** argv) {
     std::printf("%s\n", in.setflags ? ", flags" : "");
   }
 
+  /* The same words, run by the interpreter, from the state the block starts in: the
+   * shadowed registers are exactly R0-R12, and R15 is `next_pc` by construction.
+   * This runs whether or not the front end took the words, because `--hex <word>`
+   * with no --steps is also the cheapest way to step one instruction of the core
+   * and read the result back; tests/test_shifter.py does exactly that.  When
+   * nothing was translated, the single refused word is what gets executed and
+   * next_pc is the fall-through. */
+  const uint32_t run_n = used && blk.guest_insns ? blk.guest_insns : 1u;
+  std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
+  for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
+  std::printf("\n");
+  brain_run_insns(e, run_n);
+  std::printf("POST %08x", brain_get_reg(e, BRAIN_REG_CPSR));
+  for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
+  std::printf("\n");
+  std::printf("R15 %08x\n", brain_get_reg(e, 15));
+  std::printf("NEXTPC %08x\n", used ? blk.next_pc : pc + 4u);
+
   std::vector<uint32_t> code;
   if (!used) { std::printf("CODE\n"); brain_emu_destroy(e); return 1; }
   if (!brain::jit_emit_arm64(blk, true, &code)) { std::printf("EMIT_FAILED\n"); return 1; }
   std::printf("CODE %u", (unsigned)code.size());
   for (size_t i = 0; i < code.size(); ++i) std::printf(" %08x", code[i]);
   std::printf("\n");
-
-  /* The same words, run by the interpreter, from the state the block starts in: the
-   * shadowed registers are exactly R0-R12, and R15 is `next_pc` by construction. */
-  std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
-  for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
-  std::printf("\n");
-  brain_run_insns(e, blk.guest_insns ? blk.guest_insns : 1u);
-  std::printf("POST %08x", brain_get_reg(e, BRAIN_REG_CPSR));
-  for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
-  std::printf("\n");
-  std::printf("R15 %08x\n", brain_get_reg(e, 15));
-  std::printf("NEXTPC %08x\n", blk.next_pc);
   brain_emu_destroy(e);
   return 0;
 }

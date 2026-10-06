@@ -84,16 +84,20 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
    * which is why the cases below are spelled out rather than passed through. */
   bool rrx = false;
   if (d.op2 == OP2_REG_SHIFT) {
-    if (d.sh > SH_ROR) return false;
+    if (d.sh > SH_RRX) return false;
     in.shift_type = uint8_t(d.sh);
     in.shift_amt = d.amt;
-    if (d.sh == SH_ROR && d.amt == 0) {
+    if (d.sh == SH_RRX) {
       rrx = true;                      /* RRX: rotate right *through the carry* */
       in.shift_amt = 0;
     } else if (d.sh == SH_LSL) {
       if (d.amt > 31) return false;    /* no-op LSL #0 is legal, LSL #32 is not */
     } else if (d.amt == 0 || d.amt > 31) {
-      return false;                    /* LSR #0 = RRX, ASR #0 = ASR #32 */
+      return false;      /* a 32-bit shift (what `LSR #0`/`ASR #0` mean) or worse:
+                          * AArch64's shift field stops at 31, so these stay with the
+                          * dispatcher.  A zero amount cannot come out of
+                          * decode_op2_reg(); refusing it keeps a hand-built IrInsn
+                          * from being read as "no shift" here and "32" elsewhere. */
     }
     /* A shift by a register (RRX with S, or any of the four) also has to leave V
      * alone, so it stays with the dispatcher: see the C/V repair below. */
@@ -256,11 +260,13 @@ int flag_patches(const IrInsn& in, uint32_t saved, uint32_t shifted_src,
 
 uint32_t shifter_carry_bit(const IrInsn& in) {
   /* A left shift loses its top bit, so C is the one that fell off the *bottom* of
-   * the result: bit 32-n.  Every right-ward operation - LSR, ASR, ROR, and RRX,
-   * ARM's ROR #0 - loses bits off the bottom, so C is bit n-1, and for RRX that is
-   * bit 0. */
+   * the result: bit 32-n.  Every right-ward operation - LSR, ASR, ROR - loses bits
+   * off the bottom, so C is bit n-1, and RRX's is bit 0.  A 32-bit LSR/ASR therefore
+   * wants bit 31, which is why the front end refuses those instead of modelling a
+   * shift field that cannot hold 32. */
+  if (in.shift_type == SH_RRX) return 0u;
   if (in.shift_type == arm64::SH_LSL) return (32u - in.shift_amt) & 31u;
-  if (in.shift_amt == 0) return 0u;                      /* RRX */
+  if (in.shift_amt == 0) return 0u;
   return in.shift_amt - 1u;
 }
 
@@ -301,7 +307,7 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
      * forms that cannot take one.  The MOV family spells its operand differently -
      * `MOV Rd, Rm, RRX` has its own IR op - but MVN is an operation with a second
      * operand as far as AArch64 is concerned, so it needs the fold too. */
-    const bool rrx = !in.b_is_imm && in.shift_type == arm64::SH_ROR && sh == 0 &&
+    const bool rrx = !in.b_is_imm && in.shift_type == SH_RRX &&
                      (!mov_like || in.op == IR_MVN);
     const bool fold_imm = in.b_is_imm && in.op != IR_MOVI && in.op != IR_ADD &&
                           in.op != IR_SUB && in.op != IR_RSB;
@@ -309,6 +315,7 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
     uint32_t st = rrx ? uint32_t(arm64::SH_LSL) : uint32_t(in.shift_type);
     uint32_t amt = rrx ? 0u : sh;
     if (rrx) { b.mov_rrx(arm64::SCR1, operand_orig); operand = arm64::SCR1; }
+    else if (in.shift_type == SH_RRX) return false;   /* nowhere to put an RRX */
     else if (fold_imm) { b.mov_imm(arm64::SCR1, in.imm); operand = arm64::SCR1; }
     switch (in.op) {
       case IR_MOVI:

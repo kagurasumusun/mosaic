@@ -20,51 +20,47 @@ ALWAYS_INLINE u32 ror32(u32 x, u32 n) {
   return n ? ((x >> n) | (x << (32 - n))) : x;
 }
 
-/* Barrel shifter with ARM semantics, including the LSR#0/ROR#0 == RRX and
- * ASR#32+ / LSR#32+ saturating forms.  `cin` is the incoming C flag. */
+/* Barrel shifter with ARM semantics.  `cin` is the incoming C flag.
+ *
+ * The amount is a *number of bit positions*, already re-encoded for whoever asked:
+ * the ARM-state field that would be LSR #0 or ASR #0 means a 32-bit shift and the
+ * one that would be ROR #0 is RRX (SH_RRX), and decode_op2_reg() applies that so no
+ * caller has to repeat it.  A zero amount otherwise means "no shift", which also
+ * leaves C alone - that is what a register-supplied amount of zero does, since the
+ * re-encodings belong to the immediate field and not to the shifter (B2.2.3).
+ * Right-ward shifts saturate: LSR by 32 or more gives zero with C from bit 31 for
+ * exactly 32, ASR by 32 or more gives the sign; a rotate folds as
+ * (n - 1) MOD 32 + 1, so ROR #32 is the identity with C from bit 31 and ROR #33 is
+ * ROR #1 with C from bit 0.  Reference: ARM DDI 0084D s4.5.2, DDI 0406 A1.8.1.
+ */
 ALWAYS_INLINE Shifted shift_arm(u32 x, u32 type, u32 amt, u32 cin) {
+  if (type == SH_RRX) return Shifted{(cin << 31) | (x >> 1), x & 1};
+  if (amt == 0) return Shifted{x, cin};            /* no shift: value and C kept */
   Shifted r{x, cin};
   switch (type) {
     case SH_LSL:
-      if (amt == 0) { r.carry = cin; }
-      else if (amt < 32) { r.val = x << amt; r.carry = (x >> (32 - amt)) & 1; }
-      else if (amt == 32) { r.val = 0; r.carry = x & 1; }
-      else { r.val = 0; r.carry = 0; }
+      if (amt < 32) { r.val = x << amt; r.carry = (x >> (32 - amt)) & 1; }
+      else { r.val = 0; r.carry = amt == 32 ? (x & 1) : 0; }
       break;
     case SH_LSR:
-      if (amt == 0) {  /* RRX */
-        r.val = (cin << 31) | (x >> 1);
-        r.carry = x & 1;
-      } else if (amt < 32) {
-        r.val = x >> amt;
-        r.carry = (x >> (amt - 1)) & 1;
-      } else if (amt == 32) {
-        r.val = 0; r.carry = (x >> 31) & 1;
-      } else { r.val = 0; r.carry = 0; }
+      if (amt < 32) { r.val = x >> amt; r.carry = (x >> (amt - 1)) & 1; }
+      else { r.val = 0; r.carry = amt == 32 ? (x >> 31) & 1 : 0; }
       break;
     case SH_ASR:
-      if (amt == 0) {  /* no shift, carry := Rm[31] */
-        r.val = x; r.carry = (x >> 31) & 1;
-      } else if (amt < 32) {
+      if (amt < 32) {
         r.val = (u32)((s32)x >> amt);
-        r.carry = (((s32)x >> (amt - 1)) & 1);
+        r.carry = (u32)(((s32)x >> (amt - 1)) & 1);
       } else {
         r.val = ((s32)x < 0) ? 0xFFFFFFFFu : 0;
         r.carry = (x >> 31) & 1;
       }
       break;
-    default:  /* SH_ROR */
-      if (amt == 0) {  /* RRX */
-        r.val = (cin << 31) | (x >> 1);
-        r.carry = x & 1;
-      } else {
-        u32 n = amt & 31;
-        r.val = n ? ror32(x, n) : x;
-        if (amt < 32) r.carry = n ? ((x >> (n - 1)) & 1) : ((x >> 31) & 1);
-        else if (amt == 32) r.carry = (x >> 31) & 1;
-        else { r.val = x; r.carry = (x >> 31) & 1; }
-      }
+    default: {                                     /* SH_ROR */
+      const u32 n = ((amt - 1) & 31) + 1;
+      r.val = ror32(x, n);
+      r.carry = (x >> (n - 1)) & 1;
       break;
+    }
   }
   return r;
 }

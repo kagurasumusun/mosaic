@@ -32,7 +32,9 @@ namespace brain {
 struct ArmDec;
 
 /* Barrel-shifter result: value plus the carry the shift produced. */
-enum : u32 { SH_LSL = 0, SH_LSR = 1, SH_ASR = 2, SH_ROR = 3 };
+/* SH_RRX is not an encoding: the decoder substitutes it for the ROR field whose
+ * amount is zero, which ARM state spells as RRX. */
+enum : u32 { SH_LSL = 0, SH_LSR = 1, SH_ASR = 2, SH_ROR = 3, SH_RRX = 4 };
 struct Shifted {
   u32 val;
   u32 carry;

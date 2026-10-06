@@ -203,8 +203,9 @@ spells as a shift-and-insert because `ROR #0` in an AArch64 shift field means "r
 by zero" to a model), rotated immediates, and the S forms.  A block ends at a
 branch, a load or a store (they need the MMU and the abort path, and a compiled block
 must not grow a second copy of them), at MRS/MSR, at the multiply space, at anything
-naming R13-R15, at a shift amount taken from a register, at the reserved `LSR #0`
-and `ASR #0` spellings, and at a flag-setting rotated immediate or ADCS/SBCS - the
+naming R13-R15, at a shift amount taken from a register, at a 32-bit shift (which
+is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift field only
+reaches 31), and at a flag-setting rotated immediate or ADCS/SBCS - the
 last because a carry-in needs the flags as of *before* the operation, which is not
 worth a snapshot per instruction while the interpreter is one step behind.
 
@@ -227,4 +228,9 @@ sweep is what found the four real bugs in the carry rule, `ROR #0`, and MVN's
 immediate and RRX forms: the encoding checks had passed throughout, because a
 disassembler only proves what the *text* of an instruction says.  Capstone and Unicorn
 are optional here: without them the second and third layers print a `SKIP:` line
-rather than pretending to have run.
+rather than pretending to have run.  `tests/test_shifter.py` belongs alongside them:
+it runs every shift encoding - all four types, every amount the field holds, the
+re-encoded zeros, and register-supplied amounts up to 255 - against the model, so
+the primitive that both engines share stays honest even where the corpus has no
+instruction that uses it (it has none), and `test_unit.cpp` pins the same rules as a
+100-row table that needs nothing installed.

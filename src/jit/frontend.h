@@ -8,21 +8,21 @@
  * Only these are accepted, which is what makes the translation small enough to
  * trust: unconditional (cond == AL) ARM-state data processing (AOP_DP), with
  * R0-R12 as every operand, a shift by an immediate in any of the four directions
- * including RRX, rotated immediates, and the S forms except where a shift or
- * rotation supplies the carry (AArch64 has no flag-setting ORR/EOR, and its
- * `ADDS #imm` takes C out of the sum rather than out of the rotator).  The carry
- * and overflow bits ARM leaves alone are repaired around the operation; see the
- * comments at flag_patches().
+ * including RRX (the decoder names that case SH_RRX, so neither this file nor the
+ * emitter has to know about the zero field), rotated immediates, and the S forms
+ * except where a shift or rotation supplies the carry (AArch64 has no
+ * flag-setting ORR/EOR, and its `ADDS #imm` takes C out of the sum rather than out
+ * of the rotator).  The carry and overflow bits ARM leaves alone are repaired
+ * around the operation; see the comments at flag_patches().
  *
  * Everything else ends the block: a branch, a load or store (they need the MMU and
  * the abort path, and a compiled block must not grow a second copy of them), MRS or
  * MSR, the multiply space, anything touching R13-R15 (banked, or the PC itself), a
- * shift amount taken from a register, and the reserved spellings `LSR #0` and
- * `ASR #0`.  ADCS, SBCS and RSC are refused as a matter of policy: chaining a
- * carry correctly needs the flags as of *before* the operation, which costs a
- * snapshot per instruction and is not worth it while the interpreter is close
- * behind.  The emitter refuses the same shapes again, so a hand-built IrBlock
- * cannot reach an encoding that has not been checked.
+ * shift amount taken from a register, and a 32-bit shift - what ARM state spells
+ * `LSR #0` and `ASR #0`, and which AArch64's five-bit shift field cannot say.
+ * ADCS, SBCS and RSC are refused as a matter of policy: chaining a carry correctly
+ * needs the flags as of *before* the operation, which costs a snapshot per
+ * instruction and is not worth it while the interpreter is close behind.
  *
  * tests/test_jit_arm64.py is what keeps all of this honest: every emitted encoding
  * is disassembled and every accepted shape is executed on an AArch64 model and
