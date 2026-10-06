@@ -442,8 +442,8 @@ def main():
     print("by family:", ", ".join("%s=%d" % kv for kv in fam.most_common()))
     print("by field:", ", ".join("%s=%d" % kv for kv in fld.most_common()))
     print("oracle: %d programs compared against the model, %d disagreements"
-          " (%d shapes skipped: the model rejects the encoding)" %
-          (compared[0], len(fails), skipped[0]))
+          " (%d shapes not compared: assembler/decoder/model refused them,"
+          " see the notes)" % (compared[0], len(fails), skipped[0]))
     return 1 if fails else 0
 
 

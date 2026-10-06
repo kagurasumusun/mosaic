@@ -29,6 +29,7 @@ machine.
 | Branch | `B BL`, `BX`, `BLX` (immediate and register), condition codes | implemented, checked (`BL` links `cur+4`, Thumb-entering `BLX` sets T) |
 | Coprocessor | `MRC MCR` for p15, `LDC/STC` p15, `CDP` | p15 `MRC/MCR` implemented and checked (decode *must not* turn them into undefined); `CDP` and any other coprocessor number decode as UNDEF, matching a core with no coprocessor |
 | Software interrupt / debug | `SWI`, `BKPT` | implemented, checked |
+| Hardware interrupts | `nIRQ`/`nFIQ` level inputs driving entry (0x18/0x1C vectors, I/F masking, SPSR, link adjustment, forced ARM state) | implemented (`brain_set_irq`/`brain_set_fiq`), checked by `test_interrupt_inputs()` in both states, including entry from Thumb reached through a taken `BX` |
 
 ## Thumb state
 
@@ -100,17 +101,27 @@ machine.
    instructions (`insns_jit`) instead of trusting the flag.
 2. `LDC/STC` for p15 (the ARM926EJ-S uses these for a handful of cache/debug
    operations), and unaligned accesses to `PG_DEVICE` pages.
-3. No way to drive an interrupt.  The core keeps `irq_line`/`fiq_line` but the
-   public API has nothing that raises them, so IRQ and FIQ *entry* is untested:
-   `test_exception_entry()` covers the three exceptions a guest instruction can
-   raise (undefined instruction, SWI, external data abort) in both states and for
-   both vector bases, and the FIQ register window is pinned by
-   `test_exception_banking()`, but the FIQ-only `F` masking and the 8/6 link
-   adjustment for IRQ/FIQ have no test until something can assert the lines.
+3. Interrupt *timing*, not delivery.  This item is otherwise closed: the public
+   API now carries `brain_set_irq()`/`brain_set_fiq()`, and
+   `test_interrupt_inputs()` pins entry in both states - the 0x18/0x1C vectors,
+   the F/I masks holding a pending line, SPSR carrying the whole pre-entry CPSR
+   (T included, when the entry arrives from Thumb through a taken `BX`), and the
+   8/6 link adjustment.  What remains unmodelled is latency: the core samples the
+   lines at instruction boundaries only, so there is no notion of "interrupt
+   arrives mid-block" and cycle-level response time is not defined.
 4. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
    item is closed: `Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15
    as well as for the `MOV`-style PC writes, c1[15] is writable and reads back, and
    `tests/test_unit.cpp` pins both settings.)
+
+Two further notes on the interrupt path: exception *return* is exercised through
+`MOVS PC,R14` (tests/test_unit.cpp restores CPSR from SPSR and resumes with it);
+the other return idioms are pinned only through the link values they consume -
+`test_interrupt_inputs()` checks that `SUBS PC,R14,#4` would resume exactly on the
+deferred instruction, but does not run the pair back-to-back with a handler
+return.  A dropped line must be re-asserted for a second entry - `test_interrupt_inputs()`
+parks the handler's spin on the low edge - because there is no acknowledgement
+input: the semantics are the pins', not a real interrupt controller's.
 
 ## How a case can end up not covered at all
 
