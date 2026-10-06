@@ -433,7 +433,11 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
                        : (d.u ? base + off : base - off);
     const u32 next = d.u ? base + off : base - off;
     const u32 sz = d.b ? 1u : 4u;
-    const u32 flags = (d.b ? MF_SZ8 : MF_SZ32) | (d.unaligned_ok ? u32(MF_UNAL) : 0u);
+    /* TRM 3.5.1: with CP15 c1[A] set the MMU faults on any unaligned *word*
+     * or *halfword* access, whatever the addressing form; only byte accesses
+     * and instruction fetches are exempt.  `unaligned_ok` therefore no longer
+     * suppresses the check - it is what the byte forms already get for free. */
+    const u32 flags = (d.b ? MF_SZ8 : MF_SZ32) | (d.b ? u32(MF_UNAL) : 0u);
 
     if (d.l) {
       const u32 v = mem_read(ea, sz, flags);
@@ -467,7 +471,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     const u32 next = d.u ? base + off : base - off;
     /* H=1 -> 16 bit, H=0 with S=1 -> 8 bit (signed byte) */
     const u32 sz = d.h ? 2u : 1u;
-    const u32 flags = (sz == 2 ? MF_SZ16 : MF_SZ8) | (d.unaligned_ok ? u32(MF_UNAL) : 0u);
+    const u32 flags = (sz == 2 ? MF_SZ16 : MF_SZ8) | (sz == 1 ? u32(MF_UNAL) : 0u);
     if (d.l) {
       u32 v = mem_read(ea, sz, flags);
       if (BRAIN_UNLIKELY(exectrap)) return;
@@ -477,7 +481,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     } else {
       /* A5.3.3: in this encoding space a store names its source in bits[15:12]
        * (the Rd field) and only the halfword form exists. */
-      mem_write(ea, regs[d.rd], 2, MF_SZ16 | MF_WRITE | (d.unaligned_ok ? u32(MF_UNAL) : 0u));
+      mem_write(ea, regs[d.rd], 2, MF_SZ16 | MF_WRITE);
       if (BRAIN_UNLIKELY(exectrap)) return;
     }
     if (wb && !(d.l && d.rn == d.rd)) regs[d.rn] = next;
@@ -615,7 +619,9 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     if (d.kind == 1) regs[14] = cur + 4;                    /* BL        */
     /* kind 3 = Thumb B<cond>, already filtered by Cpu::exec_thumb. */
     if (d.kind == 2) {                                       /* BLX #imm */
-      regs[14] = cur & ~3u;
+      /* BLX to Thumb: R14 = next insn, bit[0] set so that `BX R14` returns
+       * in Thumb state (ARM926EJ-S TRM, BLX <label>). */
+      regs[14] = (cur + 4) | 1u;
       thumb = 1;
       cpsr |= CPSR_T;
       cpsr &= ~CPSR_J;
@@ -719,11 +725,21 @@ void Cpu::fetch_and_execute() {
    * and R15 gets the value that instruction will read (cur + 8 / cur + 4).
    * A prefetch abort is reported against `cur` before it is overwritten. */
   cur = npc;
-  if (BRAIN_UNLIKELY(!prepare_fetch())) { insns++; return; }
+  /* A fetch that aborts retires no instruction, but the step still has to
+   * charge one instruction and one cycle: the abort has been taken inside
+   * prepare_fetch(), the pipeline has moved to the vector, and a bounded run
+   * (either insn- or cycle-budgeted) must be able to terminate even when the
+   * vector itself faults. */
+  if (BRAIN_UNLIKELY(!prepare_fetch())) { insns++; cycles++; return; }
 
   if (thumb) {
     const u32 hw = fetch16(cur);
-    if (BRAIN_UNLIKELY(exectrap)) { take_exception(EXC_PABORT); return; }
+    if (BRAIN_UNLIKELY(exectrap)) {
+      take_exception(EXC_PABORT);
+      insns++;
+      cycles++;
+      return;
+    }
     insn = hw;
     npc = cur + 2;
     regs[15] = cur + 4;
@@ -732,7 +748,12 @@ void Cpu::fetch_and_execute() {
   }
 
   const u32 w = fetch32(cur);
-  if (BRAIN_UNLIKELY(exectrap)) { take_exception(EXC_PABORT); return; }
+  if (BRAIN_UNLIKELY(exectrap)) {
+    take_exception(EXC_PABORT);
+    insns++;
+    cycles++;
+    return;
+  }
   insn = w;
   npc = cur + 4;
   regs[15] = cur + 8;

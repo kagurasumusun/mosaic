@@ -59,6 +59,12 @@ machine.
 * `CDP` (no coprocessor to send it to), and `LDC/STC` for any `cp != 15`.
 * `DMB DSB ISB WFI WFE SEV YIELD WFE` and the other ARMv6/v7 hints, plus
   `MRS/MSR` of the banked SP_*SR registers (ARMv6+).
+* **Jazelle (T16)** is not implemented: no bytecodes are decoded. With
+  `cfg.jazelle_trap` set (the default) an `MSR` that would set `CPSR.J`, and a
+  `BX` whose target has bit[1] set from ARM state, take an undefined instruction;
+  with the trap cleared, `CPSR.J` becomes observable but the next fetch is still
+  ARM or Thumb per `CPSR.T`. A real ARM926EJ-S runs the bytecode interpreter, so
+  this is a gap rather than a detail.
 
 ## Known divergences that are not chased
 

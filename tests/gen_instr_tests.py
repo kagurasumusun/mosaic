@@ -308,15 +308,44 @@ def branch_cases(rnd):
     (which instruction ran) is visible in R0/R1, and the link value in R14, so
     no comparison against a PC is needed."""
     out = []
-    for off in (0x10, 0x100, -0x10, -0x100, 0x7FFFFF, -0x800000):
-        tgt = CODE_BASE + 8 + off * 4
-        if CODE_BASE <= tgt < CODE_BASE + 0x20:
-            out.append(("arm_bl_%x" % (off & 0xFFFFFF), "arm",
-                        ["BL 0x%x" % tgt, "ADD R0, R0, #0x100",
-                         "ADD R1, R1, #1", "ADD R1, R1, #2"], None, None, 3))
-        out.append(("arm_b_%x" % (off & 0xFFFFFF), "arm",
-                    ["MOV R1, #1", "B 0x%x" % (CODE_BASE + 4 + off * 4),
-                     "ADD R0, R0, #0x100", "ADD R0, R0, #1"], None, None, 3))
+    # A branch case only proves anything if a *wrongly scaled* offset lands on
+    # an instruction with a different effect, so the twelve slots below are
+    # twelve distinct ADDs, one per word, and the targets are small signed
+    # displacements inside that window: an offset scaled by 16 instead of 4 (a
+    # real bug this corpus then caught) leaves a different R0 behind.
+    slots = ["ADD R0, R0, #0x%x" % (i + 1) for i in range(12)]
+    for disp in (1, 2, 3, 5, 8, 11):
+        tgt = CODE_BASE + 8 + disp * 4
+        out.append(("arm_b_fwd%d" % disp, "arm",
+                    ["MOV R1, #1", "B 0x%x" % tgt] + slots, None, None, 3))
+        bl = list(slots)
+        bl[disp - 1] = "MOV R2, R14"        # slot the branch lands on
+        out.append(("arm_bl_fwd%d" % disp, "arm", ["BL 0x%x" % tgt] + bl,
+                    None, None, 3))
+    # Backward branches, from the end of the block: a missing sign extension of
+    # the offset lands far above the code instead of on a slot, and a target
+    # scaled by 16 rather than 4 lands on a different ADD, so both are visible.
+    back = ["MOV R1, #1"] + slots + ["B 0x%x" % (CODE_BASE + 4 + 4 * j)
+                                     for j in (0, 3, 11)]
+    for i, j in enumerate((0, 3, 11)):
+        out.append(("arm_b_back%d" % j, "arm",
+                    ["MOV R1, #1"] + slots + ["B 0x%x" % (CODE_BASE + 4 + 4 * j)],
+                    None, None, 15))
+        bl = ["MOV R1, #1"] + list(slots) + ["BL 0x%x" % (CODE_BASE + 4 + 4 * j)]
+        bl[1 + j] = "MOV R2, R14"
+        out.append(("arm_bl_back%d" % j, "arm", bl, None, None, 16))
+    assert back
+    out.append(("arm_bl_far", "arm",
+                ["BL 0x%x" % (CODE_BASE + 8 + 0x100), "ADD R0, R0, #0x100",
+                 "ADD R1, R1, #1", "ADD R1, R1, #2"], None, None, 3))
+    # BLX immediate: ARM encoding, target bit[0] = Thumb.  Landing on a zero
+    # word keeps the case deterministic (both models then execute `movs r0, r0`
+    # there), so what is actually checked is the interworking itself: the T bit
+    # set and R14 = the instruction after the branch, with bit[0] set.
+    for i, disp in enumerate((0, 1, 2)):
+        out.append(("arm_blxi_%d" % i, "arm",
+                    ["ADD R0, R0, #0x100", "BLX 0x%x" % (CODE_BASE + 0x100 + 1),
+                     "ADD R0, R0, #0x200"], None, None, 2))
     for cond in ("EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC", "HI", "LS",
                  "GE", "LT", "GT", "LE", "AL"):
         out.append(("arm_b%s" % cond, "arm",

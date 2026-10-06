@@ -363,6 +363,99 @@ void test_be32_and_flags() {
 
 }  // namespace
 
+
+/* Exception entry, the register bank, and the interrupt masks.
+ *
+ * R0-R7 (and R8-R12 outside FIQ mode) name the same physical registers in
+ * every mode, so taking an exception must leave them alone, while R13/R14 are
+ * banked per mode.  The handler therefore hops through System mode - which has
+ * its own R13/R14 but shares everything else - and back.  It also records the
+ * CPSR it saw while in System mode, which proves the mode change really
+ * happened, and the test pins the documented entry rules: taking an exception
+ * sets CPSR.I, leaves CPSR.F alone except for a FIQ or reset, and returns with
+ * the flags restored from the SPSR (DDI 0100I A2.6, "Summary of exception
+ * entry").  All encodings verified with keystone. */
+void test_exception_banking() {
+  std::printf("[exception banking]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  const uint32_t prog[] = {
+      0xE3A000A0u,  /* mov r0, #0xa0 */   0xE3A010A1u,  /* mov r1, #0xa1 */
+      0xE3A020A2u,  /* mov r2, #0xa2 */   0xE3A030A3u,  /* mov r3, #0xa3 */
+      0xE3A040A4u,  /* mov r4, #0xa4 */   0xE3A050A5u,  /* mov r5, #0xa5 */
+      0xE3A060A6u,  /* mov r6, #0xa6 */   0xE3A070A7u,  /* mov r7, #0xa7 */
+      0xE3A0801Fu,  /* mov r8, #0x1f  - the System-mode CPSR value            */
+      0xE3A09013u,  /* mov r9, #0x13  - the Supervisor-mode CPSR value        */
+      0xEF000000u,  /* swi 0                                                   */
+      0xE2800001u,  /* add r0, r0, #1  - where the handler must return         */
+      0xEAFFFFFEu,  /* b .                                                     */
+  };
+  const uint32_t handler[] = {
+      0xE121F008u,  /* MSR CPSR_c, r8   -> System mode (own R13/R14)          */
+      0xE3A0005Au,  /* MOV R0, #0x5a    - shared, so it must survive the return */
+      0xE3A0DC12u,  /* MOV R13, #0x1200 - the *System* stack pointer           */
+      0xE10F3000u,  /* MRS R3, CPSR     - records that the System detour ran      */
+      0xE121F009u,  /* MSR CPSR_c, r9   -> back to Supervisor                  */
+      0xE1B0F00Eu,  /* MOVS PC, R14     - exception return: CPSR <- SPSR_svc   */
+  };
+  CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000u, 0) == 0);
+  for (size_t i = 0; i < sizeof handler / sizeof handler[0]; ++i)
+    brain_poke32(e, 0x40u + (uint32_t)(i * 4u), handler[i]);
+  brain_poke32(e, 0x08u, 0xEA00000Cu);          /* the SWI vector: b 0x40     */
+  CHECK(brain_set_reg(e, 13, 0x1FF000u) == 0);  /* the Supervisor stack        */
+
+  CHECK(brain_run_insns(e, 24) == 24);
+  /* R1-R7 are untouched by the exception: no bank may copy over them. */
+  for (int r = 1; r <= 7; ++r) {
+    if (r == 3) continue;   /* the handler uses R3 to record the detour      */
+    CHECK(brain_get_reg(e, r) == (uint32_t)(0xA0 + r));
+  }
+  CHECK(brain_get_reg(e, 0) == 0x5Bu);         /* the handler's 0x5a, then +1  */
+  /* MRS in System mode: the control byte the handler wrote, I and F included. */
+  CHECK(brain_get_reg(e, 3) == 0x1Fu);
+  CHECK(brain_get_reg(e, 8) == 0x1Fu);
+  CHECK(brain_get_reg(e, 9) == 0x13u);
+  CHECK(brain_get_reg(e, 13) == 0x1FF000u);    /* the Supervisor stack survived */
+  CHECK(brain_get_reg(e, 14) == 0x802Cu);      /* R14_svc = address of the SWI+4 */
+  CHECK(brain_get_reg(e, BRAIN_REG_CPSR) == 0xD3u);   /* SVC, ARM, I|F as before */
+  brain_emu_destroy(e);
+}
+
+/* A faulting fetch must still retire an instruction and burn a cycle.  Without
+ * that, a guest whose abort vector itself faults - the classic "MMU on before
+ * the table maps the vectors" bootloader bug - never makes progress and every
+ * bounded run of it hangs. */
+void test_fetch_abort_terminates() {
+  std::printf("[fetch abort liveness]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  /* Turn the MMU on with a table of all-zeroes, so every fetch - including the
+   * one of the abort vector - takes a prefetch abort for ever. */
+  const uint32_t prog[] = {0xE3A01000u, 0xEE021F10u, 0xEE010F10u};
+  CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000u, 0) == 0);
+  CHECK(brain_set_reg(e, 0, 1u) == 0);         /* c1 = M                        */
+  CHECK(brain_set_reg(e, 1, 0x10000u) == 0);   /* c2 = the empty table          */
+  CHECK(brain_set_reg(e, 2, 0u) == 0);         /* c3 = every domain: no access  */
+  const uint64_t n = brain_run_insns(e, 500);
+  CHECK(n == 500u);
+  brain_stats_t st;
+  brain_get_stats(e, &st);
+  CHECK(st.cycles >= 500u);
+  CHECK(st.exc[BRAIN_EXC_PABORT] > 1u);        /* it kept trying to vector      */
+  CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x1Fu) == 0x17u);   /* Abort mode  */
+  brain_emu_destroy(e);
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -371,6 +464,8 @@ int main() {
   test_elf_loader();
   test_device_and_stop();
   test_be32_and_flags();
+  test_exception_banking();
+  test_fetch_abort_terminates();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

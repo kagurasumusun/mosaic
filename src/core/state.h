@@ -123,17 +123,26 @@ enum : u32 {
   FS926_EXT_TRANS_L2  = 0x0E, /* b1110, external abort on second level walk     */
 };
 enum : u32 {
+  /* TRM table 2-15: the FSR is only [3:0] fault type and [7:4] domain - bit
+   * [8] "always reads as zero, writes ignored" and [31:9] UNP/SBZ, so there
+   * is no write bit and no level bit here (the level is part of the 4-bit
+   * fault type, table 3-9).  Nothing else may be OR-ed into what the guest
+   * reads back. */
   FSR_DOMAIN_SHIFT = 4,
-  FSR_LEVEL2       = 1u << 11,   /* second-level descriptor fault */
-  FSR_WRITE        = 1u << 10,   /* the aborted access was a write  */
-  FSR_EXTERNAL     = 1u << 9,    /* external abort                   */
 };
 
+/* BE32 (CP15 c1[B]) swaps the byte order inside a word: a halfword access
+ * therefore sees its two bytes in the opposite order.  Keep the result to 16
+ * bits - the shift-then-or form would otherwise leak the upper half. */
+ALWAYS_INLINE u32 be32_swap16(u32 v) { return ((v >> 8) | (v << 8)) & 0xFFFFu; }
+
 /* Memory-access flags.  The fault kind is derived from these: MF_FETCH raises
- * a prefetch abort, everything else a data abort.  MF_UNAL marks the
- * encodings for which ARMv5 permits unaligned addresses (B2.6.2): LDR/STR
- * with a non-writeback immediate offset and no PC, and the halfword/signed
- * forms; those skip the alignment fault. */
+ * a prefetch abort, everything else a data abort.  MF_UNAL marks an access
+ * that must never take an alignment fault: byte accesses and instruction
+ * fetches, the two exemptions of TRM 3.5.1.  (Word and halfword accesses keep
+ * their addresses even when CP15 c1[A] is clear, so they always reach the bus
+ * with the effective address and no rotate is modelled - see
+ * docs/ISA-COVERAGE.md.) */
 enum : u32 {
   MF_WRITE = 1u << 0,
   MF_FETCH = 1u << 1,
@@ -146,7 +155,7 @@ enum : u32 {
 };
 
 enum : u32 {
-  C0_IDCODE = 0,   /* c0,0,0: main ID (ARM926EJ-S r0p5 => 0x41069260)       */
+  C0_IDCODE = 0,   /* c0,0,0: ID code, table 2-5                            */
   C0_CACHE_TYPE,   /* c0,0,1                                                */
   C0_TCM_R,        /* c0,0,2 (ARM926EJ-S: no TCM, reads 0)                 */
   C0_TCM_A,        /* c0,0,7                                                */
@@ -164,8 +173,9 @@ enum : u32 {
   C9_DC,           /* c9,1,0: D-cache lockdown / line size                 */
   C9_IC,           /* c9,1,1: I-cache lockdown                             */
   C10_TS,          /* c10,0,2: TLB structure (VR/LR)                      */
-  C13_PROCID,      /* c13,0,1: process ID (ASID for TLB flush by ID)        */
-  C15_CFR,         /* c15,1,0: ARM926EJ-S config/features                  */
+  C13_PROCID,      /* c13,0,0: FCSE PID, seven bits pre-shifted into [31:25] */
+  C13_CTXID,       /* c13,0,1: context ID (32-bit, for trace tools)          */
+  C15_CFR,         /* c15: test and debug, implementation-defined (2.3.15)   */
   CPCOUNT,
 };
 
@@ -185,16 +195,27 @@ enum : u32 {
   SCTLR_V  = 1u << 13, /* high exception vectors (from VINITHI at reset) */
   SCTLR_RR = 1u << 14, /* round-robin cache replacement                  */
   SCTLR_L4 = 1u << 15, /* ARMv4 T-bit behaviour on loads to PC           */
-  SCTLR_X  = 1u << 19, /* AP[0] => XN for pages                          */
+  /* Bits [31:19] are reserved: a write should be zero but a read returns
+   * whatever was written (the TRM recommends read-modify-write for future
+   * compatibility), so they are neither modelled as functions nor masked.
+   * There is no execute-never control anywhere on this core. */
   /* Read-as-set / write-ignored and read-as-zero fields of c1. */
   SCTLR_C1_SBO = (1u << 16) | (1u << 18) | 0x00000078u,
   SCTLR_C1_SBZ = (1u << 17) | 0x00000C00u,
 };
 
-/* ARM926EJ-S identification (TRM 3-24, table 3-4). */
+/* ARM926EJ-S identification.  The ID code is TRM table 2-5: implementer 0x41,
+ * variant 0, architecture 0x6 (ARMv5TEJ), part number 0x926, revision 5 --
+ * that is, the r0p5 the TRM title describes. */
 enum : u32 {
-  ARM926EJS_MIDR  = 0x41069260u,   /* r0p6; r0p5 is 0x41069265 in some docs */
-  ARM926EJS_CTYPE = 0x00000a10u,   /* 16KiB, 4-way, VIPT I/D caches         */
+  ARM926EJS_MIDR = (0x41u << 24) | (0x0u << 20) | (0x6u << 16) | (0x926u << 4) | 5u,
+  /* Cache Type Register, TRM table 2-10: Ctype b1110 (write-back, register 7
+   * cleaning, lockdown format C), S = 1 (separate I/D caches), and per-cache
+   * {size, assoc, M, len}.  Sizes are a *configuration* choice of the chip:
+   * 16 KiB 4-way with 8-word lines, as used in the i.MX28. */
+  ARM926EJS_CTYPE = (0xEu << 25) | (1u << 24) |
+                    (0x5u << 18) | (0x2u << 15) | (0x2u << 12) |   /* DCache */
+                    (0x5u << 6)  | (0x2u << 3)  | (0x2u << 0),    /* ICache */
   ARM926EJS_CF15  = 0x00008001u,   /* ARM926EJ-S specific config            */
 };
 
@@ -207,7 +228,6 @@ enum : u32 {
   TLB_WRITE  = 1u << 3,
   TLB_PRIV   = 1u << 4,   /* privileged access only (AP denies user)        */
   TLB_DEVICE = 1u << 5,
-  TLB_XN     = 1u << 6,
   TLB_ROM    = 1u << 7,   /* host mapping not writable                      */
   TLB_SECT   = 1u << 8,   /* section-backed (1 MiB) => 4 KiB aliases shared */
 };
@@ -403,14 +423,10 @@ struct Cpu {
   u32 read8(u32 a) { return mem_read(a, 1, MF_SZ8); }
   u32 read16(u32 a) { return mem_read(a, 2, MF_SZ16); }
   u32 read32(u32 a) { return mem_read(a, 4, MF_SZ32); }
-  u32 read32_unal(u32 a) { return mem_read(a, 4, MF_SZ32 | MF_UNAL); }
-  u32 read16_unal(u32 a) { return mem_read(a, 2, MF_SZ16 | MF_UNAL); }
   u32 read32_fetch(u32 a) { return mem_read(a, 4, MF_SZ32 | MF_FETCH); }
   void write8(u32 a, u32 val) { mem_write(a, val, 1, MF_WRITE | MF_SZ8); }
   void write16(u32 a, u32 val) { mem_write(a, val, 2, MF_WRITE | MF_SZ16); }
   void write32(u32 a, u32 val) { mem_write(a, val, 4, MF_WRITE | MF_SZ32); }
-  void write32_unal(u32 a, u32 val) { mem_write(a, val, 4, MF_WRITE | MF_SZ32 | MF_UNAL); }
-  void write16_unal(u32 a, u32 val) { mem_write(a, val, 2, MF_WRITE | MF_SZ16 | MF_UNAL); }
 
   ALWAYS_INLINE u32 mem_read(u32 addr, u32 size, u32 flags);
   ALWAYS_INLINE void mem_write(u32 addr, u32 val, u32 size, u32 flags);
@@ -426,7 +442,7 @@ struct Cpu {
   bool mmu_translate(u32 va, u32 flags, TlbEntry* out);
   TlbEntry* tlb_lookup(u32 va, u32 flags);
   void tlb_flush_all();
-  void tlb_flush_page(u32 va);
+  void tlb_flush_page(u32 mva);
   void cp15_write(u32 crn, u32 opc1, u32 rd, u32 crm, u32 opc2);
   u32 cp15_read(u32 crn, u32 opc1, u32 crm, u32 opc2);
   void sync_cp15_caches();
@@ -497,7 +513,8 @@ ALWAYS_INLINE void Cpu::set_cpsr_flags(u32 n, u32 z, u32 c, u32 vv) {
 }
 
 ALWAYS_INLINE u32 Cpu::mem_read(u32 addr, u32 size, u32 flags) {
-  if (BRAIN_UNLIKELY(align_chk && !(flags & MF_UNAL) && (addr & (size - 1))))
+  if (BRAIN_UNLIKELY(align_chk && !(flags & (MF_UNAL | MF_FETCH)) &&
+                     (addr & (size - 1))))
     return mem_read_slow(addr, size, flags);
   /* Identity fast path: MMU off and the address falls inside the RAM window. */
   if (BRAIN_LIKELY(ram_fast && ((addr - ram_gbase) & ~ram_mask) == 0)) {
@@ -515,7 +532,7 @@ ALWAYS_INLINE u32 Cpu::mem_read(u32 addr, u32 size, u32 flags) {
        * not swapped here: the byte order of words comes from the image
        * loading (CpuConfig::big_endian_code), which keeps a load and the
        * matching store mutual inverses without a second swap. */
-      res = (res >> 8) | (res << 8);
+      res = be32_swap16(res);
     }
     return res;
   }
@@ -523,14 +540,15 @@ ALWAYS_INLINE u32 Cpu::mem_read(u32 addr, u32 size, u32 flags) {
 }
 
 ALWAYS_INLINE void Cpu::mem_write(u32 addr, u32 val, u32 size, u32 flags) {
-  if (BRAIN_UNLIKELY(align_chk && !(flags & MF_UNAL) && (addr & (size - 1)))) {
+  if (BRAIN_UNLIKELY(align_chk && !(flags & (MF_UNAL | MF_FETCH)) &&
+                     (addr & (size - 1)))) {
     mem_write_slow(addr, val, size, flags);
     return;
   }
   if (BRAIN_LIKELY(ram_fast && ((addr - ram_gbase) & ~ram_mask) == 0)) {
     u8* p = ram + (addr & ram_mask);
     if (BRAIN_UNLIKELY(be_data && size == 2)) {
-      val = (val >> 8) | (val << 8);
+      val = be32_swap16(val);
     }
     if (size == 4) {
       memcpy(p, &val, 4);

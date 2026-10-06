@@ -47,12 +47,40 @@ second interpreter.
 * `regs[15] == cur + (thumb ? 4 : 8)` — the register file holds the pipeline's
   PC, not the address of the instruction being executed. A write to the PC sets
   `npc` and nothing else; `cur`/`regs[15]` are refreshed on the next fetch.
-* `npc` is the address of the *next* instruction. `BL` in ARM state links
-  `cur + 4` (the return address, not the pipeline PC); `BLX` to an immediate
-  links `cur & ~3`; a Thumb long branch links `(cur + 2) | 1`.
-* `bank[bank_idx] == regs` — the banked copies are only reloaded on a mode
-  switch, which is why the API seeds `bank[0]` and `bank[3]` as well as `regs[]`
-  and why tests must set both, or a mode switch inside a case loses R13/R14.
+* `npc` is the address of the *next* instruction, and a link is computed from
+  `cur` - never from `regs[15]`, which already points past the instruction. `BL`
+  and `BLX` to an immediate in ARM state link `cur + 4`, the latter with bit[0]
+  set so that a `BX R14` from the Thumb handler returns to ARM state, and a
+  Thumb long branch links
+  `(cur + 2) | 1` in the first halfword and folds the second half into it (the
+  pair is two independent instructions on this core, so an interrupted sequence
+  behaves as on hardware). `tests/data/corpus.txt` locks the branch rules down:
+  every `B/BL` case lands on one of twelve slots with a unique effect and moves
+  the link into a general register, so both a mis-scaled offset and a wrong link
+  change a compared register.
+* Only the registers a mode actually banks move on a mode change (DDI 0198E
+  4.1.1): R13 and R14 in every mode, plus R8-R12 in FIQ alone. R0-R7 - and
+  R8-R12 outside FIQ - name the same physical register in all modes, so
+  `flush_bank()`/`load_bank()` must not copy them; a whole-bank copy wipes the
+  faulting thread's arguments on any exception. The live view of R8-R12 is kept
+  in the user bank so that leaving FIQ restores it.
+* `bank[bank_idx] == regs` for R13/R14 and (in FIQ) R8-R12. `Cpu::set_reg`
+  therefore writes through to the live bank, which is what lets the ELF loader,
+  `brain_set_reg` and a debugger set a mode's stack pointer without the next
+  mode change reverting it; tests no longer have to seed both.
+* `SPSR_<mode>` is not a mirror of the CPSR: it holds what an exception saved on
+  entry, and only `enter_exception()` writes it (plus `MSR` to SPSR). Saving the
+  current CPSR in `flush_bank()` looks harmless and silently destroys the value
+  a handler is about to return with, whenever an exception or a mode change
+  happens inside another handler.
+* A faulting instruction fetch still retires the instruction: `step_one()` must
+  not validate a fetch of its own, because at that point `cur` is still the
+  address that has just executed, so the abort is re-taken for the same address
+  for ever and `npc` never reaches the vector. `prepare_fetch()` runs inside
+  `fetch_and_execute()`, after `cur = npc`, and the `insns++`/`cycles++` charge
+  for the bad fetch belongs to the fetch itself. Without this a guest that turns
+  the MMU on before its table maps the vectors - a classic bootloader bug -
+  wedges any bounded run instead of faulting 200 times.
 * MMU off means **PA = MVA = VA**: no FCSE, no top-byte clearing. i.MX28 puts
   its peripherals at 0x80000000, so boot code must be able to store there before
   a page table exists (`tests/test_unit.cpp` locks this in).

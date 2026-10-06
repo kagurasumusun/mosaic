@@ -327,16 +327,17 @@ u32 decode_arm(u32 insn, ArmDec* d) {
   if (BF(insn, 27, 25) == 0b101) {
     const u32 cond = BF(insn, 31, 28);
     if (cond == 0xF && (insn & 1)) {
+      /* offset = SignExtend(imm23 : H : 10, 32)  -- a 26-bit field. */
       const u32 imm23 = BF(insn, 23, 1);
-      s32 off = (s32)((imm23 << 3) | (BIT(insn, 24) << 1));
+      s32 off = (s32)((imm23 << 2) | (BIT(insn, 24) << 1) | 2u);
       if (off & 0x02000000) off |= (s32)0xFC000000u;      /* sign extend @26 */
       d->imm24 = (u32)off;
       d->kind = 2;                     /* BLX: branch and exchange        */
       d->op = AOP_B;
       return AOP_B;
     }
-    s32 off = (s32)(BF(insn, 23, 0) << 10) >> 8;          /* sign extend @26 */
-    d->imm24 = (u32)(off << 2);
+    s32 off = (s32)(BF(insn, 23, 0) << 8) >> 8;           /* sign extend @24 */
+    d->imm24 = (u32)(off << 2);                            /* imm24:00        */
     d->kind = BIT(insn, 24) ? 1 : 0;   /* 0 = B, 1 = BL                   */
     d->op = AOP_B;
     return AOP_B;

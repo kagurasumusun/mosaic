@@ -57,26 +57,50 @@ static u32 bank_for_mode_static(u32 mode) {
 
 u32 Cpu::bank_for_mode(u32 mode) const { return bank_for_mode_static(mode); }
 
+/* Which registers a mode actually banks (TRM 4.1.1, "register bank"): R13 and
+ * R14 in every mode, plus R8-R12 in FIQ only.  R0-R7 - and R8-R12 outside FIQ -
+ * name the same physical registers in all modes, so a mode change must leave
+ * them untouched.  Copying the whole bank instead made any exception wipe r0-r7
+ * of the faulting thread, which is why this split is spelled out.  The shared
+ * view of R8-R12 lives in the user bank, so leaving FIQ restores it. */
+static bool bank_is_fiq(u32 idx) { return idx == BANK_FIQ; }
+
 void Cpu::flush_bank() {
   Bank& b = bank[bank_idx];
-  for (u32 i = 0; i < 15; ++i) b.r[i] = regs[i];
-  b.spsr = cpsr;
+  b.r[13] = regs[13];
+  b.r[14] = regs[14];
+  Bank& shared = bank_is_fiq(bank_idx) ? b : bank[BANK_USR];
+  for (u32 i = 8; i < 13; ++i) shared.r[i] = regs[i];
+  /* SPSR_<mode> is deliberately *not* written here.  It is not a mirror of the
+   * CPSR: it holds the value an exception saved on entry, and MRS/MSR see it as
+   * bank[bank_idx].spsr.  Saving the current CPSR on every mode change made an
+   * IRQ taken inside a Supervisor handler (or a detour through System mode)
+   * overwrite the SPSR that handler was about to return with. */
 }
 
 void Cpu::load_bank(u32 idx) {
   bank_idx = idx;
   const Bank& b = bank[idx];
-  for (u32 i = 0; i < 15; ++i) regs[i] = b.r[i];
+  regs[13] = b.r[13];
+  regs[14] = b.r[14];
+  const Bank& shared = bank_is_fiq(idx) ? b : bank[BANK_USR];
+  for (u32 i = 8; i < 13; ++i) regs[i] = shared.r[i];
 }
 
+/* Install a mode written by MSR / LDM-into-R15 / the debugger, banking the
+ * registers that actually change.  The *live bank*, not the CPSR field, decides
+ * whether a swap is needed: an MSR-style caller has usually written the new mode
+ * into CPSR before calling here, and comparing against CPSR then makes the
+ * change look like a no-op and silently keeps the old R13/R14 - which is how a
+ * supervisor stack used to survive a detour through System mode. */
 void Cpu::switch_mode(u32 new_mode) {
-  u32 old = cpsr & CPSR_MODE_M;
   new_mode &= CPSR_MODE_M;
   cpsr = (cpsr & ~CPSR_MODE_M) | new_mode;
-  if (new_mode == old) { priv = (new_mode != MODE_USR); return; }
-  flush_bank();
-  load_bank(bank_for_mode_static(new_mode));
   priv = (new_mode != MODE_USR);
+  const u32 idx = bank_for_mode_static(new_mode);
+  if (idx == bank_idx) return;   /* USR<->SYS share a bank: nothing to move. */
+  flush_bank();
+  load_bank(idx);
 }
 
 /* ----------------------------------------------------------- R15 writes -- */
@@ -94,6 +118,10 @@ void Cpu::set_reg(u32 n, u32 val) {
     return;
   }
   regs[n] = val;
+  /* Keep the bank of the mode we are in in step, or the next mode change (an
+   * exception, an MSR) would restore the stale value over this one.  Only
+   * R13/R14 and, in FIQ, R8-R12 are banked - see Cpu::flush_bank(). */
+  if (n >= 13 || (bank_idx == BANK_FIQ && n >= 8)) bank[bank_idx].r[n] = val;
 }
 
 /* -------------------------------------------------------------- reset -- */
@@ -133,9 +161,9 @@ void Cpu::reset() {
   bank_idx = bank_for_mode_static(MODE_SVC);
 
   /* TRM table 2-5: implementer 0x41, arch 0x6 (ARMv5TEJ), part 0x926, rev 5 */
-  cp15.c[C0_IDCODE] = 0x41069265u;
+  cp15.c[C0_IDCODE] = ARM926EJS_MIDR;
   /* TRM figure 2-2: S=1 (separate I/D caches), 16KiB 4-way, 32B lines */
-  cp15.c[C0_CACHE_TYPE] = 0x00000a10u;
+  cp15.c[C0_CACHE_TYPE] = ARM926EJS_CTYPE;
   /* DDI 0198: the Control Register resets to 0x00050078 on the ARM926EJ-S
    * (bits 16 and 18 are SBO, 17 SBZ, [31:19] SBZ, and the low byte carries
    * the C/B/S/F enables).  MRC of c1 must read that back, so it is stored
@@ -239,7 +267,10 @@ void Cpu::enter_exception(u32 e, u32 vector, u32 mode, u32 lr_adjust) {
   Bank& nb = bank[idx];
   nb.spsr = old_cpsr;
   nb.r[14] = cur + lr_adjust;
-  for (u32 i = 0; i < 15; ++i) regs[i] = nb.r[i];
+  regs[13] = nb.r[13];
+  regs[14] = nb.r[14];
+  const Bank& shared = (idx == BANK_FIQ) ? nb : bank[BANK_USR];
+  for (u32 i = 8; i < 13; ++i) regs[i] = shared.r[i];
   bank_idx = idx;
 
   /* Keep N,Z,C,V,Q and (ARMv5) the A bit.  Set I, and F for FIQ/reset.
@@ -309,7 +340,11 @@ bool Cpu::check_interrupts() {
 
 void Cpu::step_one() {
   if (BRAIN_UNLIKELY(check_interrupts())) return;
-  if (BRAIN_UNLIKELY(!prepare_fetch())) return;   /* prefetch abort taken */
+  /* No fetch here: `cur` is only advanced inside Cpu::fetch_and_execute, so a
+   * prefetch check at this point would look at the instruction that has just
+   * been executed.  A guest whose abort vector is not itself mapped then retook
+   * the same abort for ever - `cur` never moved to the vector, nothing retired,
+   * and no bounded run could terminate. */
   fetch_and_execute();
   if (BRAIN_UNLIKELY(exectrap)) {
     u32 e = exectrap;
