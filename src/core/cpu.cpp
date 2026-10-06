@@ -134,6 +134,7 @@ bool Cpu::init(const CpuConfig& c) {
     return false;
 
   u32 n = 1u << (cfg.tlb_bits ? cfg.tlb_bits : 11);
+  delete[] tlb_store;               /* a second init replaces the old table */
   tlb_store = new TlbEntry[2 * n];
   for (u32 i = 0; i < 2 * n; ++i) { tlb_store[i].vpn = TLB_FREE; tlb_store[i].host = nullptr; }
   tlb_d = tlb_store;

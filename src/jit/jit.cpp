@@ -3,8 +3,8 @@
  * With no host backend compiled in (see BRAIN_JIT_BACKEND) this file is the
  * whole JIT: it keeps the invalidation/versioning protocol that the core
  * expects, so `use_jit` simply degrades to the interpreter instead of changing
- * behaviour.  The x64/AArch64 backends plug into the same entry points; they
- * own the code cache and read `trans_gen` from the block epilogue.
+ * behaviour.  The AArch64 backend plugs into the same entry points; it owns the
+ * code cache and reads `trans_gen` from the block epilogue.
  */
 #include <cstdio>
 

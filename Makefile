@@ -81,6 +81,8 @@ check: tests
 	  printf '  RUN   %s\n' $$t; \
 	  ./$$t || fail=1; \
 	done; \
+	printf '  RUN   tests/test_jit_arm64.py\n'; \
+	$(PY) tests/test_jit_arm64.py || fail=1; \
 	if [ $$fail -ne 0 ]; then echo "FAILED"; exit 1; fi
 	@echo "all tests passed"
 

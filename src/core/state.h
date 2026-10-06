@@ -292,6 +292,11 @@ struct Cp15Shadow {
 };
 
 struct Cpu {
+  /* The TLB backing store is the one allocation a Cpu owns; `init` may run
+   * more than once on the same object (a machine is rebuilt after a reset), so it
+   * is replaced rather than appended to. */
+  ~Cpu() { delete[] tlb_store; }
+
   /* ------------------------- hot: shared with generated code ---------- */
   u32 regs[16];     /* +0x00  R15 = pipeline value (cur+8 ARM / cur+4 T)   */
   u32 npc;          /* +0x40  address of the next instruction to execute    */
@@ -357,7 +362,7 @@ struct Cpu {
   Stats stats;
   Bus bus_impl;       /* the address space; `bus` points here (the JIT keeps a
                          pointer slot so a device model can be swapped in)     */
-  TlbEntry* tlb_store;
+  TlbEntry* tlb_store = nullptr;  /* owned; see ~Cpu */
   u32 stop_after;
   u32 trace_en;
   u32 running;

@@ -188,3 +188,43 @@ corpus case that only proves the core does not crash.
 * `LDM`/`STM` register-list effects on the flags and on banked R13/R14, and any
   check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
   target show up as a register write (`MOV Rn, R14`) instead.
+
+## The AArch64 JIT backend
+
+`src/jit/emit_arm64.h` and `src/jit/frontend.cpp` generate AArch64 for the subset
+the front end accepts, and they are **emit-only**: no block cache exists,
+`Cpu::run_insns` never enters generated code, and `BRAIN_JIT_BACKEND` stays 0, so
+every coverage number in this file is an interpreter number.  What `--jit` reports
+(`insns_jit 0`) is that fact, not a failure.
+
+The accepted set is unconditional ARM-state data processing with every operand in
+R0-R12: the four barrel shifts by an immediate (including RRX, which the emitter
+spells as a shift-and-insert because `ROR #0` in an AArch64 shift field means "rotate
+by zero" to a model), rotated immediates, and the S forms.  A block ends at a
+branch, a load or a store (they need the MMU and the abort path, and a compiled block
+must not grow a second copy of them), at MRS/MSR, at the multiply space, at anything
+naming R13-R15, at a shift amount taken from a register, at the reserved `LSR #0`
+and `ASR #0` spellings, and at a flag-setting rotated immediate or ADCS/SBCS - the
+last because a carry-in needs the flags as of *before* the operation, which is not
+worth a snapshot per instruction while the interpreter is one step behind.
+
+The flags are the interesting part.  AArch64 has no flag-setting `ORR`/`EOR`, so
+those become a value plus `TST Wd, Wd`; the 64-bit shift inside a shifted logical
+produces a carry that has nothing to do with ARM's bit 32-n (or n-1); and ARM never
+writes V on a logical operation at all.  So the emitter snapshots `NZCV` with `MRS`
+and patches the bits back with `UBFX`/`ORR`/`MSR` - and for "unchanged" it needs the
+value from *before* the instruction, which is why the snapshot is taken first.
+
+`tests/test_jit_arm64.py` checks all of that, and runs as part of `make check`:
+every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
+is supposed to produce (42 forms, 81 words, 0 wrong); every ARM block the corpus
+contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, CPSR
+and the next PC against the interpreter (132 blocks agree, 107 are refused by design);
+and `jit_emit --sweep` enumerates 16 opcodes x 4 shift types x 32 shift amounts x S x
+immediate-or-register - 4224 shapes, most of which the corpus cannot express - and
+runs each accepted one on the model (2805 agree, 1419 refused, 0 disagreements).  The
+sweep is what found the four real bugs in the carry rule, `ROR #0`, and MVN's
+immediate and RRX forms: the encoding checks had passed throughout, because a
+disassembler only proves what the *text* of an instruction says.  Capstone and Unicorn
+are optional here: without them the second and third layers print a `SKIP:` line
+rather than pretending to have run.
