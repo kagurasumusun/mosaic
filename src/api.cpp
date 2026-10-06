@@ -283,6 +283,18 @@ int brain_write_mem(brain_emu_t* e, u32 addr, const void* src, size_t n) {
   return e->cpu.bus->write_bytes(addr, src, n) ? 0 : -1;
 }
 
+/* Level-driven interrupt inputs.  The core samples these at every step boundary
+ * (Cpu::step_one -> Cpu::check_interrupts, FIQ first) while CPSR.I / CPSR.F mask
+ * them; there is no pulse, so holding the line high keeps a serviced request
+ * pending until the caller drops it - which is exactly the ARM926's nIRQ/nFIQ
+ * pin behaviour an embedded guest expects. */
+void brain_set_irq(brain_emu_t* e, int level) {
+  if (e) e->cpu.irq_line = level ? 1u : 0u;
+}
+void brain_set_fiq(brain_emu_t* e, int level) {
+  if (e) e->cpu.fiq_line = level ? 1u : 0u;
+}
+
 int brain_pending_exception(const brain_emu_t* e) {
   return e ? (int)e->cpu.exc : 0;
 }

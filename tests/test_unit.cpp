@@ -624,6 +624,110 @@ void test_push_pop_return() {
  * coprocessor), `IT` is an ARMv6T2 encoding an ARM926EJ-S does not have, and an
  * LDR from outside the RAM window is an external data abort.
  */
+static void test_interrupt_inputs() {
+  /* Level inputs on nIRQ/nFIQ, exercised through the exact retirement order
+   * `Cpu::step_one` samples them at.  ARM rows: the program is `mov r0,#0x13`,
+   * `msr cpsr_c,r0` (0xE121F000 - Capstone-verified field encoding), then a spin
+   * `b .` in slot [2] and two more spins - 0xEAFFFFFE x3.  The load defers the
+   * first instruction into the step where the line is sampled, so with the line
+   * high from the start, slot [0] retires *masked* (phase 1) and the `msr` in
+   * slot [1] commits as it retires; the line is then taken at the boundary in
+   * front of slot [2] at 0x8008, which is the deferred instruction - R14 must
+   * equal 0x800C (`SUBS PC,R14,#4` returns to the deferred spin exactly).
+   *
+   * Thumb rows reach Thumb through a *taken* BX - the case the deferral interacts
+   * with: [0] `mov r0,#0x13`, [1] `add r1,pc,#1`, [2] `bx r1`, [3]/[4] halfword
+   * pairs (0x2007 `movs r0,#7` + 0xE7FE `b .`).  With the line low the `add` and
+   * the BX retire (CPSR 0xb3: T set by the taken branch, I still masked by the
+   * seed); the test then pokes the masks open through the debugger register API -
+   * which is the `msr` equivalent at a *known* boundary - and the entry happens in
+   * front of the halfword at 0x8010: R14 = 0x8012, the ARMv5 "R14 = old-style PC
+   * + 4" for a Thumb IRQ, and SPSR carries T so a `BX`/`MOVS` return restores
+   * Thumb.  FIQ rows assert the 0x1C vector, the F mask, and R14_FIQ - all in
+   * both states.  Nothing lowers the line automatically: dropping it is what lets
+   * the handler's own spin run instead of re-entering, which the last rows pin. */
+  static const uint32_t arm_prog[5] = {0xE3A00013u, 0xE121F000u, 0xEAFFFFFEu,
+                                      0xEAFFFFFEu, 0xEAFFFFFEu};
+  static const uint32_t th_prog[5] = {0xE3A00013u, 0xE28F1001u, 0xE12FFF11u,
+                                     0xE7FE2007u, 0xE7FE2007u};
+  for (int fiq = 0; fiq < 2; ++fiq) {
+    for (int thumb = 0; thumb < 2; ++thumb) {
+      const uint32_t vec = fiq ? 0x1Cu : 0x18u;
+      const int mode = fiq ? 0x11 : 0x12;
+      const uint32_t marker = 0x22u;
+      char nm[64];
+      std::snprintf(nm, sizeof nm, "%s entry from %s state", fiq ? "FIQ" : "IRQ",
+                    thumb ? "thumb" : "arm");
+      brain_emu_t* e = brain_emu_create(nullptr);
+      CHECK(e != nullptr);
+      if (!e) continue;
+      /* All nine vector slots: FIQ lives at 0x1C, and poking only through 0x18
+       * would leave the FIQ slot holding whatever the IRQ entry installed. */
+      for (int i = 0; i < 9; ++i) brain_poke32(e, (uint32_t)(i * 4u), 0xEAFFFFFEu);
+      /* `mov r4,r14` then `mov r12,#marker`: R14 is sampled *inside* the handler
+       * because it is banked; both instructions are flag-free, so no state the
+       * assertions compare against is perturbed by the handler itself. */
+      brain_poke32(e, vec, 0xE1A0400Eu);
+      brain_poke32(e, vec + 4u, 0xE3A0C000u + marker);
+
+      /* SVC with I (and F for FIQ) masked; the load only forces T, and T=0 here -
+       * both programs start in ARM and the Thumb rows *arrive* in Thumb. */
+      CHECK(brain_set_reg(e, BRAIN_REG_CPSR, 0x00000093u | (fiq ? 0x40u : 0u)) == 0);
+      CHECK(brain_load_raw(e, thumb ? (const void*)th_prog : (const void*)arm_prog,
+                           20, 0x8000u, 0) == 0);
+
+      /* Phase 1: the line is high while the masks hold it - the deferred first
+       * instruction retires and the core parks, no entry taken. */
+      if (fiq) brain_set_fiq(e, 1); else brain_set_irq(e, 1);
+      if (thumb) {
+        /* [0] `mov`, [1] `add r1,pc,#1`, [2] `bx r1`, [3] the deferred halfword
+         * all retire while masked - the line cannot be taken while I (and F for
+         * FIQ) hide it; the BX's own T-setting is what the poke below mimics. */
+        CHECK(brain_run_insns(e, 4) == 4u);
+        CHECK(brain_get_reg(e, 12) == 0u);    /* masked: no entry yet                  */
+        CHECK(brain_get_reg(e, BRAIN_REG_CPSR)
+              == (uint32_t)(0x93u | 0x20u | (fiq ? 0x40u : 0u)));  /* T from the BX   */
+        CHECK(brain_set_reg(e, BRAIN_REG_CPSR, 0x00000033u) == 0);
+      } else {
+        CHECK(brain_run_insns(e, 2) == 2u);   /* [0] masked, [1] `msr` commits unmask  */
+      }
+      check(brain_get_reg(e, 12) == 0u, "no entry while the interrupt is masked");
+
+      /* The entry at the next step boundary retires nothing itself; the two handler
+       * instructions follow.  Both states fit the same budget here. */
+      CHECK(brain_run_insns(e, 2) == 2u);              /* entry + `mov r4,r14`         */
+      if (brain_get_reg(e, 12) != marker) CHECK(brain_run_insns(e, 2) <= 2u);  /* `mov r12,#0x22` */
+      const uint32_t in = brain_get_reg(e, BRAIN_REG_CPSR);
+      const uint32_t spsr = brain_get_reg(e, BRAIN_REG_SPSR);
+      check(brain_get_reg(e, 12) == marker, "the handler ran");
+      check((in & 0x1Fu) == (uint32_t)mode, nm);
+      CHECK(in & 0x80u);                      /* I is always set on entry              */
+      check((in & 0x40u) == (uint32_t)(fiq ? 0x40u : 0u), "F is set by FIQ entry only");
+      CHECK((in & 0x20u) == 0u);               /* entry forces ARM state               */
+      if (thumb) {
+        check(spsr == 0x00000033u, "SPSR keeps T so the handler can return to Thumb");
+        check(brain_get_reg(e, 4) == 0x8012u,
+              "R14 = old-style PC + 4 for a Thumb IRQ (deferred halfword + 2)");
+      } else {
+        check(spsr == 0x00000013u, "SPSR_<mode> gets the whole pre-entry CPSR");
+        check(brain_get_reg(e, 4) == 0x800Cu,
+              "R14 = the deferred instruction + 4 in ARM state");
+      }
+      brain_stats_t st;
+      brain_get_stats(e, &st);
+      CHECK(st.exc[fiq ? BRAIN_EXC_FIQ : BRAIN_EXC_IRQ] >= 1u);
+
+      /* Level semantics: with the line dropped, the handler's spin runs instead of
+       * re-entering; raising it again re-enters on the next boundary.  */
+      if (fiq) brain_set_fiq(e, 0); else brain_set_irq(e, 0);
+      CHECK(brain_run_insns(e, 1) == 1u);
+      check((brain_get_reg(e, BRAIN_REG_CPSR) & 0x1Fu) == (uint32_t)mode,
+            "no re-entry while the line is low");
+      brain_emu_destroy(e);
+    }
+  }
+}
+
 void test_exception_entry() {
   std::printf("[exception entry]\n");
   struct Row { int exc; uint32_t off; int mode; uint32_t adj_arm, adj_thumb;
@@ -881,6 +985,7 @@ int main() {
   test_load_pc_and_l4();
   test_push_pop_return();
   test_exception_entry();
+  test_interrupt_inputs();
   test_shifter_primitive();
   test_thumb_shift_zero();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",

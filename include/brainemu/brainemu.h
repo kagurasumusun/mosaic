@@ -147,6 +147,12 @@ int brain_read_mem(brain_emu_t*, uint32_t addr, void* dst, size_t n);
 int brain_write_mem(brain_emu_t*, uint32_t addr, const void* src, size_t n);
 
 /* Non-zero when the core is holding an exception it has not finished taking. */
+/* Drive the level-sensitive nIRQ/nFIQ inputs.  Like the pins, a line stays in
+ * effect until the caller drops it: after a handler returns with the line still
+ * high, the next step boundary re-enters the handler.  */
+void brain_set_irq(brain_emu_t*, int level);
+void brain_set_fiq(brain_emu_t*, int level);
+
 int brain_pending_exception(const brain_emu_t* e);
 const char* brain_exception_name(int exc);
 
