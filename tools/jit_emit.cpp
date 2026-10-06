@@ -181,19 +181,50 @@ int main(int argc, char** argv) {
   if (argc > 1 && !std::strcmp(argv[1], "--sweep")) return print_sweep(argc - 2, argv + 2);
 
   uint32_t pc = 0x8000u, cpsr = 0x60000000u, steps = 0u;
-  uint32_t regs[13];
-  for (int i = 0; i < 13; ++i) regs[i] = 0x1000u + (uint32_t)i * 0x1111u;
+  bool thumb = false, exec_only = false, translate_only = false;
+  /* --poke a:v seeds data memory (an unaligned LDR/STR cannot be judged without
+   * bytes whose positions matter), --peek a reads it back after the run. */
+  std::vector<std::pair<uint32_t, uint32_t>> pokes, peeks;
+  /* 16 slots: R13/R14/R15 matter to programs under test (stack pointer, link
+   * register, and the prefetched PC the core starts from), and --regs may supply
+   * them.  nregs counts what the caller actually passed. */
+  uint32_t regs[16];
+  uint32_t nregs = 0;
+  for (int i = 0; i < 16; ++i) regs[i] = 0x1000u + (uint32_t)i * 0x1111u;
   std::vector<uint32_t> words;
   for (int i = 1; i < argc; ++i) {
-    if (!std::strcmp(argv[i], "--pc") && i + 1 < argc) pc = parse_hex(argv[++i]);
+    if (!std::strcmp(argv[i], "--thumb")) { thumb = true; exec_only = true; }
+    else if (!std::strcmp(argv[i], "--exec")) { exec_only = true; }
+    else if (!std::strcmp(argv[i], "--translate")) { translate_only = true; exec_only = false; }
+    else if (!std::strcmp(argv[i], "--poke") && i + 1 < argc) {
+      char* p = argv[++i];
+      while (*p) {
+        char* q;
+        const unsigned long a = std::strtoul(p, &q, 16);
+        uint32_t v = 0;
+        if (*q == ':') v = (uint32_t)std::strtoul(q + 1, &q, 16);
+        pokes.push_back({(uint32_t)a, v});
+        p = (*q == ',') ? q + 1 : q;
+        if (!*q) break;
+      }
+    } else if (!std::strcmp(argv[i], "--peek") && i + 1 < argc) {
+      char* p = argv[++i];
+      while (*p) {
+        char* q;
+        peeks.push_back({(uint32_t)std::strtoul(p, &q, 16), 0});
+        p = (*q == ',') ? q + 1 : q;
+        if (!*q) break;
+      }
+    }
+    else if (!std::strcmp(argv[i], "--pc") && i + 1 < argc) pc = parse_hex(argv[++i]);
     else if (!std::strcmp(argv[i], "--cpsr") && i + 1 < argc) cpsr = parse_hex(argv[++i]);
     else if (!std::strcmp(argv[i], "--steps") && i + 1 < argc) steps = parse_hex(argv[++i]);
     else if (!std::strcmp(argv[i], "--auto")) { auto_mode = true; }
     else if (!std::strcmp(argv[i], "--regs") && i + 1 < argc) {
       char* p = argv[++i];
-      int n = 0;
-      while (*p && n < 13) {
-        regs[n++] = (uint32_t)std::strtoul(p, &p, 16);
+      nregs = 0;
+      while (*p && nregs < 16) {
+        regs[nregs++] = (uint32_t)std::strtoul(p, &p, 16);
         if (*p == ',') ++p;
       }
     } else if (!std::strcmp(argv[i], "--hex") && i + 1 < argc) {
@@ -203,8 +234,10 @@ int main(int argc, char** argv) {
         if (*p == ',') ++p;
       }
     } else {
-      std::fprintf(stderr, "usage: jit_emit --forms | --hex w[,w...] [--pc a] "
-                          "[--cpsr v] [--regs r0,r1,...] [--steps n] [--auto]\n");
+      std::fprintf(stderr, "usage: jit_emit --forms | --sweep | --hex w[,w...]\n"
+                          "                 [--exec | --block] [--thumb] [--pc a] [--cpsr v]\n"
+                          "                 [--regs r0,r1,...] [--steps n] [--auto]\n"
+                          "                 [--poke a:v[,...]] [--peek a[,...]]\n");
       return 2;
     }
   }
@@ -218,17 +251,80 @@ int main(int argc, char** argv) {
   cfg.ram_size = 1u << 20;
   brain_emu_t* e = brain_emu_create(&cfg);
   if (!e) { std::fprintf(stderr, "create failed\n"); return 2; }
-  brain_load_raw(e, words.data(), words.size() * 4u, pc, 0);
   brain_set_reg(e, BRAIN_REG_CPSR, cpsr);
   for (int i = 0; i < 13; ++i) brain_set_reg(e, i, regs[i]);
+
+  /* --exec (implied by --thumb): seed state, run N instructions through the
+   * interpreter and print the state, with no translation attempt at all.  This is
+   * how tests/test_oracle.py and tests/test_shifter.py compare the core against a
+   * reference model; the JIT path below prints PRE/POST around a *translated* block
+   * instead, which is a different program and must never be read as the result of
+   * the seeded run.  In --thumb mode a value wider than 16 bits is a 32-bit Thumb
+   * instruction and is stored as its two halfwords in order (first halfword at the
+   * lower address, as the assembler emits it). */
+  if (exec_only) {
+    /* brain_load_raw *enters* the payload, so it has to happen before the seed
+     * registers are written: the core treats regs[15] as an already-prefetched
+     * instruction, and seeding on top of an entry that was taken loses that first
+     * instruction (a one-instruction probe then reports the state unchanged). */
+    if (thumb) {
+      std::vector<uint16_t> hw;
+      for (uint32_t w : words) {
+        if (w > 0xFFFFu) { hw.push_back((uint16_t)(w >> 16)); hw.push_back((uint16_t)w); }
+        else hw.push_back((uint16_t)w);
+      }
+      brain_load_raw(e, hw.data(), hw.size() * 2u, pc, 1);
+      cpsr |= 0x20u;                                       /* T, and we load/enter */
+    } else {
+      brain_load_raw(e, words.data(), words.size() * 4u, pc, 0);
+    }
+    brain_set_reg(e, BRAIN_REG_CPSR, cpsr);
+    /* R15 has to be seeded too: regs[15] names the instruction the core has already
+     * prefetched, so an emulator whose PC was left at 0 runs from the vector table
+     * and the program under test is never executed - the state then reads back
+     * unchanged, which a differential test mistakes for agreement.  R13/R14 come
+     * from the same list so both engines start identically.  Anything the caller
+     * omitted defaults to `pc + 4 * index`, which keeps R15 on the first word. */
+    for (uint32_t i = 0; i < 16; ++i) {
+      const uint32_t v = i < nregs ? regs[i]
+                                   : (i == 15u ? pc : 0x1000u + i * 0x1111u);
+      brain_set_reg(e, (int)i, v);
+    }
+    /* Seeding R15 is an interworking branch as far as the core is concerned (a load
+     * into PC takes the state from bit[0] when SCTLR.L4 = 0), so the Thumb case has
+     * to ask for it: writing the bare word address here would silently drop out of
+     * Thumb state and every halfword program would be decoded as ARM instead. */
+    if (nregs <= 15) brain_set_reg(e, 15, thumb ? (pc | 1u) : pc);
+    for (auto& kv : pokes) brain_poke32(e, kv.first, kv.second);
+    const uint32_t n = steps ? steps : (uint32_t)words.size();
+    std::printf("MODE %s\n", thumb ? "thumb" : "arm");
+    std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
+    for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
+    std::printf("\n");
+    const uint32_t done = (uint32_t)brain_run_insns(e, n);
+    /* Printed after the run, obviously - and the count the core retired is echoed so
+     * a program that stopped early (a trap, or running out of loaded words) is visible
+     * instead of showing up as an unexplained state difference. */
+    std::printf("POST %08x", brain_get_reg(e, BRAIN_REG_CPSR));
+    for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
+    std::printf("\nRAN %u\n", done);
+    std::printf("R15 %08x\n", brain_get_reg(e, 15));
+    for (auto& kv : peeks) std::printf("PEEK %08x %08x\n", kv.first, brain_peek32(e, kv.first));
+    brain_emu_destroy(e);
+    return 0;
+  }
+
+  for (auto& kv : pokes) brain_poke32(e, kv.first, kv.second);
 
   uint32_t skip = steps;
   IrBlock blk{};
   uint32_t used = 0;
   if (skip) {
     brain_run_insns(e, skip);
-    used = jit_translate_arm_words(words.data() + skip, (uint32_t)words.size() - skip,
-                                   pc + 4u * skip, &blk);
+    blk.guest_insns = (uint32_t)words.size() - skip;   /* what runs below, by default */
+    if (!translate_only)
+      used = jit_translate_arm_words(words.data() + skip, (uint32_t)words.size() - skip,
+                                     pc + 4u * skip, &blk);
   } else {
     for (uint32_t i0 = 0; i0 < words.size(); ++i0) {
       if (i0 && brain_get_reg(e, 15) != pc + 4u * i0) break;  /* PC moved: no block */
@@ -262,19 +358,30 @@ int main(int argc, char** argv) {
    * and read the result back; tests/test_shifter.py does exactly that.  When
    * nothing was translated, the single refused word is what gets executed and
    * next_pc is the fall-through. */
-  const uint32_t run_n = used && blk.guest_insns ? blk.guest_insns : 1u;
+  /* In --steps mode the translate attempt above is only a side probe; what this
+   * section has to do is run the block's own words, so that PRE/POST bracket a real
+   * execution of them (tests/test_jit_arm64.py layer 2 compares that against the
+   * emitted AArch64 block).  --block says "run the block, don't bother translating",
+   * which is also what tests/test_shifter.py wants: the front end legitimately
+   * refuses many of the shapes it probes, and a refusal must not look like a
+   * difference in the interpreter. */
+  uint32_t run_n = words.size() - (translate_only ? 0u : skip);
+  if (used && blk.guest_insns) run_n = blk.guest_insns;
+  if (run_n == 0) run_n = 1;
   std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
   for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
   std::printf("\n");
   brain_run_insns(e, run_n);
+  (void)0;
   std::printf("POST %08x", brain_get_reg(e, BRAIN_REG_CPSR));
   for (int i = 0; i < 13; ++i) std::printf(" %08x", brain_get_reg(e, i));
   std::printf("\n");
   std::printf("R15 %08x\n", brain_get_reg(e, 15));
-  std::printf("NEXTPC %08x\n", used ? blk.next_pc : pc + 4u);
+  std::printf("NEXTPC %08x\n", used ? blk.next_pc : pc + 4u * (skip + run_n));
+  for (auto& kv : peeks) std::printf("PEEK %08x %08x\n", kv.first, brain_peek32(e, kv.first));
 
   std::vector<uint32_t> code;
-  if (!used) { std::printf("CODE\n"); brain_emu_destroy(e); return 1; }
+  if (!used) { std::printf("CODE\n"); brain_emu_destroy(e); return translate_only ? 0 : 1; }
   if (!brain::jit_emit_arm64(blk, true, &code)) { std::printf("EMIT_FAILED\n"); return 1; }
   std::printf("CODE %u", (unsigned)code.size());
   for (size_t i = 0; i < code.size(); ++i) std::printf(" %08x", code[i]);

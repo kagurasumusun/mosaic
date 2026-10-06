@@ -703,6 +703,54 @@ void test_exception_entry() {
  * rotate folds as (n - 1) MOD 32 + 1, and a zero amount leaves the carry alone.
  * `0x80000001` is the discriminating seed: bit 0 and bit 31 differ from the middle
  * bits, so a rule that reads the wrong one shows up. */
+/* The ARMv5 reading of the Thumb T1 shift group: `000 imm5 Rm Rd` with imm5 == 0 is
+ * MOV (register) and leaves the flags alone, while `LSRS/ASRS` with the *ARM* field
+ * value 0 mean a shift by 32.  A decoder that re-encodes the Thumb imm5 the same way
+ * as the ARM shift field turns `MOV R1, R2` into `LSL #32` and clears a register. */
+/* The Thumb T1 shift group `000 imm5(10:6) Rm(5:3) Rd(2:0)`, whose imm5 is a *real*
+ * five-bit amount: imm5 = 0 is MOV (register) and leaves the flags alone (from ARMv6
+ * the same encoding is `LSLS #0`, which does update them - the core is an ARM926EJ-S,
+ * so the ARMv5 reading is the one implemented).  In particular the encoding cannot
+ * say LSR #32 / ASR #32 / RRX at all: those belong to the ARM encoding and to the
+ * 32-bit Thumb one, and a decoder that re-encodes the Thumb field like the ARM one
+ * turns `MOV R1, R2` into a shift by 32 and zeroes the register. */
+static void test_thumb_shift_zero() {
+  struct Row { uint32_t hw, r1, cpsr; const char* what; };
+  /* R2 = 0x80000001, CPSR = N Z C V I F T mode from the seed, so each row below is
+   * taken from the ARM926 behaviour the model agrees with on every row but the
+   * first: `LSLS Rn, Rm, #0` is MOV (register) on ARMv5 and leaves the flags alone,
+   * while QEMU (and so unicorn) implements the ARMv6 reading where it updates N/Z.
+   * The row is pinned the ARMv5 way, and tests/test_oracle.py skips that one shape
+   * for the same reason. */
+  static const Row rows[] = {
+    {0x0011u, 0x80000001u, 0x20000030u, "000 00000 = MOV R1, R2 (value)"},
+    {0x0051u, 0x00000002u, 0x20000030u, "LSL #1"},
+    {0x0091u, 0x00000004u, 0x00000030u, "LSL #2"},
+    {0x00d1u, 0x00000008u, 0x00000030u, "LSL #3"},
+    {0x0211u, 0x00000100u, 0x00000030u, "LSL #8"},
+    {0x0411u, 0x00010000u, 0x00000030u, "LSL #16"},
+    {0x0611u, 0x01000000u, 0x00000030u, "LSL #24"},
+    {0x07d1u, 0x80000000u, 0x80000030u, "LSL #31 (C from bit1)"},
+    {0x4089u, 0x00000000u, 0x60000030u, "LSLS R1, R1, R2 (S=1)"},
+    {0x4091u, 0x00000000u, 0x40000030u, "LSLS R1, R2, R1 with R1 = 0"},
+  };
+  for (unsigned k = 0; k < sizeof(rows) / sizeof(rows[0]); ++k) {
+    brain_emu_t* e = brain_emu_create(nullptr);
+    if (!e) { check(false, "thumb shift: emu created"); return; }
+    brain_load_raw(e, (void*)&rows[k].hw, 2, 0x8000u, 1);
+    brain_set_reg(e, BRAIN_REG_CPSR, 0x20000010u | 0x20u);   /* T, USR, Z seed */
+    brain_set_reg(e, 0, 0u);
+    brain_set_reg(e, 1, 0u);
+    brain_set_reg(e, 2, 0x80000001u);
+    brain_run_insns(e, 1);
+    check(brain_get_reg(e, 1) == rows[k].r1, rows[k].what);
+    char lab[128];
+    std::snprintf(lab, sizeof lab, "%s [flags]", rows[k].what);
+    check((brain_get_reg(e, BRAIN_REG_CPSR) & 0xF00000F0u) == rows[k].cpsr, lab);
+    brain_emu_destroy(e);
+  }
+}
+
 static void test_shifter_primitive() {
   struct Row {
     uint32_t x, type, amt, cin, val, carry;
@@ -834,6 +882,7 @@ int main() {
   test_push_pop_return();
   test_exception_entry();
   test_shifter_primitive();
+  test_thumb_shift_zero();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

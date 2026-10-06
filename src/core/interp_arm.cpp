@@ -182,7 +182,13 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
   /* -------------------------------------------------- data processing -- */
   case AOP_DP: {
     const Shifted s = arm_op2(d);
-    const u32 a = regs[d.rn];
+    /* Thumb state treats the PC as a *word-aligned* operand of data processing: the
+     * value used is Align(PC, 4) = (cur + 4) & ~3, which is what makes `ADR Rd,
+     * #imm8*4` (T1, decoded as ADD Rd, PC, #imm) land on a word boundary even for a
+     * halfword-aligned instruction, and matches the `regs[15] & ~3` the load/store
+     * paths use for their base.  ARM state uses regs[15] = cur + 8 unmasked; only
+     * the T1 groups put 15 in d.rn, so the 32-bit forms keep the plain +4 rule. */
+   const u32 a = (d.rn == 15 && thumb) ? (regs[15] & ~3u) : regs[d.rn];
     const u32 b = s.val;
     u32 res = 0, nc = 0, nv = 0;
     switch (d.dp) {
@@ -324,7 +330,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     const u32 res = saturate32(acc, &qq);
     if (d.rd == 15) load_pc(res);
     else regs[d.rd] = res;
-    set_q(qq != 0);
+    if (qq) set_q();          /* Q is sticky: only raised here */
     return;
   }
   case AOP_MULW: {
@@ -342,7 +348,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     const u32 res = saturate32(prod + (s64)(s32)regs[d.ra], &qq);
     if (d.rd == 15) load_pc(res);
     else regs[d.rd] = res;
-    set_q(qq != 0);
+    if (qq) set_q();          /* Q is sticky: only raised here */
     return;
   }
   case AOP_MULHAL: {
@@ -384,7 +390,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     }
     if (d.rd == 15) load_pc(res);
     else regs[d.rd] = res;
-    set_q(q != 0);
+    if (q) set_q();            /* Q is sticky: only raised here */
     return;
   }
   case AOP_CLZ: {

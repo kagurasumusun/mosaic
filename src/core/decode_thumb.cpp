@@ -217,12 +217,16 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
       case 0x0: mk_dp(d, DP_AND, 1, rd, rd); d->op2 = OP2_REG; d->rm = rm; break;
       case 0x1: mk_dp(d, DP_EOR, 1, rd, rd); d->op2 = OP2_REG; d->rm = rm; break;
       case 0x2: case 0x3: case 0x4: case 0x7: {
-        /* LSL/LSR/ASR/ROR by register: `MOV Rdn, Rdn, shift Rs`. */
+        /* LSL/LSR/ASR/ROR by register: `MOV Rdn, Rdn, shift Rs`.  The group numbers
+         * the four operations 2, 3, 4 and 7 (0 and 1 are AND and EOR), while SH_*
+         * numbers them 0, 1, 2 and 3, so the shift types have to be re-based -
+         * passing `op` through made LSLS an arithmetic shift, LSRS a rotate and
+         * ASRS an out-of-range type.  See DDI 0406 B2.8.14 / A5.2.4. */
         mk_dp(d, DP_MOV, 1, rd, rd);
         d->op2 = OP2_REG_RS;
         d->rm = rd;
         d->rs = rm;
-        d->sh = (op == 7) ? SH_ROR : op;
+        d->sh = (op == 7) ? SH_ROR : (op - 2);
         break;
       }
       case 0x5: mk_dp(d, DP_ADC, 1, rd, rd); d->op2 = OP2_REG; d->rm = rm; break;

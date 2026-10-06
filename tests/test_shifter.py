@@ -92,9 +92,16 @@ def run_model(word, regs, cpsr):
 
 
 def run_core(word, regs, cpsr):
-    """One instruction of the core, read back through the JIT tool's PRE/POST dump."""
-    args = [TOOL, "--hex", "%08x" % word, "--cpsr", "%08x" % cpsr,
-            "--regs", ",".join("%08x" % v for v in regs[:13])]
+    """One instruction of the core, read back through the JIT tool's PRE/POST dump.
+
+    --block matters: it runs the word through the *interpreter* and prints the state
+    afterwards, without asking the JIT front end to translate it first.  The front end
+    legitimately refuses several shapes probed here (notably `MOV/MVN Rd, Rm, shift
+    #n` with S, and any shift amount of 32), and in the translate-first mode a refusal
+    stopped the run before the instruction - the test then compared untouched state
+    against the model and only looked correct because both sides read zero."""
+    args = [TOOL, "--exec", "--steps", "1", "--hex", "%08x" % word, "--cpsr", "%08x" % cpsr,
+            "--regs", ",".join("%08x" % v for v in (list(regs) + [0] * 16)[:13])]
     p = subprocess.run(args, capture_output=True, text=True, cwd=REPO)
     # Status 1 is the JIT front end refusing to translate the word, which says
     # nothing about the interpreter run whose result is being read here.  (Same

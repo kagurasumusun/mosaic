@@ -388,7 +388,11 @@ struct Cpu {
   void set_reg(u32 n, u32 val);            /* handles PC writes + banking   */
   void set_cpsr_flags(u32 n, u32 z, u32 c, u32 vv);
   void set_nz(u32 res);
-  void set_q(bool on) { cpsr = (cpsr & ~CPSR_Q) | (on ? u32(CPSR_Q) : 0u); }
+  /* Q (bit 27) is sticky on ARMv5E-V7: the saturating instructions may set it, and
+   * the only thing that clears it is MSR.  So the interpreter's saturating helpers
+   * use set_q() to raise it and never write 0.  MSR is the clearer, and it already
+   * reaches bit 27 through its own F-field mask (see Cpu::apply_msr). */
+  void set_q() { cpsr |= CPSR_Q; }
   bool condition_true(u32 cond) const;
 
   /* lifecycle */

@@ -275,8 +275,13 @@ u32 decode_arm(u32 insn, ArmDec* d) {
         }
         return AOP_UNDEF;
       }
-      if (b4 && !b7) { /* DP, register shifted by register */ }
-      else if (b4) return AOP_UNDEF;
+      /* bits[7:4] only carries meaning for the *shifted register* operand2: bit[4]
+       * selects the register form and bit[7] (RES0 there, since Rs lives in [11:8])
+       * must read 0.  A data-processing *immediate* (I == 1) has no such field -
+       * bit[4] is simply part of imm8 - so interrogating it there rejected one
+       * immediate in sixteen: ANDS Rd, Rn, #0xFF decoded as undefined. */
+      if (BIT(insn, 25) && b4) { /* immediate operand2: bits[7:4] are data */ }
+      else if (b4 && b7) return AOP_UNDEF;
 
       /* ---- data processing: cond 00 I 0 opcode S Rn Rd operand2 ------- */
       d->op = AOP_DP;
