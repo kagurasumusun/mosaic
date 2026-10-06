@@ -1,0 +1,377 @@
+/* brain-emu -- unit tests for the API surface around the core.
+ * SPDX-file-note: see LICENSE.
+ *
+ * These cover the parts a golden-instruction corpus cannot: the image loaders,
+ * the device bus, register access with the pipeline aliasing, and the counters.
+ * Instruction semantics live in tests/test_instr.cpp (corpus-driven), so a
+ * check here that *looks* like an instruction test probably belongs there.
+ */
+#include <brainemu/brainemu.h>
+
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+namespace {
+
+int g_checks = 0, g_failed = 0;
+
+void check(bool ok, const char* what) {
+  ++g_checks;
+  if (!ok) {
+    ++g_failed;
+    std::printf("  FAILED: %s\n", what);
+  }
+}
+
+#define CHECK(cond) check((cond), #cond)
+
+/* Hand-encoded programs; the corpus owns the semantics, these only need to
+ * retire cleanly and touch the registers the test then reads back. */
+const uint32_t kProgAdd[] = {
+    0xE3A00005u,  /* mov  r0, #5   */
+    0xE2800001u,  /* add  r0, r0, #1 */
+    0xEAFFFFFEu,  /* b    .        */
+};
+
+const uint16_t kThumbProg[] = {
+    0x2003,  /* movs r0, #3 */
+    0x3002,  /* adds r0, #2 */
+    0xE7FE,  /* b    .      */
+};
+
+/* A minimal ELF32 header + one PT_LOAD, little-endian, EM_ARM. */
+std::vector<uint8_t> make_elf(uint32_t load_addr, const uint8_t* code,
+                              size_t code_len, uint32_t entry,
+                              uint32_t memsz_extra = 0) {
+  const uint32_t ehsize = 52, phentsize = 32, phnum = 1;
+  const uint32_t total = (uint32_t)(ehsize + phentsize * phnum + code_len);
+  std::vector<uint8_t> b(total, 0);
+  auto put16 = [&](size_t at, uint32_t v) {
+    b[at] = (uint8_t)v;
+    b[at + 1] = (uint8_t)(v >> 8);
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    b[at] = (uint8_t)v;
+    b[at + 1] = (uint8_t)(v >> 8);
+    b[at + 2] = (uint8_t)(v >> 16);
+    b[at + 3] = (uint8_t)(v >> 24);
+  };
+  b[0] = 0x7f; b[1] = 'E'; b[2] = 'L'; b[3] = 'F';
+  b[4] = 1;      /* ELFCLASS32 */
+  b[5] = 1;      /* ELFDATA2LSB */
+  b[6] = 1;      /* EV_CURRENT */
+  put16(16, 2);      /* ET_EXEC */
+  put16(18, 40);     /* EM_ARM */
+  put32(20, 1);      /* e_version */
+  put32(24, entry);  /* e_entry */
+  put32(28, ehsize); /* e_phoff */
+  put32(36, 0x5000200); /* e_flags: hard-float ABI tag, ignored here */
+  put16(40, ehsize);
+  put16(42, phentsize);
+  put16(44, phnum);
+  /* program header */
+  const size_t ph = ehsize;
+  put32(ph + 0, 1);          /* PT_LOAD */
+  put32(ph + 4, total - code_len);  /* p_offset */
+  put32(ph + 8, load_addr);  /* p_vaddr */
+  put32(ph + 12, load_addr); /* p_paddr */
+  put32(ph + 16, (uint32_t)code_len);   /* p_filesz */
+  put32(ph + 20, (uint32_t)code_len + memsz_extra); /* p_memsz */
+  put32(ph + 24, 7);         /* RWX */
+  put32(ph + 28, 4096);
+  std::memcpy(&b[total - code_len], code, code_len);
+  return b;
+}
+
+/* ---- device ------------------------------------------------------------ */
+
+struct Dev {
+  uint32_t last_write;
+  int writes, reads;
+  brain_emu_t* stop;
+};
+Dev g_dev;
+
+uint32_t dev_read(void*, uint32_t addr, uint32_t size) {
+  g_dev.reads++;
+  return 0xA5000000u | ((addr >> 2) & 3u) | (uint32_t)size;
+}
+void dev_write(void*, uint32_t addr, uint32_t value, uint32_t size) {
+  (void)size;
+  g_dev.writes++;
+  g_dev.last_write = value ^ addr;
+  /* The same trick the command line tool uses: a device write ends the run. */
+  if (g_dev.stop) brain_stop(g_dev.stop);
+}
+
+void test_basic_run() {
+  std::printf("[basic run]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  CHECK(brain_load_raw(e, kProgAdd, sizeof kProgAdd, 0x8000, 0) == 0);
+  CHECK(brain_get_reg(e, 15) == 0x8000);
+  CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x20) == 0);
+  CHECK(brain_run_insns(e, 2) == 2);
+  CHECK(brain_get_reg(e, 0) == 6);
+  CHECK(brain_pending_exception(e) == 0);
+
+  brain_stats_t s;
+  brain_get_stats(e, &s);
+  CHECK(s.insns == 2);
+  CHECK(s.insns_interp == 2);
+  CHECK(s.cycles >= 2);
+  for (int i = 0; i < BRAIN_EXC_COUNT; ++i) CHECK(s.exc[i] == 0);
+
+  /* A register write and a re-read have to agree even for R15, whose value in
+   * the register file is the pipeline's +8, not the address you asked for. */
+  CHECK(brain_set_reg(e, 15, 0x8008) == 0);
+  CHECK(brain_get_reg(e, 15) == 0x8008);
+  CHECK(brain_set_reg(e, 5, 0xdeadbeefu) == 0);
+  CHECK(brain_get_reg(e, 5) == 0xdeadbeefu);
+
+  /* Memory peek/poke is physical and must not take exceptions. */
+  brain_poke32(e, 0x9000, 0x11223344u);
+  CHECK(brain_peek32(e, 0x9000) == 0x11223344u);
+  uint8_t bytes[4] = {0};
+  CHECK(brain_read_mem(e, 0x9000, bytes, 4) == 0);
+  CHECK(bytes[0] == 0x44 && bytes[3] == 0x11);
+  const uint8_t patch[4] = {1, 2, 3, 4};
+  CHECK(brain_write_mem(e, 0x9000, patch, 4) == 0);
+  CHECK(brain_peek32(e, 0x9000) == 0x04030201u);
+
+  /* Out of range registers are refused, not wrapped. */
+  CHECK(brain_set_reg(e, 18, 0) != 0);
+  CHECK(brain_get_reg(e, -1) == 0);
+
+  brain_emu_destroy(e);
+}
+
+void test_thumb_entry() {
+  std::printf("[thumb entry]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+  CHECK(brain_load_raw(e, kThumbProg, sizeof kThumbProg, 0x8000, 1) == 0);
+  CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x20) != 0);
+  CHECK(brain_run_insns(e, 2) == 2);
+  CHECK(brain_get_reg(e, 0) == 5);
+  /* The T bit survives execution: a Thumb program that has not branched to an
+   * even address stays in Thumb state. */
+  CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x20) != 0);
+  brain_emu_destroy(e);
+}
+
+void test_reset_clears() {
+  std::printf("[reset]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+  brain_set_reg(e, 0, 0x12345678u);
+  brain_run_insns(e, 10);
+  brain_reset(e);
+  CHECK(brain_get_reg(e, 0) == 0);
+  brain_stats_t s;
+  brain_get_stats(e, &s);
+  /* reset() puts the counters back too -- the numbers a caller sees are always
+   * "since the last reset", which is what a test harness wants. */
+  CHECK(s.insns == 0);
+  CHECK(s.cycles == 0);
+  brain_emu_destroy(e);
+}
+
+void test_elf_loader() {
+  std::printf("[elf loader]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  const std::vector<uint8_t> img =
+      make_elf(0x8000, (const uint8_t*)kProgAdd, sizeof kProgAdd, 0x8000, 16);
+  uint32_t entry = 0;
+  CHECK(brain_load_elf32(e, img.data(), img.size(), &entry) == 0);
+  CHECK(entry == 0x8000);
+  CHECK(brain_peek32(e, 0x8000) == kProgAdd[0]);
+  CHECK(brain_peek32(e, 0x8004) == kProgAdd[1]);
+  /* p_memsz - p_filesz of zero fill. */
+  CHECK(brain_peek32(e, 0x8000 + sizeof kProgAdd) == 0);
+  CHECK(brain_get_reg(e, 15) == 0x8000);
+  /* A stack was handed to us at the top of RAM, out of the image's way. */
+  const uint32_t sp = brain_get_reg(e, 13);
+  CHECK(sp != 0 && sp >= 0x8000 + sizeof kProgAdd && sp <= cfg.ram_size);
+  CHECK((sp & 7u) == 0);
+  CHECK(brain_run_insns(e, 2) == 2);
+  CHECK(brain_get_reg(e, 0) == 6);
+
+  /* A Thumb entry is marked by bit 0 and has to carry through to CPSR.T. */
+  const std::vector<uint8_t> timg =
+      make_elf(0x8000, (const uint8_t*)kThumbProg, sizeof kThumbProg, 0x8001);
+  CHECK(brain_load_elf32(e, timg.data(), timg.size(), &entry) == 0);
+  CHECK(entry == 0x8001);
+  CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x20) != 0);
+
+  /* Rejections: wrong class, wrong machine, PIC, truncated, no segments. */
+  std::vector<uint8_t> bad = img;
+  bad[4] = 2;  /* ELFCLASS64 */
+  CHECK(brain_load_elf32(e, bad.data(), bad.size(), nullptr) != 0);
+  bad = img;
+  bad[5] = 2;  /* ELFDATA2MSB */
+  CHECK(brain_load_elf32(e, bad.data(), bad.size(), nullptr) != 0);
+  bad = img;
+  bad[18] = 3;  /* e_machine = 0x0303, not EM_ARM */
+  CHECK(brain_load_elf32(e, bad.data(), bad.size(), nullptr) != 0);
+  bad = img;
+  bad[16] = 3;  /* ET_DYN */
+  CHECK(brain_load_elf32(e, bad.data(), bad.size(), nullptr) != 0);
+  CHECK(std::strlen(brain_last_error(e)) > 0);
+  CHECK(brain_load_elf32(e, img.data(), 40, nullptr) != 0);
+  const std::vector<uint8_t> junk(64, 0);
+  CHECK(brain_load_elf32(e, junk.data(), junk.size(), nullptr) != 0);
+
+  /* A segment outside the mapped window is an error, not a silent drop. */
+  const std::vector<uint8_t> far =
+      make_elf(0xF0000000, (const uint8_t*)kProgAdd, sizeof kProgAdd,
+               0xF0000000);
+  CHECK(brain_load_elf32(e, far.data(), far.size(), nullptr) != 0);
+
+  /* Raw loading keeps working after a rejected image, and the error text is
+   * cleared by the next successful call. */
+  CHECK(brain_load_raw(e, kProgAdd, sizeof kProgAdd, 0x8000, 0) == 0);
+  brain_emu_destroy(e);
+
+  /* An image that does not fit the RAM window is refused *before* anything is
+   * written, so a rejected load cannot leave a half-loaded machine behind. */
+  brain_config_t small;
+  std::memset(&small, 0, sizeof small);
+  small.ram_size = 0x1000;   /* one page, at 0 */
+  brain_emu_t* tiny = brain_emu_create(&small);
+  CHECK(tiny != nullptr);
+  if (tiny) {
+    CHECK(brain_load_raw(tiny, kProgAdd, sizeof kProgAdd, 0x8000, 0) != 0);
+    CHECK(std::strlen(brain_last_error(tiny)) > 0);
+    /* The same image, placed inside the window, is fine. */
+    CHECK(brain_load_raw(tiny, kProgAdd, sizeof kProgAdd, 0, 0) == 0);
+    CHECK(brain_peek32(tiny, 0) == kProgAdd[0]);
+    brain_emu_destroy(tiny);
+  }
+}
+
+void test_device_and_stop() {
+  std::printf("[device, stop]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+  CHECK(brain_map_device(e, 0x100000, 4096, dev_read, dev_write, nullptr,
+                         "test") == 0);
+  g_dev = Dev{};
+  g_dev.stop = e;
+  /* One bus-level 32-bit read must be exactly one hook call: a device with a
+   * read side effect (a FIFO, a status register) cannot tolerate being polled
+   * four times per access. */
+  CHECK(brain_read32(e, 0x100000) == 0xA5000004u);
+  CHECK(g_dev.reads == 1);
+  CHECK(g_dev.writes == 0);
+  /* And a RAM-only peek must not touch the device at all. */
+  g_dev = Dev{};
+  g_dev.stop = e;
+  (void)brain_peek32(e, 0x100000);
+  CHECK(g_dev.reads == 0);
+  g_dev = Dev{};
+  g_dev.stop = e;
+  brain_write32(e, 0x100008, 0x11111111u);
+  CHECK(g_dev.writes == 1);
+  CHECK(g_dev.last_write == (0x11111111u ^ 0x100008u));
+
+  /* Device accesses have to work the way the *guest* reaches them: LDR retires
+   * the value the read hook returned, and STR both writes the hook and asks the
+   * run loop to stop. */
+  const uint32_t prog[] = {0xE5912000u,  /* ldr r2, [r1] */
+                           0xE5810000u,  /* str r0, [r1] */
+                           0xEAFFFFFEu};
+  CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000, 0) == 0);
+  brain_set_reg(e, 1, 0x100000);
+  brain_set_reg(e, 0, 0x42);
+  g_dev = Dev{};
+  g_dev.stop = e;
+  const uint64_t n = brain_run_insns(e, 1000);
+  CHECK(n == 2);                       /* the device write ended the run      */
+  CHECK(brain_get_reg(e, 2) == 0xA5000004u);
+  CHECK(g_dev.writes == 1);            /* one hook call for the guest's STR   */
+  CHECK(g_dev.reads == 1);             /* one for its LDR                     */
+
+  /* MMIO above the 32MB mark has to be reachable with the MMU off -- that is
+   * where the i.MX28 puts its peripherals, and boot code pokes them long before
+   * any page table exists.  A core that clears MVA[31:24] when the MMU is off
+   * silently turns these accesses into RAM accesses at 0x00######. */
+  CHECK(brain_map_device(e, 0x80000000, 4096, dev_read, dev_write, nullptr,
+                         "hi") == 0);
+  const uint32_t hi[] = {0xE3A01008u,  /* mov r1, #8          */
+                         0xE1A01E01u,  /* mov r1, r1, lsl #28 -> 0x80000000  */
+                         0xE3A0002Au,  /* mov r0, #0x2a       */
+                         0xE5810000u}; /* str r0, [r1]        */
+  CHECK(brain_load_raw(e, hi, sizeof hi, 0x8000, 0) == 0);
+  g_dev = Dev{};
+  g_dev.stop = e;
+  CHECK(brain_run_insns(e, 8) == 4);
+  CHECK(g_dev.last_write == (0x2Au ^ 0x80000000u));
+
+  /* Overlapping the RAM window is refused. */
+  CHECK(brain_map_device(e, 0x0, 4096, dev_read, dev_write, nullptr, "clash") !=
+        0);
+  brain_emu_destroy(e);
+}
+
+void test_be32_and_flags() {
+  std::printf("[flags]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+  /* ADDS R0, R0, R1 with R0 = 0x7fffffff, R1 = 1 -> N and V set. */
+  CHECK(brain_set_reg(e, 0, 0x7FFFFFFFu) == 0);
+  CHECK(brain_set_reg(e, 1, 1) == 0);
+  const uint32_t adds = 0xE0900001u;
+  CHECK(brain_load_raw(e, &adds, 4, 0x8000, 0) == 0);
+  brain_run_insns(e, 1);
+  const uint32_t cpsr = brain_get_reg(e, BRAIN_REG_CPSR);
+  CHECK(brain_get_reg(e, 0) == 0x80000000u);
+  CHECK((cpsr & (1u << 31)) != 0);  /* N */
+  CHECK((cpsr & (1u << 28)) != 0);  /* V */
+  CHECK((cpsr & (1u << 30)) == 0);  /* Z clear */
+  CHECK((cpsr & (1u << 29)) == 0);  /* C clear */
+  brain_emu_destroy(e);
+}
+
+}  // namespace
+
+int main() {
+  std::printf("brain-emu unit tests: %s\n", brain_version_string());
+  test_basic_run();
+  test_thumb_entry();
+  test_reset_clears();
+  test_elf_loader();
+  test_device_and_stop();
+  test_be32_and_flags();
+  std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
+              g_checks - g_failed, g_checks);
+  return g_failed ? 1 : 0;
+}

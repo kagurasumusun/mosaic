@@ -1,0 +1,97 @@
+# Architecture
+
+Everything below is what the code actually does today, not what it is planned to
+do. Where a decision comes from the processor's documentation it says so, because
+the ARM926EJ-S TRM (ARM DDI 0198E, in `reference/`) is the authority this project
+follows — not Linux's expectations, not QEMU's defaults, not ARMv7/v8 syntax.
+
+## Layers
+
+```
+include/brainemu/brainemu.h    public C API: create/load/run/state/stats
+include/brainemu/bus.h         Bus: regions, per-page descriptors, byte access
+src/core/state.h               Cpu: the register file, CP15, TLB, inlines
+src/core/decode_arm.cpp        ARM instruction -> ArmDec
+src/core/decode_thumb.cpp      Thumb halfword -> ArmDec (the same struct)
+src/core/interp_arm.cpp        executes an ArmDec: the one semantic engine
+src/core/helpers.cpp           decoder helpers + the disassembly printer
+src/core/cp15_mmu.cpp          CP15, FCSE, translation, TLB, fault reporting
+src/core/bus.cpp               region lookup, byte/sized access, code watch
+src/jit/                       block cache, links, invalidation (no backend yet)
+src/loader/elf.cpp             ELF32 PT_LOAD placement, raw image placement
+src/api.cpp                    the C API over the above
+```
+
+`Cpu` keeps the fields generated code will need at fixed, documented offsets
+(comments in `state.h`): `regs[16]`, `npc`, `cur`, `insn`, `cpsr`, `vflag`,
+`thumb`, `halted`, `exit_req`, `cycles`, `insns`, `jit_flags`, `trans_gen`,
+`bus`, `jit`, `ram`, `ram_gbase`, `ram_mask`, `ram_fast`, `exc*`. Keeping them
+adjacent and *not* reordered by the compiler is what lets a future backend
+address them with a base register plus immediate; a new field therefore goes at
+the end of the hot block, not in the middle.
+
+## Two states, one engine
+
+`decode_thumb` fills the same `ArmDec` as `decode_arm`, and
+`Cpu::exec_arm_dec` is the only place semantics live. That is a deliberate
+reflection of the architecture (ARM ARM A6: "most Thumb instructions are the
+ARM instruction with the same name"), and it means the corpus tests the
+translation from Thumb encodings to ARM semantics rather than a second
+implementation that can drift. Where the two states genuinely differ — `LSLS`
+by zero, the block-transfer direction, the `PUSH/POP` register order, the
+PC-as-operand rules — the difference is expressed in the decoder, never in a
+second interpreter.
+
+## The invariants worth knowing before editing
+
+* `regs[15] == cur + (thumb ? 4 : 8)` — the register file holds the pipeline's
+  PC, not the address of the instruction being executed. A write to the PC sets
+  `npc` and nothing else; `cur`/`regs[15]` are refreshed on the next fetch.
+* `npc` is the address of the *next* instruction. `BL` in ARM state links
+  `cur + 4` (the return address, not the pipeline PC); `BLX` to an immediate
+  links `cur & ~3`; a Thumb long branch links `(cur + 2) | 1`.
+* `bank[bank_idx] == regs` — the banked copies are only reloaded on a mode
+  switch, which is why the API seeds `bank[0]` and `bank[3]` as well as `regs[]`
+  and why tests must set both, or a mode switch inside a case loses R13/R14.
+* MMU off means **PA = MVA = VA**: no FCSE, no top-byte clearing. i.MX28 puts
+  its peripherals at 0x80000000, so boot code must be able to store there before
+  a page table exists (`tests/test_unit.cpp` locks this in).
+* FCSE (MMU on): `MVA = VA + (FCSE_PID x 32MB)` for `VA < 32MB`, addresses above
+  32MB unmodified, PID is 7 bits, and entry-based cache/TLB operations see
+  `VA == MVA` (DDI 0198E 2.3 "FCSE PID Register").
+* CP15 c1 uses DDI 0198E Table 2-11: `M[0] A[1] C[2] B[7] S[8] R[9] I[12]
+  V[13] RR[14] L4[15] X[19]`, with `[6:3]` and `[16],[18]` SBO and `[17],[11:10]`
+  SBZ — so the reset value is `0x00050078`, `A = 0` (unaligned ARM data
+  processing is legal, with the low bits ignored) and `B` is bit 7, *not* bit 5.
+* Any change to a translation-visible state bumps `trans_gen`; every TLB entry
+  and every compiled block stores the generation it was built under. A new CP15
+  bit that affects addressing must go through `on_translation_env_changed()`,
+  otherwise it will be honoured only after the next TLB miss.
+* `PG_CODE` + `smc_watch`: pages that have supplied an instruction fetch are
+  checked on store, so self-modifying code invalidates the affected blocks
+  instead of executing stale ones.
+
+## Bus and devices
+
+`Bus` keeps a two-level page table (1024 × 1024 × 4 KiB = the whole 32-bit
+space, allocated lazily) plus a flat list of regions. Mapping is *all-or-nothing*
+in both directions: a bulk load that does not fit the RAM window writes nothing,
+and `map_device` refuses a span that overlaps anything already present — a
+device silently shadowed by the identity fast path would be invisible to the
+guest, which is a much worse failure than a refused mapping. One guest access is
+one hook call at the natural size (`LDR`/`STR` reach `read`/`write` with `size`
+4; the byte-level fallback is used for sizes/conditions the region cannot serve
+directly). `tests/test_unit.cpp` asserts that count, because a UART FIFO does not
+tolerate being read four times per instruction.
+
+## Adding a JIT backend
+
+`src/jit/jit.h` is the contract: `Jit::run/run_insns`, `invalidate_range`,
+`flush_all`, `on_exception`, `on_env_change`. A backend translates an `ArmDec`
+chain into a host block that reads and writes the `Cpu` fields listed above and
+exits back to the driver on anything it does not handle (helper calls are counted
+in `Stats::helper_calls`). The block cache, the links, the code watch and the
+`trans_gen` invalidation already exist; only codegen is missing, so the driver
+currently delegates to `Cpu::fetch_and_execute`. `build/bench --jit` prints
+`interp N jit 0` until that changes — that line is the test that a backend has
+been wired in.
