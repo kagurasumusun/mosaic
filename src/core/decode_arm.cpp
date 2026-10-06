@@ -323,13 +323,16 @@ u32 decode_arm(u32 insn, ArmDec* d) {
 
   /* ============================ B / BL / BLX imm ==================== *
    * B/BL   : cond 101 L imm24            (offset = SignExtend(imm24:00)) *
-   * BLX imm: 1111 101 H imm23 1          (offset = SignExtend(imm23:H:1)) */
+   * BLX imm: 1111 101 H imm23 1    (offset = SignExtend(imm24:H:0), imm24[0]=1) */
   if (BF(insn, 27, 25) == 0b101) {
     const u32 cond = BF(insn, 31, 28);
     if (cond == 0xF && (insn & 1)) {
-      /* offset = SignExtend(imm23 : H : 10, 32)  -- a 26-bit field. */
-      const u32 imm23 = BF(insn, 23, 1);
-      s32 off = (s32)((imm23 << 2) | (BIT(insn, 24) << 1) | 2u);
+      /* DDI0597 A2 decodes this as `imm32 = SignExtend(imm24 : H : 0, 32)`,
+       * where imm24 = insn[23:0] (its bit[0] is the encoding's fixed 1) and
+       * H = insn[24].  So the offset is *even*, not a multiple of 4 - which is
+       * what lets one encoding reach both 0x...0 and 0x...2 - and reading the
+       * immediate as insn[23:1] halves every displacement. */
+      s32 off = (s32)(((insn & 0x00FFFFFFu) << 2) | (BIT(insn, 24) << 1));
       if (off & 0x02000000) off |= (s32)0xFC000000u;      /* sign extend @26 */
       d->imm24 = (u32)off;
       d->kind = 2;                     /* BLX: branch and exchange        */

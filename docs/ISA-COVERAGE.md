@@ -85,7 +85,10 @@ machine.
 ## Gaps to close next
 
 1. A host code generator, so `Stats::insns_jit` becomes non-zero and the corpus
-   can be replayed through the JIT.
+   can be replayed through the JIT.  `test_instr --jit` sets `cfg.use_jit` and
+   compares results, which on a host without a backend is a relabelled interpreter
+   run; the summary line now reports the engine that actually retired
+   instructions (`insns_jit`) instead of trusting the flag.
 2. `LDC/STC` for p15 (the ARM926EJ-S uses these for a handful of cache/debug
    operations), and unaligned accesses to `PG_DEVICE` pages.
 3. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
@@ -106,15 +109,35 @@ being skipped, which is how a Thumb `B<cond>` reading its condition field from t
 wrong five bits survived.  When adding a row here, confirm the case count moved
 (`wrote N cases`) rather than trusting the generator to have emitted it.
 
+## A green corpus is not the same as a covered corpus
+
+The generator drops a case it cannot assemble and a case whose effect cannot be
+observed, and both look identical to `test_instr`: a case that branches into a sea
+of zero words passes for *any* target, because `movs r0, r0` changes nothing.  The
+`arm_blxi_*` cases were a clean example - three of them, all assembled to the same
+word (the loop variable was never used), all passing, none of them able to notice
+that the BLX offset was being computed at half scale.  Deliberately putting that
+bug back leaves the corpus at 349/349 while `test_unit` fails three checks.
+
+The habits that follow from this: (1) check that the case *count* moved when you
+add cases, and read the "skipped" list; (2) give every case slots with distinct
+effects on either side of the interesting address, so an off-by-a-factor target
+computation lands on a different R0; (3) where the assembler or the oracle cannot
+express a case at all, hand-assemble it into `test_unit.cpp` rather than leaving a
+corpus case that only proves the core does not crash.
+
 ## What the corpus cannot express
 
-* `BLX` with an immediate.  The encoding this core implements is the ARMv5 one,
-  `cond 1111 101 H imm23 1` with offset `SignExtend(imm23 : H : 10)`.  Keystone
-  assembles `BLX <label>` as the ARMv6+ `cond 101 H imm24` form, which on an
-  ARM926EJ-S decodes as a plain `B`, so a corpus line written as `BLX #imm` would
-  silently test a different instruction on the two models.  The corpus therefore
-  covers `BX`/`BLX` with the target in a register only; the immediate form has to
-  be hand-assembled, which is what `tests/test_unit.cpp` does.
+* `BLX` with an immediate, beyond the interworking itself.  Keystone *does* use
+  the ARMv5 A2 layout (`cond 1111 101 H imm23 1`) for `BLX <label>`, so the
+  `arm_blxi` case is a genuine A2 instruction on this core - but the corpus can
+  only say that the branch happened: the target has to be a zero word, because an
+  ARM-mode line list cannot express a Thumb callee, and R14 is not compared.  A
+  target that is wrong by a factor of two therefore passes.  The A2 offset
+  scaling (`imm32 = SignExtend(imm24 : H : 0)`, an *even* offset, not a multiple
+  of 4) and the H bit are pinned by hand-assembled words in
+  `tests/test_unit.cpp::test_load_pc_and_l4`, whose two BLX phases differ only in
+  insn[24] and land two bytes apart.
 * `LDM`/`STM` register-list effects on the flags and on banked R13/R14, and any
   check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
   target show up as a register write (`MOV Rn, R14`) instead.

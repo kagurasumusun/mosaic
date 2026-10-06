@@ -127,7 +127,8 @@ std::string disasm(const Case& c) {
   return out;
 }
 
-int run_case(Case& c, bool use_jit, std::string* why, bool trace = false) {
+int run_case(Case& c, bool use_jit, std::string* why, bool trace = false,
+             u64* jit_insns = nullptr) {
   CpuConfig cfg;
   cfg.ram_base = 0;
   cfg.ram_size = 0x20000;
@@ -238,6 +239,7 @@ int run_case(Case& c, bool use_jit, std::string* why, bool trace = false) {
       break;
     }
   }
+  if (jit_insns) *jit_insns = cpu.stats.insns_jit;
   return bad;
 }
 
@@ -260,6 +262,7 @@ int main(int argc, char** argv) {
   if (limit && (int)cases.size() > limit) cases.resize(limit);
 
   int failed = 0;
+  u64 total_jit_insns = 0;
   for (Case& c : cases) {
     std::string why;
     if (trace_for && c.name == trace_for) {
@@ -276,7 +279,9 @@ int main(int argc, char** argv) {
         std::printf("   insn %zu = %08x\n", i, c.code[i]);
       std::printf("   expect r0=%08x r1=%08x\n", c.expect_regs[0], c.expect_regs[1]);
     }
-    int bad = run_case(c, use_jit, &why);
+    u64 jit_here = 0;
+    int bad = run_case(c, use_jit, &why, false, &jit_here);
+    total_jit_insns += jit_here;
     if (bad) {
       ++failed;
       std::printf("FAIL %-36s %s\n", c.name.c_str(), why.c_str());
@@ -287,8 +292,21 @@ int main(int argc, char** argv) {
       std::printf("ok   %s\n", c.name.c_str());
     }
   }
+  /* `--jit` only *asks* for the JIT; on a host with no code generator every
+   * instruction falls back to the interpreter, and a run that says "passed (jit)"
+   * would then be claiming coverage it does not have.  Report the engine that
+   * actually retired the instructions. */
+  const char* engine;
+  if (!use_jit) engine = "interpreter";
+  else if (total_jit_insns) engine = "jit";
+  else engine = "jit REQUESTED but no backend retired anything: interpreter-only";
+  char eng[96];
+  if (use_jit && total_jit_insns)
+    std::snprintf(eng, sizeof eng, "%s, %llu insns", engine,
+                  (unsigned long long)total_jit_insns);
+  else
+    std::snprintf(eng, sizeof eng, "%s", engine);
   std::printf("%s: %d/%d cases passed (%s)\n", failed ? "FAILED" : "PASS",
-              (int)cases.size() - failed, (int)cases.size(),
-              use_jit ? "jit" : "interpreter");
+              (int)cases.size() - failed, (int)cases.size(), eng);
   return failed ? 1 : 0;
 }

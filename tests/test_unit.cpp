@@ -479,26 +479,33 @@ void test_load_pc_and_l4() {
   const uint32_t ldr_pc[] = {0xE3A00000u, 0xEE014F10u, 0xE591F000u,
                              0xE2800C01u, 0xEAFFFFFEu};
   const uint32_t mov_pc[] = {0xE3A00000u, 0xE1A0F002u, 0xE2800002u, 0xEAFFFFFEu};
-  /* BLX #imm here means the ARMv5 encoding cond 1111 101 H imm23 1, whose
-   * offset is SignExtend(imm23 : H : 10).  With H = 1 and imm23 = 0x11 the
-   * offset is 0x46, so from 0x8004 (PC = 0x800c) the target is 0x8052 - the
-   * halfword-aligned Thumb thunk below.  The word is hand-assembled because
-   * Keystone assembles `BLX <label>` as the ARMv6+ A1 form instead, which this
-   * core decodes as something else entirely. */
-  const uint32_t blx_imm[] = {0xE3A00000u, 0xFB000023u, 0xE2800C01u,
+  /* BLX #imm is the ARMv5 encoding cond 1111 101 H imm23 1, whose offset is
+   * SignExtend(imm24 : H : 0) over insn[23:0].  Both words below carry
+   * imm24 = 0x11 from 0x8004 (PC = 0x800c), so the offset is 0x44 + 2*H:
+   *   H = 1 -> 0x46 -> 0x8052, the `MOV R2, R14` thunk   (link reaches R2)
+   *   H = 0 -> 0x44 -> 0x8050, the `b .` in front of it  (R2 keeps its seed)
+   * A core that scales the immediate by 4 from insn[23:1] instead reaches
+   * 0x802E, so the pair pins both the scaling and H.  Hand-assembled because
+   * an ARM-mode line list cannot express a Thumb callee for the corpus. */
+  const uint32_t blx_imm[] = {0xE3A00000u, 0xFB000011u, 0xE2800C01u,
                               0xEAFFFFFEu};
+  const uint32_t blx_h0[] = {0xE3A00000u, 0xFA000011u, 0xE2800C01u,
+                             0xEAFFFFFEu};
   const uint32_t kL4 = 1u << 15;
 
-  for (int phase = 0; phase < 4; ++phase) {
+  for (int phase = 0; phase < 5; ++phase) {
     /* A Thumb callee at 0x8040 (ADDS R0, #1 then b .), an ARM marker at 0x8044
      * (ADD R0, R0, #2), and a Thumb thunk at 0x8050 (MOV R2, R14 then b .). */
     brain_poke32(e, 0x8040u, 0xE7FE3001u);
     brain_poke32(e, 0x8044u, 0xE2800002u);
     brain_poke32(e, 0x8048u, 0xEAFFFFFEu);
     brain_poke32(e, 0x8050u, 0x4672E7FEu);   /* 0x8052: MOV R2, R14          */
-    const uint32_t* prog = phase == 2 ? mov_pc : (phase == 3 ? blx_imm : ldr_pc);
-    size_t len = phase == 2 ? sizeof mov_pc : (phase == 3 ? sizeof blx_imm
-                                                          : sizeof ldr_pc);
+    const uint32_t* prog = phase == 2 ? mov_pc
+                       : phase == 3 ? blx_imm
+                       : phase == 4 ? blx_h0 : ldr_pc;
+    const size_t len = phase == 2 ? sizeof mov_pc
+                       : phase == 3 ? sizeof blx_imm
+                       : phase == 4 ? sizeof blx_h0 : sizeof ldr_pc;
     CHECK(brain_load_raw(e, prog, len, 0x8000u, 0) == 0);
     CHECK(brain_set_reg(e, 1, 0x9000u) == 0);
     CHECK(brain_set_reg(e, 4, phase == 1 ? kL4 : 0u) == 0);
@@ -521,13 +528,22 @@ void test_load_pc_and_l4() {
         CHECK(brain_get_reg(e, 0) == 2u);        /* bit[0] of 0x8009 ignored      */
         CHECK((cpsr & 0x20u) == 0u);
         break;
-      default: {                                 /* BLX #imm, ARM -> Thumb       */
+      case 3: {                                  /* BLX #imm, H = 1             */
         const uint32_t r2 = brain_get_reg(e, 2);
-        CHECK(brain_get_reg(e, 0) == 0u);        /* the fall-through was skipped  */
-        CHECK((cpsr & 0x20u) != 0u);             /* the immediate entered Thumb   */
-        CHECK(r2 == 0x8008u);                    /* MOV R2, R14 at the target     */
+        CHECK(brain_get_reg(e, 0) == 0u);        /* the fall-through was skipped   */
+        CHECK((cpsr & 0x20u) != 0u);             /* the immediate entered Thumb    */
+        CHECK(r2 == 0x8008u);                    /* MOV R2, R14 at 0x8052          */
         break;
       }
+      case 4: {                                  /* same, H = 0: two bytes back   */
+        const uint32_t r2 = brain_get_reg(e, 2);
+        CHECK(brain_get_reg(e, 0) == 0u);        /* still no fall-through          */
+        CHECK((cpsr & 0x20u) != 0u);             /* landed on the `b .` in Thumb   */
+        CHECK(r2 == 0x8009u);                    /* the thunk was never reached    */
+        break;
+      }
+      default:
+        break;
     }
     CHECK((cpsr & 0x1Fu) == 0x13u);              /* mode never changes here      */
   }

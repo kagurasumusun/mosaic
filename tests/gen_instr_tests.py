@@ -338,14 +338,15 @@ def branch_cases(rnd):
     out.append(("arm_bl_far", "arm",
                 ["BL 0x%x" % (CODE_BASE + 8 + 0x100), "ADD R0, R0, #0x100",
                  "ADD R1, R1, #1", "ADD R1, R1, #2"], None, None, 3))
-    # BLX immediate: ARM encoding, target bit[0] = Thumb.  Landing on a zero
-    # word keeps the case deterministic (both models then execute `movs r0, r0`
-    # there), so what is actually checked is the interworking itself: the T bit
-    # set and R14 = the instruction after the branch, with bit[0] set.
-    for i, disp in enumerate((0, 1, 2)):
-        out.append(("arm_blxi_%d" % i, "arm",
-                    ["ADD R0, R0, #0x100", "BLX 0x%x" % (CODE_BASE + 0x100 + 1),
-                     "ADD R0, R0, #0x200"], None, None, 2))
+    # BLX immediate.  Keystone encodes it with the ARMv5 A2 layout, so the word
+    # is one this core implements; what the corpus can check is the
+    # interworking (CPSR.T set) and that the fall-through was skipped, because
+    # the target has to be a zero word - an ARM-mode line list cannot express a
+    # Thumb callee, and R14 is not compared.  The A2 offset scaling and its H
+    # bit are pinned by hand-assembled words in tests/test_unit.cpp instead.
+    out.append(("arm_blxi", "arm",
+                ["ADD R0, R0, #0x100", "BLX 0x%x" % (CODE_BASE + 0x100 + 1),
+                 "ADD R0, R0, #0x200"], None, None, 2))
     for cond in ("EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC", "HI", "LS",
                  "GE", "LT", "GT", "LE", "AL"):
         out.append(("arm_b%s" % cond, "arm",

@@ -136,7 +136,11 @@ instruction that is architecturally allowed to change the state: `BX`/`BLX`, the
 Thumb long-branch pair, `BLX` with an immediate, and a load into R15.
 
 Branch target masking follows the state, not the encoding: a Thumb target is masked
-to 2 bytes, an ARM target to 4.  For `BLX` with an immediate the low half of the
+to 2 bytes, an ARM target to 4.  `BLX` with an immediate takes its offset from the
+A32 A2 layout, `imm32 = SignExtend(imm24 : H : 0)` over insn[23:0] with H =
+insn[24]: the offset is an *even* number rather than a multiple of 4, which is why
+that target is masked to 2 bytes and why reading the immediate from insn[23:1] (to
+skip the encoding's fixed bit[0]) halves every displacement.  For `BLX` with an immediate the low half of the
 offset *is* bit 1 of the target, so masking that to a word boundary discards a real
 address bit; masking a Thumb branch target to a word boundary drags every target
 that is 2 mod 4 back onto the preceding halfword, which is how a `b .` loop came to
