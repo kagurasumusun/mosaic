@@ -109,6 +109,22 @@ being skipped, which is how a Thumb `B<cond>` reading its condition field from t
 wrong five bits survived.  When adding a row here, confirm the case count moved
 (`wrote N cases`) rather than trusting the generator to have emitted it.
 
+The generator now enforces the three habits below, so they do not have to be
+remembered:
+
+* every dropped case is reported under the reason it was dropped - `encoder` (the
+  line would not assemble, or assembled to a width ARMv5 does not have), `oracle`
+  (Unicorn refused to run it) or `policy` (it is deliberately left out) - as in
+  `skipped 55 (encoder 41, oracle 8, policy 6)`;
+* a case that *moves the PC* and is dropped for `encoder` reasons is a hard error.
+  That is the class of loss that quietly removes branch coverage: Keystone widening
+  `ADDS R4, R1` to a 32-bit `adds.w` used to delete a whole Thumb prologue,
+  including its `LDR` from the literal pool and its `POP {…, PC}` return;
+* case names have to be unique.  Repeating a name with *different* content stops
+  the run (one of the two would be invisible in every report keyed by name, as
+  `arm_bx_r3` was for a single-insn `BX R3` and a four-insn branch-into-the-slots
+  case); an exactly duplicated case is dropped and counted in `dedup N`.
+
 ## A green corpus is not the same as a covered corpus
 
 The generator drops a case it cannot assemble and a case whose effect cannot be
@@ -117,7 +133,15 @@ of zero words passes for *any* target, because `movs r0, r0` changes nothing.  T
 `arm_blxi_*` cases were a clean example - three of them, all assembled to the same
 word (the loop variable was never used), all passing, none of them able to notice
 that the BLX offset was being computed at half scale.  Deliberately putting that
-bug back leaves the corpus at 349/349 while `test_unit` fails three checks.
+bug back leaves the corpus at 341/341 while `test_unit` fails three checks.
+
+The reverse also happens: the `encoder` rule above fired on `seq_thumb_0`, and the
+sequence it had been deleting turned out to be the first case in the corpus that
+loaded a *literal pool into R4-R7*.  Decoding it (`LDR R5, [PC, #0x10]`, `0x4D04`)
+showed the Thumb decoder treating bit 10 of that group as an "unallocated" marker -
+it is `Rt[2]`, so every `LDR R4`-`LDR R7` from a pool was being reported as
+undefined, and every pool load the corpus did contain used R0-R3, which is why a
+green corpus had never seen it.
 
 The habits that follow from this: (1) check that the case *count* moved when you
 add cases, and read the "skipped" list; (2) give every case slots with distinct
@@ -128,6 +152,13 @@ corpus case that only proves the core does not crash.
 
 ## What the corpus cannot express
 
+* A `PUSH`/`POP` case whose *return state* is observed.  A banked register cannot
+  be handed to either model from outside: the oracle reloads the bank its mode
+  caches when the PC moves, so a stack case has to give itself an SP with a guest
+  `MOV SP, R4` and ends with LR reading 0.  The corpus therefore pins the round trip
+  of the saved registers (that is `seq_arm_0` and `seq_thumb_0`), but the state the
+  popped value selects is pinned in `test_unit.cpp`, in `test_push_pop_return()`,
+  where LR is seeded odd and even.
 * `BLX` with an immediate, beyond the interworking itself.  Keystone *does* use
   the ARMv5 A2 layout (`cond 1111 101 H imm23 1`) for `BLX <label>`, so the
   `arm_blxi` case is a genuine A2 instruction on this core - but the corpus can

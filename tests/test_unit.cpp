@@ -550,6 +550,54 @@ void test_load_pc_and_l4() {
   brain_emu_destroy(e);
 }
 
+/* A Thumb epilogue that returns through the PC.
+ *
+ * This is the part of a PUSH/POP prologue the generated corpus cannot express.
+ * Stack cases need a stack pointer, and a banked register cannot be *handed* to
+ * either model: the oracle reloads the bank its mode caches when the PC moves, so
+ * every corpus stack sequence has to give itself an SP with `MOV SP, R4` and ends
+ * with the link register reading 0.  That pins the register round trip but not the
+ * state the return selects, which is the interesting half.  Here LR is seeded
+ * directly, so both directions are checked: with L4 clear, as at reset, bit[0] of
+ * the value popped into the PC sets T, and the address used has that bit masked off
+ * (DDI 0198E Table 2-11, and the same rule `test_load_pc_and_l4` pins for LDR).
+ * Encodings from keystone. */
+void test_push_pop_return() {
+  std::printf("[push/pop epilogue return]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  /* 0x8000 push {r4, r5, lr}   0x8002 movs r4, r0   0x8004 adds r5, r0, #2
+     0x8006 pop  {r4, r5, pc}   0x8008 b .                <- the return slot */
+  const uint16_t prog[] = {0xB530u, 0x0004u, 0x1C85u, 0xBD30u, 0xE7FEu};
+  for (int phase = 0; phase < 2; ++phase) {
+    const uint32_t lr = 0x8008u | (phase ? 0u : 1u);   /* odd: stay Thumb      */
+    CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000u, 1) == 0);
+    CHECK(brain_set_reg(e, 0, 0x11u) == 0);
+    CHECK(brain_set_reg(e, 4, 0x4444u) == 0);
+    CHECK(brain_set_reg(e, 5, 0x5555u) == 0);
+    CHECK(brain_set_reg(e, 13, 0x9000u) == 0);
+    CHECK(brain_set_reg(e, 14, lr) == 0);
+    CHECK(brain_run_insns(e, 4) == 4);
+    CHECK(brain_get_reg(e, 0) == 0x11u);        /* the body did run            */
+    CHECK(brain_get_reg(e, 4) == 0x4444u);      /* ... and was undone by POP   */
+    CHECK(brain_get_reg(e, 5) == 0x5555u);
+    CHECK(brain_get_reg(e, 13) == 0x9000u);
+    /* The model reports the address of the instruction that would run next, with
+     * bit[0] set in Thumb state, so the two phases read differently and neither
+     * says 0x8008|1 in ARM: `b .` at 0x8008 is the same slot either way. */
+    CHECK(brain_get_reg(e, 15) == (phase ? 0x8008u : 0x8009u));
+    const uint32_t t = brain_get_reg(e, BRAIN_REG_CPSR) & 0x20u;
+    CHECK(t == (phase ? 0u : 0x20u));           /* bit[0] picked the state     */
+    CHECK((brain_get_reg(e, BRAIN_REG_CPSR) & 0x1Fu) == 0x13u);
+  }
+  brain_emu_destroy(e);
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -561,6 +609,7 @@ int main() {
   test_exception_banking();
   test_fetch_abort_terminates();
   test_load_pc_and_l4();
+  test_push_pop_return();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

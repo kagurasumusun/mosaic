@@ -250,7 +250,11 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
   }
 
   case 9: {                                         /* LDR literal */
-    if (hw & (1u << 10)) { d->op = AOP_UNDEF; return 0; }
+    /* A6.2.24 / ARM926EJ-S A6.3.63: 01001 Rt imm8, and the *only* reserved case
+     * is the whole-group one above.  Bit 10 is Rt[2], not an "unallocated" flag,
+     * so testing it here made every LDR to R4-R7 from the literal pool undefined -
+     * which no case in the corpus could show, since its pool loads all use R0-R3.
+     */
     mk_ldst(d, 1, 0, rd8, 15);
     d->am = AM_IMM_PRE;
     d->op2 = OP2_NONE;

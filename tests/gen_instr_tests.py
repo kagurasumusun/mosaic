@@ -42,6 +42,14 @@ REG_MASK = 0xF80000FF          # N Z C V Q | I F T mode (see docstring)
 
 R_REGS = list(range(UC_ARM_REG_R0, UC_ARM_REG_R0 + 16))
 
+# The state every case starts from.  Values are deliberately distinctive so a
+# register written by accident stands out, R3 points into the code, and R13/R14
+# sit at the top of the data window; `tests/test_instr.cpp` seeds the same list.
+DEFAULT_REGS = [0x12345678, 0x9ABCDEF0, 0xFFFFFFFF, 0x00008000,
+                DATA_BASE, DATA_BASE + 0x40, DATA_BASE + 0x80, 0x11112222,
+                0x33334444, 0x55556666, 0x77778888, 0x9999AAAA,
+                0xBBBBCCCC, DATA_BASE + 0x100, DATA_BASE + 0x100, CODE_BASE]
+
 
 # Keystone assembles for a *recent* architecture, so a few ARMv5T Thumb words
 # either get a wider encoding or a different mnemonic.  These two-operand forms
@@ -99,6 +107,24 @@ class Asm:
             raise AssertionError("wrong width %d for ARMv5: %r" %
                                  (len(enc), line))
         return bytes(enc)
+
+
+# A case that moves the PC may not silently disappear because the assembler could
+# not express it.  Both skips that hid real bugs were of that shape: the generator
+# held 30 Thumb conditional-branch cases, every one was dropped by the width guard
+# below, and the corpus stayed green through a wrong branch mask, a wrong condition
+# field and a halved BLX displacement.  Cases matched here are fatal when the
+# *encoder* is the reason they were dropped (fix the line, or hand-assemble the
+# word); a policy or oracle skip is reported but allowed.
+BRANCHY = re.compile(
+    r"^(B|BL|BX|BLX|BAL|BEQ|BNE|BCS|BCC|BMI|BPL|BVS|BVC|BHI|BLS|BGE|"
+    r"BLT|BGT|BLE)\b"          # branches: these always move the PC
+    r"|^(LDR|LDM|POP)\b.*\b(PC|R15)\b"   # a load whose list or destination is PC
+    r"|^\S+\s+(PC|R15)\b")   # anything else writing PC, e.g. ADD R15, R1, #4
+
+
+def branchy(lines):
+    return any(BRANCHY.match(ln.strip()) for ln in lines)
 
 
 # --------------------------------------------------------------------------
@@ -367,11 +393,11 @@ def branch_cases(rnd):
           0x55556666, 0x77778888, 0x9999AAAA, 0xBBBBCCCC, DATA_BASE + 0x100,
           DATA_BASE + 0x100, CODE_BASE]
     for name, mode, lrn, cnt in [
-        ("arm_bx_r3", "arm", ["BX R3", "ADD R0, R0, #0x100", "ADD R0, R0, #2",
+        ("arm_bx_r3_into_slots", "arm", ["BX R3", "ADD R0, R0, #0x100", "ADD R0, R0, #2",
                               "ADD R0, R0, #4"], 3),
-        ("arm_blx_r3", "arm", ["BLX R3", "ADD R0, R0, #0x100", "MOV R2, R14",
+        ("arm_blx_r3_into_slots", "arm", ["BLX R3", "ADD R0, R0, #0x100", "MOV R2, R14",
                                "ADD R0, R0, #4"], 3),
-        ("thumb_bx_r3", "thumb", ["BX R3", "ADDS R0, R0, #0x40", "ADDS R0, #2",
+        ("thumb_bx_r3_into_slots", "thumb", ["BX R3", "ADDS R0, R0, #0x40", "ADDS R0, #2",
                                   "ADDS R0, #4"], 3),
     ]:
         out.append((name, mode, lrn, list(r3), None, cnt))
@@ -396,16 +422,37 @@ def multi_seq_cases(rnd):
         ["MOV R2, #0x1000", "STR R1, [R2, #0]", "LDR R3, [R2, #0]",
          "SUB R3, R3, R1", "MOV R0, R3", "SWP R0, R4, [R2]"],
     ]
+    # Neither model can be handed R13 or R14 from outside - the oracle reloads the
+    # bank it caches for the mode when the PC moves, and the harness would have to
+    # fake the same asymmetry - so any case that touches the stack sets the stack
+    # pointer with the guest's own `MOV SP, R4` first, exactly as `arm_seq_push_pop`
+    # and `thumb_seq_push_pop` below already do.  These two are the ARM/Thumb
+    # prologue/epilogue variants of that, and both end by loading the PC, which is
+    # the point of them: `count` stops the run at the return, so what is compared is
+    # the round trip of R4-R8 (and of CPSR), not the address returned to - LR has to
+    # read 0 here for the same banked-register reason.  Returning to an *odd* value,
+    # i.e. an L4 interworking load into the PC, is pinned in tests/test_unit.cpp,
+    # where every register can be seeded directly.
     out = []
     for i, sq in enumerate(seqs):
+        if sq[-1].startswith("LDMIA"):
+            sq = ["MOV R13, R4"] + sq          # R4 = DATA_BASE, see DEFAULT_REGS
         out.append(("seq_arm_%d" % i, "arm", sq))
     tseqs = [
-        ["PUSH {R4, R5, LR}", "MOVS R4, R0", "ADDS R4, R1",
-         "LDR R5, [PC, #0x10]", "ADDS R4, R5", "POP {R4, R5, PC}"],
-        ["MOVS R0, #0", "MOVS R1, #1", "ADDS R0, R1", "LSLS R0, R0, #4",
+        # The two-address "ADDS R4, R1" spelling makes Keystone emit a 32-bit
+        # adds.w, so this whole sequence - prologue, PC-relative load and the
+        # return through the PC - used to be dropped before it ever reached the
+        # corpus.  The in-place three-address form is the Thumb-16 one.
+        ["PUSH {R4, R5, LR}", "MOVS R4, R0", "ADDS R4, R4, R1",
+         "LDR R5, [PC, #0x10]", "ADDS R4, R4, R5", "POP {R4, R5, PC}"],
+        ["MOVS R0, #0", "MOVS R1, #1", "ADDS R0, R0, R1", "LSLS R0, R0, #4",
          "MOV R8, R0", "ADDS R0, R8", "MVNS R0, R0"],
     ]
     for i, sq in enumerate(tseqs):
+        if sq[-1].startswith("POP {R4"):
+            sq = ["MOV SP, R4"] + sq            # the hi-register MOV, 2 bytes
+        elif "ADDS R0, R8" in sq:
+            sq = [x.replace("ADDS R0, R8", "ADD R0, R8") for x in sq]
         out.append(("seq_thumb_%d" % i, "thumb", sq))
     return out
 
@@ -470,19 +517,31 @@ def main():
     kt = Asm(KS_MODE_THUMB, 2)
     blocks = []
     skipped = []
+    dupes = []
+    by_name = {}
     for case in cases:
         name, mode, lines = case[0], case[1], case[2]
-        regs = list(case[3]) if len(case) > 3 and case[3] else [
-            0x12345678, 0x9ABCDEF0, 0xFFFFFFFF, 0x00008000,
-            DATA_BASE, DATA_BASE + 0x40, DATA_BASE + 0x80, 0x11112222,
-            0x33334444, 0x55556666, 0x77778888, 0x9999AAAA,
-            0xBBBBCCCC, DATA_BASE + 0x100, DATA_BASE + 0x100, CODE_BASE]
+        # A repeated name is how a case gets lost in silence: the report, the
+        # corpus and any later `grep BEGIN` all key on it.  Identical duplicates are
+        # dropped, and a name reused for *different* content stops the run.
+        key = tuple(tuple(x) if isinstance(x, list) else x for x in case[1:])
+        if name in by_name:
+            if by_name[name] == key:
+                dupes.append(name)
+                continue
+            raise SystemExit("ERROR: case name %r used for two different cases: "
+                             "%s and %s" % (name, by_name[name], str(key)))
+        by_name[name] = key
+        regs = list(case[3]) if len(case) > 3 and case[3] else list(DEFAULT_REGS)
         cpsr = case[4] if len(case) > 4 and case[4] is not None else (
             0x60000000 if mode == "thumb" else 0x60000000)
         nsteps = case[5] if len(case) > 5 else len(case[2])
         if any(re.match(r"^(\w+\s+)?(PC|R15)\b", ln) and
                not re.match(r"^(BX|BLX|POP|LDM|LDR)\b", ln) for ln in lines):
-            skipped.append((name, "writes PC from a data value"))
+            skipped.append((name, "policy",
+                            "writes PC from a data value (see "
+                            "docs/ISA-COVERAGE.md: the ARMv5 rule differs from the "
+                            "oracle's v7 interworking)", branchy(lines)))
             continue
         data = bytes([i & 0xFF for i in range(DATA_SIZE)])
         words = []
@@ -496,14 +555,14 @@ def main():
                 else:
                     words.append(struct.unpack("<H", b[:2])[0])
         except Exception as e:                                    # noqa: BLE001
-            skipped.append((name, str(e)[:60]))
+            skipped.append((name, "encoder", str(e)[:60], branchy(lines)))
             continue
         # a couple of instructions to touch memory
         try:
             uregs, ucpsr, udata = run_unicorn(words, mode, regs, cpsr, data,
                                               nsteps)
         except Exception as e:                                    # noqa: BLE001
-            skipped.append((name, "unicorn: " + str(e)[:60]))
+            skipped.append((name, "oracle", str(e)[:60], branchy(lines)))
             continue
         blk = ["BEGIN %s mode=%s count=%d" % (name, mode, nsteps),
                "CPSR 0x%08x" % cpsr,
@@ -526,11 +585,29 @@ def main():
         for b in blocks:
             f.write(b + "\n")
     print("wrote %d cases to %s" % (len(blocks), args.out))
+    if dupes:
+        print("dedup %d identical repeated case(s): %s" %
+              (len(dupes), ", ".join(sorted(set(dupes))[:6])))
     if skipped:
-        print("skipped %d (encoder could not produce an ARMv5 word):" %
-              len(skipped))
-        for n, why in skipped[:20]:
-            print("   %-34s %s" % (n, why))
+        cats = {}
+        for _, cat, _, _ in skipped:
+            cats[cat] = cats.get(cat, 0) + 1
+        print("skipped %d (%s)" % (
+            len(skipped), ", ".join("%s %d" % kv for kv in sorted(cats.items()))))
+        for n, cat, why, _ in skipped[:20]:
+            print("   %-30s %-8s %s" % (n, cat, why))
+        if len(skipped) > 20:
+            print("   ... %d more" % (len(skipped) - 20))
+
+    lost = [n for n, cat, _, br in skipped if br and cat == "encoder"]
+    if lost:
+        print("ERROR: %d case(s) that move the PC were dropped by the assembler: %s"
+              % (len(lost), ", ".join(lost[:8])))
+        print("       Re-encode those lines so the word is an ARMv5 one (a Thumb "
+              "branch needs\n       MOVS-style forms, and a 32-bit destination "
+              "needs `manual_thumb`), rather\n       than leaving the corpus "
+              "without branch coverage.")
+        return 1
     return 0
 
 
