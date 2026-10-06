@@ -734,6 +734,16 @@ void test_exception_entry() {
                uint32_t trig_arm; uint16_t trig_thumb; };
   const Row rows[] = {
       {BRAIN_EXC_UNDEF, 0x04u, 0x1B, 4, 2, 0xED000A10u, 0xBFE8u},
+      /* LDC/STC to any coprocessor - p15 included, whose interface is MRC/MCR
+       * only (ARM926EJ-S TRM 2.2; the SAM9G15 datasheet 8.4.8 spells out "other
+       * instructions like CDP, LDC, STC can cause an undefined instruction
+       * exception").  All six words are Keystone-assembled; the Thumb triggers
+       * are the T2 high halves (0xED94/0xED84), which this core never pairs -
+       * 32-bit Thumb is out of the ISA by design, so they stand undefined here,
+       * exactly as the ARM926EJ-S decodes them. */
+      {BRAIN_EXC_UNDEF, 0x04u, 0x1B, 4, 2, 0xED900F00u, 0xBF00u},
+      {BRAIN_EXC_UNDEF, 0x04u, 0x1B, 4, 2, 0xED800F00u, 0xBF00u},
+      {BRAIN_EXC_UNDEF, 0x04u, 0x1B, 4, 2, 0xED921001u, 0xBF00u},
       {BRAIN_EXC_SWI,   0x08u, 0x13, 4, 2, 0xEF000000u, 0xDF00u},
       {BRAIN_EXC_DABORT, 0x10u, 0x17, 8, 8, 0xE5912000u, 0x680Au},
   };

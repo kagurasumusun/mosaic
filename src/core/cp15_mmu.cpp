@@ -404,7 +404,9 @@ void Cpu::mem_write_slow(u32 addr, u32 val, u32 size, u32 flags) {
   }
   BusRegion* r = bus->page(e->gpa + (addr & 0xFFF))->region;
   if (r && r->write) {
-    if (size == 4 && !be_data) { r->write(r->user, addr, val, 4); return; }
+    /* One transaction per *aligned* word only - mirroring the read path - so a
+     * misaligned store reaches the device as ascending byte writes. */
+    if (size == 4 && !be_data && (addr & 3) == 0) { r->write(r->user, addr, val, 4); return; }
     for (u32 i = 0; i < size; ++i)
       r->write(r->user, addr + i, (val >> (i * 8)) & 0xFF, 1);
     return;

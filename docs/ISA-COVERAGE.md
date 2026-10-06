@@ -27,7 +27,7 @@ machine.
 | Block transfer | all eight `LDM/STM` addressing modes, user-register list, PC in list, writeback | implemented, checked. An empty register list is UNPREDICTABLE in ARMv5: the ARM family retires the base update and moves no registers (what the hardware does), while the Thumb `PUSH/POP/LDM/STM` forms decode as undefined |
 | Status | `MRS`, `MSR` (c/f/s/x masks, SPSR in privileged modes, undefined in USR) | implemented, checked |
 | Branch | `B BL`, `BX`, `BLX` (immediate and register), condition codes | implemented, checked (`BL` links `cur+4`, Thumb-entering `BLX` sets T) |
-| Coprocessor | `MRC MCR` for p15, `LDC/STC` p15, `CDP` | p15 `MRC/MCR` implemented and checked (decode *must not* turn them into undefined); `CDP` and any other coprocessor number decode as UNDEF, matching a core with no coprocessor |
+| Coprocessor | `MRC MCR` for p15, `LDC/STC` (any coprocessor), `CDP` | p15 `MRC/MCR` implemented and checked (decode *must not* turn them into undefined); `CDP` and `LDC`/`STC` for *every* number - p15's interface is MRC/MCR only - decode as UNDEF, matching a core with no coprocessor, pinned by the `LDC`/`STC` rows of `test_exception_entry()` |
 | Software interrupt / debug | `SWI`, `BKPT` | implemented, checked |
 | Hardware interrupts | `nIRQ`/`nFIQ` level inputs driving entry (0x18/0x1C vectors, I/F masking, SPSR, link adjustment, forced ARM state) | implemented (`brain_set_irq`/`brain_set_fiq`), checked by `test_interrupt_inputs()` in both states, including entry from Thumb reached through a taken `BX` |
 
@@ -99,8 +99,13 @@ machine.
    compares results, which on a host without a backend is a relabelled interpreter
    run; the summary line now reports the engine that actually retired
    instructions (`insns_jit`) instead of trusting the flag.
-2. `LDC/STC` for p15 (the ARM926EJ-S uses these for a handful of cache/debug
-   operations), and unaligned accesses to `PG_DEVICE` pages.
+2. Unaligned device accesses.  (`LDC/STC` for p15 is closed and was based on a
+   wrong reading: neither the TRM nor the Microchip SAM9G15 datasheet gives CP15
+   a load/store interface - "other instructions like CDP, LDC, STC can cause an
+   undefined instruction exception" - which the core already does and now pins.
+   `PG_DEVICE` splitting is pinned by `tests/test_mmu.cpp`: aligned word accesses
+   are one bus transaction, misaligned ones ascend as single bytes, and `c1.A`
+   turns the misaligned case into a pre-bus alignment fault with FAR/DFSR.)
 3. Interrupt *timing*, not delivery.  This item is otherwise closed: the public
    API now carries `brain_set_irq()`/`brain_set_fiq()`, and
    `test_interrupt_inputs()` pins entry in both states - the 0x18/0x1C vectors,
@@ -109,10 +114,24 @@ machine.
    8/6 link adjustment.  What remains unmodelled is latency: the core samples the
    lines at instruction boundaries only, so there is no notion of "interrupt
    arrives mid-block" and cycle-level response time is not defined.
-4. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
-   item is closed: `Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15
-   as well as for the `MOV`-style PC writes, c1[15] is writable and reads back, and
-   `tests/test_unit.cpp` pins both settings.)
+4. Thumb long-branch *pairing*.  The core decodes halfwords independently, so an
+   unpaired BL/BLX second half (`0xE800-0xEFFF`, `0xF800-0xFFFF` at an odd fetch
+   position) executes as the branch component instead of taking the undefined
+   instruction an ARM926EJ-S would on unallocated first-halfword space; the
+   related question of what classic Thumb's `0xCC00-0xCDFF` slice means on this
+   core (ARMv6 writeback LDM/STM vs any surviving coprocessor form) is likewise
+   not pinned.  A fix needs pairing-aware fetch in `Cpu::fetch_and_execute()`
+   before `decode_thumb.cpp` can reject orphans; the tests currently say nothing
+   about either half of this.
+5. Nothing remains of the prefetch side: the `L4` half was closed earlier
+   (`Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15 as well as for
+   the `MOV`-style PC writes, c1[15] is writable and reads back, and
+   `tests/test_unit.cpp` pins both settings), and device-page fetches are closed by
+   the model's shape: there is no prefetch pipeline, so a fetch happens exactly once
+   per retired instruction and cannot speculative-read a device, while DDI0198's
+   "alignment faults are not possible for instruction fetches" holds by
+   construction.  What stays unmodelled is an *external* abort on an instruction
+   fetch - the data path has `serror_on_busfault`, the fetch path has no analogue.
 
 Two further notes on the interrupt path: exception *return* is exercised through
 `MOVS PC,R14` (tests/test_unit.cpp restores CPSR from SPSR and resumes with it);

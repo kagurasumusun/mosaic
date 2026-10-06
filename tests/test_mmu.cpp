@@ -259,6 +259,19 @@ void dev_write(void*, uint32_t, uint32_t value, uint32_t) {
   g_dev.value = value;
 }
 
+/* Records the exact bus sequence a transfer is issued as, to pin how misaligned
+ * accesses to device pages are split: every address and access size, in order. */
+struct Seq { uint32_t addr[16], size[16]; int n; } g_seq;
+uint32_t seq_read(void*, uint32_t a, uint32_t sz) {
+  if (g_seq.n < 16) { g_seq.addr[g_seq.n] = a; g_seq.size[g_seq.n] = sz; }
+  ++g_seq.n;
+  return 0xAABBCCDDu;                       /* each split byte reads as 0xDD      */
+}
+void seq_write(void*, uint32_t a, uint32_t, uint32_t sz) {
+  if (g_seq.n < 16) { g_seq.addr[g_seq.n] = a; g_seq.size[g_seq.n] = sz; }
+  ++g_seq.n;
+}
+
 /* =============================== the tests ============================= */
 
 /* Sections, small pages with per-KiB permissions, tiny pages through a fine
@@ -541,6 +554,47 @@ void test_fcse() {
     CHECK(g_dev.writes == 1);
     CHECK(m.getr(2) == 0x934u);                    /* read from the device     */
     CHECK(g_dev.value == 0x934u);                  /* and written straight back*/
+  }
+
+  /* Device pages have no host backing, so the bus sees them only through the
+   * callbacks - which pins the splitting rule: one 32-bit transaction per
+   * *aligned* access (existing rows above), and a misaligned transfer issued as
+   * single bytes in ascending order.  LDR r2,[r5,#1] = 0xE5952001,
+   * STR r2,[r5,#1] = 0xE5852001 (Keystone-assembled). */
+  {
+    Emu m;
+    g_seq = {};
+    CHECK(brain_map_device(m.e, 0x80000000u, 4096u, seq_read, seq_write, nullptr,
+                           "seq") == 0);
+    const uint32_t prog[] = {kLdrR2r5, 0xE5952001u, kStrR2r5, 0xE5852001u};
+    m.phase(prog, 4, 0, 0, 5u << 25, 0x80000000u, 4);
+    CHECK(m.mode() == MODE_SVC);                   /* c1.A = 0 at reset: no abort   */
+    CHECK(g_seq.n == 10);
+    CHECK(g_seq.addr[0] == 0x80000000u && g_seq.size[0] == 4u);
+    for (int i = 0; i < 4; ++i) {                  /* the split LDR: bytes 1..4     */
+      CHECK(g_seq.addr[1 + i] == 0x80000001u + (uint32_t)i && g_seq.size[1 + i] == 1u);
+      CHECK(g_seq.addr[6 + i] == 0x80000001u + (uint32_t)i && g_seq.size[6 + i] == 1u);
+    }
+    CHECK(g_seq.addr[5] == 0x80000000u && g_seq.size[5] == 4u);
+    CHECK(m.getr(2) == 0xDDDDDDDDu);               /* 4 bytes of 0xDD, little-endian */
+  }
+
+  /* The same misaligned load with c1.A set faults *before* the bus is touched:
+   * alignment checking is the highest-priority fault, DDFSR takes b00x1 and the
+   * FAR the aborted MVA (DDI0198 2.3.6, "Fault Status Registers c5" - FSR and FAR
+   * are explicitly updated while the MMU is off).  The three extra steps let the
+   * data-abort handler MRC the two registers and park. */
+  {
+    Emu m;
+    g_seq = {};
+    CHECK(brain_map_device(m.e, 0x80000000u, 4096u, seq_read, seq_write, nullptr,
+                           "seq") == 0);
+    const uint32_t prog[] = {kMcrCtrlR0, 0xE5952001u};
+    m.phase(prog, 2, 0x2u, 0, 5u << 25, 0x80000000u, 5);
+    CHECK(m.mode() == MODE_ABT);
+    CHECK(g_seq.n == 0);                           /* nothing reached the device     */
+    CHECK(m.getr(7) == 0x1u);                      /* DDFSR: alignment             */
+    CHECK(m.getr(6) == 0x80000001u);               /* FAR: the first aborted byte  */
   }
 
   /* Same with a low address: the unshifted physical location has to answer. */
