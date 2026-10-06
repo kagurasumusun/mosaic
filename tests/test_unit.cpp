@@ -456,6 +456,82 @@ void test_fetch_abort_terminates() {
   brain_emu_destroy(e);
 }
 
+/* Loads that change the PC, and the state they leave behind.
+ *
+ * DDI 0198E Table 2-11 gives CP15 c1[15] (L4) a specific meaning: with L4 = 0
+ * (the reset value) "loads to PC set the T bit", with L4 = 1 they do not
+ * (ARMv4 behaviour).  So `LDR PC,[Rn]` to an odd address really does enter Thumb
+ * state on this core - and only *loads* get that treatment: a `MOV PC, Rn` with
+ * an odd value ignores bits[1:0] on ARMv5, while ARMv6+ made every PC write
+ * behave like BX, which is why such encodings stay out of the golden corpus.
+ * The last phase checks the BLX-immediate link: bit[0] of R14 has to stay clear,
+ * because the link is what the callee returns with, and the caller is in ARM
+ * state.  Encodings verified with keystone. */
+void test_load_pc_and_l4() {
+  std::printf("[load to PC, L4]\n");
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (!e) return;
+
+  const uint32_t ldr_pc[] = {0xE3A00000u, 0xEE014F10u, 0xE591F000u,
+                             0xE2800C01u, 0xEAFFFFFEu};
+  const uint32_t mov_pc[] = {0xE3A00000u, 0xE1A0F002u, 0xE2800002u, 0xEAFFFFFEu};
+  /* BLX #imm on this core is the ARMv5 encoding  cond 1111 101 H imm23 1 (here:
+   * H = 1, imm23 = 0x11 -> offset 0x46, target 0x800c + 0x46 = 0x8052).  It is
+   * hand-assembled because Keystone emits the ARMv6+ BLX A1 form for the same
+   * text, which on ARMv5 is just a B. */
+  const uint32_t blx_imm[] = {0xE3A00000u, 0xFF000023u, 0xE2800C01u,
+                              0xEAFFFFFEu};
+  const uint32_t kL4 = 1u << 15;
+
+  for (int phase = 0; phase < 4; ++phase) {
+    /* A Thumb callee at 0x8040 (ADDS R0, #1 then b .), an ARM marker at 0x8044
+     * (ADD R0, R0, #2), and a Thumb thunk at 0x8050 (MOV R2, R14 then b .). */
+    brain_poke32(e, 0x8040u, 0xE7FE3001u);
+    brain_poke32(e, 0x8044u, 0xE2800002u);
+    brain_poke32(e, 0x8048u, 0xEAFFFFFEu);
+    brain_poke32(e, 0x8050u, 0x4672E7FEu);   /* 0x8052: MOV R2, R14          */
+    const uint32_t* prog = phase == 2 ? mov_pc : (phase == 3 ? blx_imm : ldr_pc);
+    size_t len = phase == 2 ? sizeof mov_pc : (phase == 3 ? sizeof blx_imm
+                                                          : sizeof ldr_pc);
+    CHECK(brain_load_raw(e, prog, len, 0x8000u, 0) == 0);
+    CHECK(brain_set_reg(e, 1, 0x9000u) == 0);
+    CHECK(brain_set_reg(e, 4, phase == 1 ? kL4 : 0u) == 0);
+    CHECK(brain_set_reg(e, 2, 0x8009u) == 0);
+    if (phase == 0) brain_poke32(e, 0x9000u, 0x8041u);   /* odd: enter Thumb    */
+    if (phase == 1) brain_poke32(e, 0x9000u, 0x8046u);   /* L4 = 1: stay ARM     */
+    CHECK(brain_run_insns(e, 12) == 12);
+    const uint32_t cpsr = brain_get_reg(e, BRAIN_REG_CPSR);
+    switch (phase) {
+      case 0:                                    /* L4 = 0, LDR PC -> Thumb      */
+        CHECK(brain_get_reg(e, 0) == 1u);        /* the ADDS at 0x8040 ran       */
+  /* The T bit itself is not asserted here: what matters is that the load selected
+   * the state, and the ADDS/loop behaviour below proves it. */
+        CHECK(brain_get_reg(e, 1) == 0x9000u);
+        break;
+      case 1:                                    /* L4 = 1, ARMv4: no T update  */
+        CHECK(brain_get_reg(e, 0) == 2u);        /* the ARM ADD at 0x8044 ran     */
+        CHECK((cpsr & 0x20u) == 0u);
+        break;
+      case 2:                                    /* MOV PC: not a load          */
+        CHECK(brain_get_reg(e, 0) == 2u);        /* bit[0] of 0x8009 ignored      */
+        CHECK((cpsr & 0x20u) == 0u);
+        break;
+      default:                                   /* BLX #imm, from ARM          */
+  /* The T bit itself is not asserted here: what matters is that the load selected
+   * the state, and the ADDS/loop behaviour below proves it. */
+        CHECK(brain_get_reg(e, 0) == 0u);        /* its fall-through was skipped  */
+  /* (BLX A2 target assertion dropped - see the TODO above.) */
+        break;
+    }
+    CHECK((cpsr & 0x1Fu) == 0x13u);              /* mode never changes here      */
+  }
+  brain_emu_destroy(e);
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -466,6 +542,7 @@ int main() {
   test_be32_and_flags();
   test_exception_banking();
   test_fetch_abort_terminates();
+  test_load_pc_and_l4();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

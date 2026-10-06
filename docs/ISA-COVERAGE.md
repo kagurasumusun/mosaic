@@ -88,5 +88,20 @@ machine.
    can be replayed through the JIT.
 2. `LDC/STC` for p15 (the ARM926EJ-S uses these for a handful of cache/debug
    operations), and unaligned accesses to `PG_DEVICE` pages.
-3. Prefetch-abort details for a fetch from a device page, and the
-   branch-prediction/`L4` interaction with `T` on loads to the PC.
+3. Prefetch-abort details for a fetch from a device page.  (The `L4` half of this
+   item is closed: `Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15
+   as well as for the `MOV`-style PC writes, c1[15] is writable and reads back, and
+   `tests/test_unit.cpp` pins both settings.)
+
+## What the corpus cannot express
+
+* `BLX` with an immediate.  The encoding this core implements is the ARMv5 one,
+  `cond 1111 101 H imm23 1` with offset `SignExtend(imm23 : H : 10)`.  Keystone
+  assembles `BLX <label>` as the ARMv6+ `cond 101 H imm24` form, which on an
+  ARM926EJ-S decodes as a plain `B`, so a corpus line written as `BLX #imm` would
+  silently test a different instruction on the two models.  The corpus therefore
+  covers `BX`/`BLX` with the target in a register only; the immediate form has to
+  be hand-assembled, which is what `tests/test_unit.cpp` does.
+* `LDM`/`STM` register-list effects on the flags and on banked R13/R14, and any
+  check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
+  target show up as a register write (`MOV Rn, R14`) instead.

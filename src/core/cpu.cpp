@@ -346,6 +346,9 @@ void Cpu::step_one() {
    * the same abort for ever - `cur` never moved to the vector, nothing retired,
    * and no bounded run could terminate. */
   fetch_and_execute();
+  /* Retired: print it before deciding whether it raised a trap, so the line
+   * that caused an exception is visible too. */
+  if (BRAIN_UNLIKELY(trace_en)) trace_instruction();
   if (BRAIN_UNLIKELY(exectrap)) {
     u32 e = exectrap;
     take_exception(e);

@@ -298,6 +298,14 @@ struct Cpu {
   u32 cur;          /* +0x44  address of the instruction being executed      */
   u32 insn;         /* +0x48  instruction word (SWI/undef reporting)         */
   u32 cpsr;         /* +0x4C                                              */
+  /* CPSR.T (bit 5) is not writable by MSR, but it must always mirror the live
+   * state: MRS reads it, an exception entry saves it into SPSR_<mode>, and the
+   * matching return restores the state from there.  Every state change in the
+   * interpreter therefore goes through set_thumb(). */
+  ALWAYS_INLINE void set_thumb(int t) {
+    thumb = (u32)t;
+    cpsr = (cpsr & ~CPSR_T) | (t ? CPSR_T : 0u);
+  }
   u32 vflag;        /* +0x50  V flag (always materialised)                 */
   u32 thumb;        /* +0x54  1 while in Thumb state                       */
   u32 halted;       /* +0x58  low-power: waiting for an interrupt           */
@@ -470,7 +478,7 @@ struct Cpu {
   u32 arm_ldst_offset(const ArmDec& d) const;
   void arm_block_addrs(const ArmDec& d, u32 n, u32* start, u32* wb) const;
   void restore_cpsr_from_spsr();
-  void load_pc(u32 value);
+  void load_pc(u32 value, bool from_load = false);
   void apply_msr(u32 mask, u32 val, bool spsr);
   static bool valid_mode(u32 m);
   void trace_instruction();

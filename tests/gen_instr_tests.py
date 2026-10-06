@@ -351,10 +351,15 @@ def branch_cases(rnd):
         out.append(("arm_b%s" % cond, "arm",
                     ["MOV R1, #1", "B%s 0x%x" % (cond, CODE_BASE + 0xC),
                      "ADD R0, R0, #0x100", "ADD R0, R0, #1"], None, None, 3))
-        out.append(("thumb_b%s" % cond, "thumb",
-                    ["MOV R1, #1", "B%s 0x%x" % (cond, CODE_BASE + 0x8),
-                     "ADDS R0, R0, #0x40", "ADDS R0, #1", "ADDS R0, #2"],
-                    None, None, 3))
+        # Two targets: CODE+8 is word aligned, CODE+0xA is only halfword
+        # aligned.  A core that masks a Thumb branch target to 4 bytes (as the
+        # ARM state rule requires) gets the second one wrong, and the slots carry
+        # distinct ADDS immediates so the difference shows up in R0.
+        for tgt in (0x8, 0xA):
+            out.append(("thumb_b%s_%x" % (cond, tgt), "thumb",
+                        ["MOV R1, #1", "B%s 0x%x" % (cond, CODE_BASE + tgt)] +
+                        ["ADDS R0, R0, #0x%x" % (i + 1) for i in range(6)],
+                        None, None, 3))
     # BX / BLX with the target in a register (R3 is preset to a code address)
     r3 = [0x12345678, 0x9ABCDEF0, 0xFFFFFFFF, CODE_BASE + 8, DATA_BASE,
           DATA_BASE + 0x40, DATA_BASE + 0x80, 0x11112222, 0x33334444,

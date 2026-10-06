@@ -87,27 +87,31 @@ ALWAYS_INLINE void Cpu::restore_cpsr_from_spsr() {
   }
   cpsr = spsr;
   vflag = (spsr >> 28) & 1;
-  thumb = (spsr & CPSR_T) ? 1 : 0;
+  set_thumb((spsr & CPSR_T) ? 1 : 0);
   priv = (cpsr & CPSR_MODE_M) != MODE_USR;
   sync_cp15_caches();
 }
 
-/* A write to R15: PC <- value.  In Thumb state a PC write is a *branch with
- * exchange* (bit[0] selects the state, exactly as BX does); in ARM state the
- * low two bits are ignored and the state is unchanged unless CPSR was reloaded
- * from SPSR first (LDM/LDR/MOV-with-S, see restore_cpsr_from_spsr).
- * `cur` and R15 are refreshed by the next fetch, which is what keeps the
- * pipeline rule regs[15] == cur + (thumb ? 4 : 8) true everywhere. */
-ALWAYS_INLINE void Cpu::load_pc(u32 value) {
-  if (thumb) {
-    const bool to_thumb = (value & 1u) != 0;
-    npc = to_thumb ? (value & ~1u) : (value & ~3u);
-    if (!to_thumb) {
-      thumb = 0;
-      cpsr &= ~(CPSR_T | CPSR_J);
-    }
-  } else {
-    npc = value & ~3u;
+/* A write to R15 that is not a plain branch.  `from_load` marks a load whose
+ * result feeds the PC (LDR, LDRH, LDM/POP with R15 in the list): DDI 0198E
+ * Table 2-11 gives that case its own rule through CP15 c1[15] (L4) -
+ * "0 = loads to PC set the T bit, 1 = loads to PC do not set the T bit (ARMv4
+ * behaviour)" - and L4 resets to 0, so an odd load target does change state.
+ * Every other writer of the PC (MOV, ORR, ADD, MUL, MRS, MRC) ignores bits[1:0]
+ * and cannot change state on this core; ARMv6+ made those behave like BX, so the
+ * golden emulator disagrees there and the generator keeps such encodings out of
+ * the corpus instead of the core following it.  A PC restored together with an
+ * SPSR restore (MOVS-into-PC, LDM-with-S) takes its state from the SPSR and
+ * passes from_load = false.  `cur` and R15 are refreshed by the next fetch,
+ * which keeps the pipeline rule regs[15] == cur + (thumb ? 4 : 8) true
+ * everywhere. */
+ALWAYS_INLINE void Cpu::load_pc(u32 value, bool from_load) {
+  const bool set_t = from_load && !(cp15.c[C1_CTRL] & SCTLR_L4);
+  const bool to_thumb = set_t ? (value & 1u) != 0 : thumb != 0;
+  npc = to_thumb ? (value & ~1u) : (value & ~3u);
+  if (set_t && to_thumb != (thumb != 0)) {
+    set_thumb(to_thumb ? 1u : 0u);
+    cpsr = (cpsr & ~(CPSR_T | CPSR_J)) | (to_thumb ? u32(CPSR_T) : 0u);
   }
   if (jit) jit->flush_pending_link();
   cycles += CycleModel::kPcLoad;
@@ -442,7 +446,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     if (d.l) {
       const u32 v = mem_read(ea, sz, flags);
       if (BRAIN_UNLIKELY(exectrap)) return;      /* abort: Rn not updated */
-      if (d.rd == 15) load_pc(v);
+      if (d.rd == 15) load_pc(v, /*from_load=*/true);
       else regs[d.rd] = v;
     } else {
       /* STR R15 stores the instruction address + 8, i.e. the pipeline value. */
@@ -476,7 +480,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
       u32 v = mem_read(ea, sz, flags);
       if (BRAIN_UNLIKELY(exectrap)) return;
       if (d.signed_) v = sz == 2 ? (u32)(s32)(s16)v : (u32)(s32)(s8)v;
-      if (d.rd == 15) load_pc(v);
+      if (d.rd == 15) load_pc(v, /*from_load=*/true);
       else regs[d.rd] = v;
     } else {
       /* A5.3.3: in this encoding space a store names its source in bits[15:12]
@@ -583,7 +587,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     if (load && (list & (1u << 15))) {
       const u32 newpc = regs[15];
       if (restore_flags) restore_cpsr_from_spsr();
-      load_pc(newpc);
+      load_pc(newpc, /*from_load=*/!restore_flags);
     }
     cycles += CycleModel::kAccess * (n - 1);
     return;
@@ -602,7 +606,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
       regs[14] = (cur + 2) | 1u;
       if (d.kind == 6) {                       /* BLX: switch to ARM state     */
         npc = target & ~3u;
-        thumb = 0;
+        set_thumb(0);
         cpsr &= ~(CPSR_T | CPSR_J);
         cycles += CycleModel::kBranch + CycleModel::kPcLoad;
         if (jit) jit->flush_pending_link();
@@ -619,18 +623,26 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     if (d.kind == 1) regs[14] = cur + 4;                    /* BL        */
     /* kind 3 = Thumb B<cond>, already filtered by Cpu::exec_thumb. */
     if (d.kind == 2) {                                       /* BLX #imm */
-      /* BLX to Thumb: R14 = next insn, bit[0] set so that `BX R14` returns
-       * in Thumb state (ARM926EJ-S TRM, BLX <label>). */
-      regs[14] = (cur + 4) | 1u;
-      thumb = 1;
+      /* The link carries the state to return *to*.  The caller is in ARM state,
+       * so bit[0] stays clear: `BX R14`, or `POP {PC}` with L4 = 0 (where a load
+       * takes its state from bit[0]), then lands back in ARM.  Setting bit[0]
+       * here would send the return straight back into the Thumb callee. */
+      regs[14] = cur + 4;
+      set_thumb(1);
       cpsr |= CPSR_T;
       cpsr &= ~CPSR_J;
-      npc = target & ~3u;
+      /* The target already carries bit[1] from H, so only bit[0] is dropped -
+       * masking to a word boundary would discard the half that selects between
+       * two adjacent Thumb instructions. */
+      npc = target & ~1u;
       cycles += CycleModel::kBranch + CycleModel::kPcLoad;
       if (jit) jit->flush_pending_link();
       return;
     }
-    npc = target & ~3u;
+    /* A Thumb branch target is only halfword aligned: applying the ARM rule here
+     * dragged every target that is 2 mod 4 back onto the previous instruction,
+     * which is how a `b .` looped two bytes early. */
+    npc = thumb ? (target & ~1u) : (target & ~3u);
     cycles += CycleModel::kBranch;
     if (jit) jit->flush_pending_link();
     return;
@@ -655,7 +667,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
       if (d.kind == 1) regs[14] = cur + 4;             /* BLX from ARM     */
       npc = to_thumb ? (t & ~1u) : (t & ~3u);
     }
-    thumb = to_thumb ? 1 : 0;
+    set_thumb(to_thumb ? 1 : 0);
     cpsr = (cpsr & ~(CPSR_T | CPSR_J)) | (to_thumb ? u32(CPSR_T) : 0u);
     cycles += CycleModel::kBranch;
     if (jit) jit->flush_pending_link();   /* the link target just changed  */

@@ -123,3 +123,27 @@ in `Stats::helper_calls`). The block cache, the links, the code watch and the
 currently delegates to `Cpu::fetch_and_execute`. `build/bench --jit` prints
 `interp N jit 0` until that changes — that line is the test that a backend has
 been wired in.
+
+## Interworking, the T bit, and branch targets
+
+`Cpu::thumb` is the single source of truth for the current state, and bit 5 of the
+stored `cpsr` is kept equal to it by `Cpu::set_thumb()`.  Three readers look at
+bit 5 rather than at `Cpu::thumb`: `MRS Rd, CPSR`, the `SPSR_<mode>` written on
+exception entry (which is what lets `MOVS PC, R14` return to the state the
+exception came from), and `brain_get_reg(BRAIN_REG_CPSR)`.  `MSR` cannot write bit
+5 - the mode/flag write masks it out - so the mirror is only ever updated by an
+instruction that is architecturally allowed to change the state: `BX`/`BLX`, the
+Thumb long-branch pair, `BLX` with an immediate, and a load into R15.
+
+Branch target masking follows the state, not the encoding: a Thumb target is masked
+to 2 bytes, an ARM target to 4.  For `BLX` with an immediate the low half of the
+offset *is* bit 1 of the target, so masking that to a word boundary discards a real
+address bit; masking a Thumb branch target to a word boundary drags every target
+that is 2 mod 4 back onto the preceding halfword, which is how a `b .` loop came to
+run two bytes early.
+
+`Cpu::load_pc()` honours SCTLR.L4 (c1[15], reset 0): with L4 = 0 a load into the PC
+takes the state from bit 0 of the loaded value and clears that bit, with L4 = 1 it
+leaves the state alone and drops bits[1:0] instead.  Non-load writes to the PC in
+ARM state (including `MOV PC, Rn` and `LDM` without the S bit) ignore bits[1:0];
+only an SPSR-restoring return takes the state from the saved `CPSR.T`.
