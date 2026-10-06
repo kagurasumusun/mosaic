@@ -363,7 +363,9 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     /* SMLALxy: 32-bit accumulate into RdLo:RdHi, Q set on overflow */
     const s64 prod = (s64)((s32)(s16)hw_operand(regs[d.rm], d.kind & 1)) *
                      (s64)((s32)(s16)hw_operand(regs[d.rs], (d.kind >> 1) & 1));
-    const s64 acc = (((s64)(s32)regs[d.ra]) << 32) | regs[d.rd];
+    /* The pair is assembled in the unsigned domain and reinterpreted: a left
+     * shift of a negative s64 is undefined, and the bits are the same. */
+    const s64 acc = (s64)((((u64)regs[d.ra]) << 32) | regs[d.rd]);
     const s64 res = prod + acc;
     /* A3.5.3: "SMULxy and SMLALxy do not affect any flags" -- no Q, no NZ. */
     if (d.rd != 15) regs[d.rd] = (u32)(u64)res;

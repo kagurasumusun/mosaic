@@ -340,7 +340,9 @@ u32 decode_arm(u32 insn, ArmDec* d) {
       return AOP_B;
     }
     s32 off = (s32)(BF(insn, 23, 0) << 8) >> 8;           /* sign extend @24 */
-    d->imm24 = (u32)(off << 2);                            /* imm24:00        */
+    /* imm24:00.  Scaling happens in the unsigned domain: `off << 2` with a
+     * negative `off` is undefined, and the two bit patterns are identical. */
+    d->imm24 = (u32)off << 2;
     d->kind = BIT(insn, 24) ? 1 : 0;   /* 0 = B, 1 = BL                   */
     d->op = AOP_B;
     return AOP_B;

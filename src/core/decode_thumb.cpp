@@ -407,32 +407,32 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
     d->op = AOP_B;
     d->kind = 3;
     d->cond = cond;
-    d->imm24 = (u32)(sext(imm8, 8) << 1);
+    d->imm24 = (u32)sext(imm8, 8) << 1;
     return 0;
   }
 
   case 28:                                             /* B #imm11*2 */
     d->op = AOP_B;
     d->kind = 0;
-    d->imm24 = (u32)(sext(bits(hw, 10, 0), 11) << 1);
+    d->imm24 = (u32)sext(bits(hw, 10, 0), 11) << 1;
     return 0;
 
   case 29:                                             /* BLX to ARM (2nd) */
     d->op = AOP_B;
     d->kind = 6;
-    d->imm24 = (u32)(sext(bits(hw, 10, 0), 11) << 1);
+    d->imm24 = (u32)sext(bits(hw, 10, 0), 11) << 1;
     return 0;
 
   case 30:                                             /* long-branch setup */
     d->op = AOP_B;
     d->kind = 4;
-    d->imm24 = (u32)(sext(bits(hw, 10, 0), 11) << 12);
+    d->imm24 = (u32)sext(bits(hw, 10, 0), 11) << 12;
     return 0;
 
   case 31:                                             /* BL (2nd half) */
     d->op = AOP_B;
     d->kind = 5;
-    d->imm24 = (u32)(sext(bits(hw, 10, 0), 11) << 1);
+    d->imm24 = (u32)sext(bits(hw, 10, 0), 11) << 1;
     return 0;
   }
 
