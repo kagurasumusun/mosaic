@@ -179,6 +179,7 @@ def run_model(blob, thumb, pc, cpsr, regs, steps, peek=()):
 
 
 def check(cases, thumb, pcs, label, fails, compared, skipped, mask=MASK):
+    refused = set()
     for src, steps in cases:
         blob = src if isinstance(src, bytes) else asm(src, thumb)
         if blob is None:
@@ -195,9 +196,15 @@ def check(cases, thumb, pcs, label, fails, compared, skipped, mask=MASK):
                 got[0] &= mask
                 try:
                     want, wpc, upeek = run_model(blob, thumb, pc, cpsr, regs, steps, ())
-                except Exception:
+                except Exception as ex:
                     skipped[0] += 1      # the model refuses the encoding (unallocated
-                    continue             # fields in *my* word): nothing to compare
+                                         # fields in *my* word, or a model-side quirk
+                                         # like PC-as-operand reading unmapped bytes):
+                                         # nothing to compare - print it once per shape
+                    if blob not in refused:
+                        refused.add(blob)
+                        print("  note: model refuses %r (%s)" % (src, type(ex).__name__))
+                    continue
                 want[0] &= mask
                 compared[0] += 1
                 tag = "%s pc=%04x cpsr=%08x: %s" % (

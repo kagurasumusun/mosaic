@@ -252,16 +252,17 @@ int main(int argc, char** argv) {
   brain_emu_t* e = brain_emu_create(&cfg);
   if (!e) { std::fprintf(stderr, "create failed\n"); return 2; }
   /* The load and the register seed are shared by both modes - and they have to come
-   * before anything runs.  `brain_load_raw` *enters* the payload, and the core treats
-   * regs[15] as the instruction it has already prefetched, so the seed goes on top of
-   * the entry: an emulator whose R15 was left at 0 fetches from the vector table and
-   * the program under test is never executed, which reads back as "state unchanged"
-   * and a differential test then reports the seed as the core's answer.  Seeding R15
-   * is also an interworking branch as far as the core is concerned (a load into PC
-   * takes the state from bit[0] while SCTLR.L4 = 0), so the Thumb case asks for
-   * `pc | 1`; without that the halfwords are decoded as ARM instructions instead.
-   * Values the caller omitted default to `0x1000 + 0x1111 * index`, except R15, which
-   * has to land on the first word. */
+   * before anything runs.  `brain_load_raw` *enters* the payload: it seeds npc/cur
+   * with the load address and takes CPSR.T from its `thumb` argument, so the core
+   * already holds the first instruction of the program unexecuted and a run started
+   * right here begins at `pc`.  The explicit seeds below exist to override, never to
+   * rescue: `--regs` may supply any of R0-R15 and every other slot defaults to
+   * `0x1000 + 0x1111 * index`, except R15, which lands on the first word.  In Thumb
+   * mode R15 is re-seeded as `pc | 1`: a store into PC is an interworking branch as
+   * far as the core is concerned (bit[0] carries the state while SCTLR.L4 = 0,
+   * ARM926EJ-S TRM 2.3.2), so the explicit write has to say what the CPSR poke one
+   * line above already set - a `--cpsr` value without T would otherwise leave the
+   * halfwords decoding as ARM instructions. */
   if (thumb) {
     std::vector<uint16_t> hw;
     for (uint32_t w : words) {
@@ -291,12 +292,6 @@ int main(int argc, char** argv) {
    * instruction and is stored as its two halfwords in order (first halfword at the
    * lower address, as the assembler emits it). */
   if (exec_only) {
-    /* --exec (implied by --thumb): run N instructions through the interpreter and
-     * print the state, with no translation attempt at all.  This is how
-     * tests/test_oracle.py and tests/test_shifter.py compare the core against a
-     * reference model; the JIT path below prints PRE/POST around a *translated*
-     * block instead, and in --thumb mode a value wider than 16 bits is a 32-bit
-     * Thumb instruction stored as its two halfwords in order. */
     const uint32_t n = steps ? steps : (uint32_t)words.size();
     std::printf("MODE %s\n", thumb ? "thumb" : "arm");
     std::printf("PRE %08x", brain_get_reg(e, BRAIN_REG_CPSR));
