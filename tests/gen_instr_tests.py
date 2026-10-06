@@ -357,7 +357,7 @@ def branch_cases(rnd):
         # distinct ADDS immediates so the difference shows up in R0.
         for tgt in (0x8, 0xA):
             out.append(("thumb_b%s_%x" % (cond, tgt), "thumb",
-                        ["MOV R1, #1", "B%s 0x%x" % (cond, CODE_BASE + tgt)] +
+                        ["MOVS R1, #1", "B%s 0x%x" % (cond, CODE_BASE + tgt)] +
                         ["ADDS R0, R0, #0x%x" % (i + 1) for i in range(6)],
                         None, None, 3))
     # BX / BLX with the target in a register (R3 is preset to a code address)

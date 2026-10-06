@@ -479,11 +479,13 @@ void test_load_pc_and_l4() {
   const uint32_t ldr_pc[] = {0xE3A00000u, 0xEE014F10u, 0xE591F000u,
                              0xE2800C01u, 0xEAFFFFFEu};
   const uint32_t mov_pc[] = {0xE3A00000u, 0xE1A0F002u, 0xE2800002u, 0xEAFFFFFEu};
-  /* BLX #imm on this core is the ARMv5 encoding  cond 1111 101 H imm23 1 (here:
-   * H = 1, imm23 = 0x11 -> offset 0x46, target 0x800c + 0x46 = 0x8052).  It is
-   * hand-assembled because Keystone emits the ARMv6+ BLX A1 form for the same
-   * text, which on ARMv5 is just a B. */
-  const uint32_t blx_imm[] = {0xE3A00000u, 0xFF000023u, 0xE2800C01u,
+  /* BLX #imm here means the ARMv5 encoding cond 1111 101 H imm23 1, whose
+   * offset is SignExtend(imm23 : H : 10).  With H = 1 and imm23 = 0x11 the
+   * offset is 0x46, so from 0x8004 (PC = 0x800c) the target is 0x8052 - the
+   * halfword-aligned Thumb thunk below.  The word is hand-assembled because
+   * Keystone assembles `BLX <label>` as the ARMv6+ A1 form instead, which this
+   * core decodes as something else entirely. */
+  const uint32_t blx_imm[] = {0xE3A00000u, 0xFB000023u, 0xE2800C01u,
                               0xEAFFFFFEu};
   const uint32_t kL4 = 1u << 15;
 
@@ -508,8 +510,7 @@ void test_load_pc_and_l4() {
     switch (phase) {
       case 0:                                    /* L4 = 0, LDR PC -> Thumb      */
         CHECK(brain_get_reg(e, 0) == 1u);        /* the ADDS at 0x8040 ran       */
-  /* The T bit itself is not asserted here: what matters is that the load selected
-   * the state, and the ADDS/loop behaviour below proves it. */
+        CHECK((cpsr & 0x20u) != 0u);             /* bit[0] selected Thumb        */
         CHECK(brain_get_reg(e, 1) == 0x9000u);
         break;
       case 1:                                    /* L4 = 1, ARMv4: no T update  */
@@ -520,12 +521,13 @@ void test_load_pc_and_l4() {
         CHECK(brain_get_reg(e, 0) == 2u);        /* bit[0] of 0x8009 ignored      */
         CHECK((cpsr & 0x20u) == 0u);
         break;
-      default:                                   /* BLX #imm, from ARM          */
-  /* The T bit itself is not asserted here: what matters is that the load selected
-   * the state, and the ADDS/loop behaviour below proves it. */
-        CHECK(brain_get_reg(e, 0) == 0u);        /* its fall-through was skipped  */
-  /* (BLX A2 target assertion dropped - see the TODO above.) */
+      default: {                                 /* BLX #imm, ARM -> Thumb       */
+        const uint32_t r2 = brain_get_reg(e, 2);
+        CHECK(brain_get_reg(e, 0) == 0u);        /* the fall-through was skipped  */
+        CHECK((cpsr & 0x20u) != 0u);             /* the immediate entered Thumb   */
+        CHECK(r2 == 0x8008u);                    /* MOV R2, R14 at the target     */
         break;
+      }
     }
     CHECK((cpsr & 0x1Fu) == 0x13u);              /* mode never changes here      */
   }

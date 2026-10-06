@@ -41,7 +41,7 @@ machine.
 | Loads and stores | PC-relative, SP-relative, register offset (all 8 forms incl. `LDRH LDSH LDSB STRH`), immediate offset halfword | implemented, checked with the base register inside the compared memory window |
 | Miscellaneous | `NOP`-class hints, `ADD Rd, PC/SP`, `ADDS/SUBS` with 8-bit immediate, `ADD SP, #imm`, `MOV R8-R15` | implemented, checked |
 | Stack operations | `PUSH POP` (with and without `LR`), `LDMIA STMIA` | implemented, checked. `POP` never restores CPSR — only the T bit follows the branch, as on hardware |
-| Conditional branch, SWI | `BEQ..BVC`, `SWI` | implemented, checked |
+| Conditional branch, SWI | `BEQ..BVC`, `SWI` | implemented, checked: all 14 conditions, each with a target that is word aligned and one that is only halfword aligned, so a wrongly scaled offset or a target masked to 4 bytes shows up as a different R0 |
 | Block transfer direction | `STMIA LDMIA` are both "increment after", `P = 0, U = 1, W = 1` | checked |
 
 ## Deliberately undefined
@@ -92,6 +92,19 @@ machine.
    item is closed: `Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15
    as well as for the `MOV`-style PC writes, c1[15] is writable and reads back, and
    `tests/test_unit.cpp` pins both settings.)
+
+## How a case can end up not covered at all
+
+`gen_instr_tests.py` assembles each line with Keystone and *rejects* any line whose
+word is not an ARMv5 16-bit Thumb / classic ARM encoding (a `MOVS R1, #1` written
+where Thumb-16 needs it, say, and Keystone answers with a 32-bit `mov.w`).  A
+rejected line drops the whole case, and the run reports it under "skipped".  That
+is the right failure mode - the corpus never contains an encoding this core does not
+implement - but it does mean a table row can claim coverage the file does not have:
+the Thumb conditional branches were listed as checked while every one of them was
+being skipped, which is how a Thumb `B<cond>` reading its condition field from the
+wrong five bits survived.  When adding a row here, confirm the case count moved
+(`wrote N cases`) rather than trusting the generator to have emitted it.
 
 ## What the corpus cannot express
 

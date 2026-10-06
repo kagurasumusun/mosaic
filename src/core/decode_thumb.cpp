@@ -385,7 +385,12 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
       d->imm24 = imm8;
       return 0;
     }
-    const u32 cond = bits(hw, 9, 6);
+    /* cond sits in bits[11:8] (1101 cond:4 imm8), *not* in [9:6]: reading the
+     * wrong field still produced the right branch target (the offset is
+     * bits[7:0]) but evaluated a different condition, and eight of the fifteen
+     * conditions happen to agree with the true one for any flag set, which is
+     * why this hid for so long. */
+    const u32 cond = bits(hw, 11, 8);
     if (cond >= 0xE) { d->op = AOP_UNDEF; return 0; }  /* NV/AL are v6+       */
     d->op = AOP_B;
     d->kind = 3;
