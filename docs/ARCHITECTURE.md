@@ -13,42 +13,65 @@ ARM926EJ-S is the first CPU module, not the shape of the emulator
 (`docs/MODULES.md` is the guide to the split, and to adding a processor).
 
 ```
-include/brainemu/brainemu.h        public C API: create/load/run/state/stats
-include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
-include/brainemu/core/module.h     ModuleInfo, CpuModule, Loader, DeviceModule,
-                                   MonitorModule, BoardModule, ModuleRegistry
-include/brainemu/core/machine.h    MachineConfig, WireSpec, Machine
-                                   (bus + CPU + devices + wires)
-include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
-include/brainemu/device/device.h   Device, FuncDevice, BufferDevice, ConsoleDevice
-include/brainemu/core/monitor.h    Monitor: an observer the run loop reports to
-include/brainemu/loader/loader.h   Loader (probe + load) + ImageInfo
-src/core/bus.cpp                   the address space (RAM, ROM, devices, watch)
-src/core/device.cpp                the device base class and its adapters
-src/core/module.cpp                the registry
-src/core/machine.cpp               build, run, reset, load
-src/loader/elf.cpp                 the elf32 + raw loader modules
-src/modules/builtin.cpp            the list of modules this build contains
-src/modules/timer/                 a device module with an interrupt output
-src/modules/intc/                  a device with interrupt *inputs*: a controller
-src/modules/boards/                board modules: named machine presets
-src/api.cpp                        the C API over the Machine
+core/include/brainemu/brainemu.h    public C API: create/load/run/state/stats
+core/include/brainemu/bus.h         Bus: regions, per-page descriptors, byte access
+core/include/brainemu/module.h      ModuleInfo, CpuModule, Loader, DeviceModule,
+                                    MonitorModule, BoardModule, ModuleRegistry
+core/include/brainemu/machine.h     MachineConfig, WireSpec, Machine
+                                    (bus + CPU + devices + wires)
+core/include/brainemu/cpu.h         CpuCore: the whole CPU contract
+core/include/brainemu/device.h      Device, FuncDevice, BufferDevice
+core/include/brainemu/monitor.h     Monitor: an observer the run loop reports to
+core/include/brainemu/loader.h      Loader (probe + load) + ImageInfo
+core/src/bus.cpp                    the address space (RAM, ROM, devices, watch)
+core/src/device.cpp                 the device base class and its adapters
+core/src/module.cpp                 the registry
+core/src/machine.cpp                build, run, reset, load
+core/src/api.cpp                    the C API over the Machine
+core/tests/test_machine.cpp         the core's suite: it names no machine
 
-src/modules/arm926/arm926.cpp      the ARM926 module: its CPU module + adapter
-src/modules/arm926/state.h         Cpu: the register file, CP15, TLB, inlines
-src/modules/arm926/decode_arm.cpp  ARM instruction -> ArmDec
-src/modules/arm926/decode_thumb.cpp  Thumb halfword -> ArmDec (the same struct)
-src/modules/arm926/interp_arm.cpp  executes an ArmDec: the one semantic engine
-src/modules/arm926/helpers.cpp     decoder helpers + the disassembly printer
-src/modules/arm926/cp15_mmu.cpp    CP15, FCSE, translation, TLB, fault reporting
-src/modules/arm926/jit/            block cache, IR, x86-64 + AArch64 backends
-src/modules/toy8/                  a second CPU module, to keep the core honest
+machines/arm926/arm926.h            what this machine exports (register_arm926_module)
+machines/arm926/cpu/state.h         Cpu: the register file, CP15, TLB, inlines
+machines/arm926/cpu/decode_arm.cpp  ARM instruction -> ArmDec
+machines/arm926/cpu/decode_thumb.cpp  Thumb halfword -> ArmDec (the same struct)
+machines/arm926/cpu/interp_arm.cpp  executes an ArmDec: the one semantic engine
+machines/arm926/cpu/helpers.cpp     decoder helpers + the disassembly printer
+machines/arm926/cpu/cp15_mmu.cpp    CP15, FCSE, translation, TLB, fault reporting
+machines/arm926/jit/                block cache, IR, x86-64 + AArch64 backends
+machines/arm926/tests/              the machine's suites + the ISA corpus
+machines/arm926/machines/arm926/tools/jit_emit.cpp  translate one word, print the block
+machines/toy8/                      a second CPU module, to keep the core honest
+
+devices/console/                    a device (its own header + tests)
+devices/exit/  devices/timer/  devices/intc/
+loaders/elf32/  loaders/raw/        one image format per directory
+boards/boards.cpp                   named machine presets
+builtin/builtin.cpp                 the list of what this build contains
+testkit/test_support.h              what every suite shares (CHECK, LevelLog, ...)
+tools/                              brainemu (runner), bench (throughput)
 ```
+
+**The layout rule.**  `core/` is the foundation and names no machine, device or
+loader; everything else is a component of exactly one kind, one directory per
+module, and the directory holds the component's sources, the header that declares
+its single `register_*()`, and a `tests/` directory with the suites that belong to
+it.  Nothing else in the tree names that component: the build globs the kind's
+directories, and `builtin/builtin.cpp` includes the component headers and calls
+those functions.  A machine therefore owns its interpreter, its JIT and its
+reference tests; a device owns its registers and its tests; and a build that drops
+a component drops two lines in one file.
 
 The core talks to a processor only through `CpuCore`, and only at *slice*
 boundaries - run a budget, step once, read a register, reset.  Nothing in
-`src/core` knows an opcode, a CPSR or a Thumb bit; nothing in
-`src/modules/arm926` knows what a device is.  Two seams are worth naming here
+`core/src` knows an opcode, a CPSR or a Thumb bit; nothing in
+`machines/arm926/` knows what a device is.  Two seams are worth naming here
+because they used to be the other way round:
+
+
+The core talks to a processor only through `CpuCore`, and only at *slice*
+boundaries - run a budget, step once, read a register, reset.  Nothing in
+`core/src` knows an opcode, a CPSR or a Thumb bit; nothing in
+`machines/arm926/` knows what a device is.  Two seams are worth naming here
 because they used to be the other way round:
 
 * `Bus::set_store_observer(fn, user)` is how the ARM module learns that a store
@@ -94,7 +117,7 @@ second interpreter.
   Thumb long branch links
   `(cur + 2) | 1` in the first halfword and folds the second half into it (the
   pair is two independent instructions on this core, so an interrupted sequence
-  behaves as on hardware). `tests/data/corpus.txt` locks the branch rules down:
+  behaves as on hardware). `machines/arm926/tests/data/corpus.txt` locks the branch rules down:
   every `B/BL` case lands on one of twelve slots with a unique effect and moves
   the link into a general register, so both a mis-scaled offset and a wrong link
   change a compared register.
@@ -123,7 +146,7 @@ second interpreter.
   wedges any bounded run instead of faulting 200 times.
 * MMU off means **PA = MVA = VA**: no FCSE, no top-byte clearing. i.MX28 puts
   its peripherals at 0x80000000, so boot code must be able to store there before
-  a page table exists (`tests/test_unit.cpp` locks this in).
+  a page table exists (`machines/arm926/tests/test_arm926.cpp` locks this in).
 * FCSE (MMU on): `MVA = VA + (FCSE_PID x 32MB)` for `VA < 32MB`, addresses above
   32MB unmodified, PID is 7 bits, and entry-based cache/TLB operations see
   `VA == MVA` (DDI 0198E 2.3 "FCSE PID Register").
@@ -144,7 +167,7 @@ second interpreter.
 `Machine::run_insns`/`run_cycles`/`step` are the only places a CPU module is
 asked to execute, and each of them ends the slice in one place: the devices are
 ticked with the cycles the slice charged, and the monitors
-(`brainemu/core/monitor.h`) are told how many instructions retired.  A monitor
+(`core/include/brainemu/monitor.h`) are told how many instructions retired.  A monitor
 is how a tracer, a profiler or a watchpoint layer observes the machine without
 the core growing a feature for it; a hook may call `Machine::stop()`, which is a
 stop at the next slice boundary like any other.
@@ -157,9 +180,34 @@ charged.  The granularity is what a device sees as "now": a timer that expires
 that only ticked its devices when the run *ended* would deliver every interrupt
 at once, at the end, and a guest in a loop would never see one at all.  (That is
 also why a device never invents a cycle: `tick(cycles)` is told how much time
-passed, and the machine is the only thing that knows.)  A slice also ends early
-when the CPU retired fewer instructions than it was asked for, which is what a
-`stop()` - from a monitor, a device or the exit port - looks like from here.
+passed, and the machine is the only thing that knows.)
+
+The slice is bounded on **both** counters, and that is not a detail: a slice
+that only had an instruction budget would never come back from a guest that is
+*not* retiring instructions.  An idle guest is a normal guest - the ARM926EJ-S
+spends its life in `MCR p15, 0, Rd, c7, c0, 4`, its wait-for-interrupt, between
+two timer ticks - and while it waits, an instruction budget cannot advance, the
+device that owns the timer would never be ticked, and the interrupt it is waiting
+for would never be raised: the run would hang rather than idle.  With a cycle
+bound the waiting CPU charges time, the slice ends, the peripherals see it, and
+the line goes up.  That is also why `CpuCore` has one execution primitive,
+`run_until(max_insns, max_cycles)` (0 = no bound on that axis), with `run_insns`
+and `run_cycles` as its two one-sided cases: an engine cannot disagree with
+itself about what "run for a while" means, and both bounds are honoured at once -
+the instruction that crosses the line is interpreted rather than run inside a
+block, so a run never overshoots an instruction budget and overshoots a cycle
+budget by at most that one instruction.
+
+A slice ends early when the CPU stopped (`stop_requested()` - a monitor, a
+device, the exit port), and a slice in which *nothing* happened - no instruction
+retired and no cycle charged - ends the call: it is a CPU that cannot get
+anywhere (a handler whose vector is unmapped re-takes the same abort for ever),
+and reporting empty slices for ever would be a hang nobody can break out of.
+`run_insns` also returns when the CPU is waiting and nothing in the machine can
+raise a line (no wire ends at a CPU input): that wait has no end either.  A
+guest that waits in a machine where something *can* raise a line waits for real -
+the call keeps time running until the interrupt arrives, which is why a caller
+that wants a bounded wait asks for `run_cycles`.
 
 ## Wiring: how a device reaches a CPU
 
@@ -227,7 +275,7 @@ shadowed by the identity fast path would be invisible to the guest, which is a
 much worse failure than a refused mapping. One guest access is one hook call at
 the natural size (`LDR`/`STR` reach `read`/`write` with `size` 4; the byte-level
 fallback is used for sizes/conditions the region cannot serve directly).
-`tests/test_unit.cpp` asserts that count, because a UART FIFO does not tolerate
+`machines/arm926/tests/test_arm926.cpp` asserts that count, because a UART FIFO does not tolerate
 being read four times per instruction.
 
 **A page can hold several devices.** A window with the page to itself claims the
@@ -243,37 +291,30 @@ something actually shares. A shared page is unmapped as a unit.
 
 ## Modules: five kinds, one registry
 
-`include/brainemu/core/module.h` is the whole extension point. A CPU module is a
-`CpuCore` factory; a *device* module is a `Device` factory with a default window;
-a *monitor* module is a `Monitor` factory; a loader module claims an image by
-content; a *board* module is a named machine preset - the whole set of devices,
-monitors and wires a machine starts from, as data. All five register in
-`ModuleRegistry` under an id, and a `Machine` can be assembled out of those ids — `MachineConfig::cpu_id`/`devices[]`/`monitors[]`,
-`Machine::add_device_by_id`/`add_monitor_by_id`, or the C API's
-`brain_add_device_module`/`brain_add_monitor_module`. An unknown id is refused
-with the ids that exist, never silently ignored.
+The tree is one core plus components, and the *tree* says which is which:
 
-A board owns no behaviour: it fills a `MachineConfig` (`BoardModule::configure`),
-which is the same structure a caller fills by hand, so `--board X`, the C API's
-`board` field and a hand-built machine are one code path with three spellings.
-`Machine::init` applies the board's layout first and then the caller's own
-additions on top (its `cpu_id` if it set one, its RAM, and every device, monitor
-and wire it adds), so `--board timer --device exit` is the board *plus* a
-peripheral; that is also why the caller's module lists are merged rather than
-copied (a board and a caller naming the same device would otherwise take the same
-window twice).
+| kind | directory | what it is | who calls it |
+| --- | --- | --- | --- |
+| cpu | `machines/<id>/` | a processor: registers, an instruction set, its timing, its JIT | the machine, at slice boundaries |
+| loader | `loaders/<id>/` | an image format | `Machine::load_image`, by content or by id |
+| device | `devices/<id>/` | something mapped into the address space | the bus, per access; `tick` per slice |
+| monitor | (a component like any other) | an observer of a running machine | the run loop, per slice |
+| board | `boards/` | a named machine preset: CPU, devices, wires | `Machine::init`, once |
 
-The machine owns what it creates and calls `Device::on_attach(*this)` before
-`attach`, which is how a device reaches the machine it is part of (the exit port
-calls `Machine::stop`). Devices and monitors describe themselves through
-`field_count()`/`field_name(i)`/`field_value(i)`: name/value text the core never
-interprets, forwarded by the C API (`brain_device_field_*`) and printed by
-`--stats`. That is the seam that lets a peripheral the tool has never heard of
-still show up in the output.
+Each component directory holds its sources, the header that declares its single
+`register_*()`, and its own `tests/`.  `builtin/builtin.cpp` includes those
+headers and calls those functions - that file is the whole of "what this build
+contains", and it is the only file in the tree that names a component.  The
+build globs the kinds (`machines/*/cpu/*.cpp`, `devices/*/*.cpp`, ...), so adding
+a component touches no build file either.
+
+A machine is therefore not a special case: it is a directory whose files happen to
+be a CPU, and the primary target's directory (`machines/arm926/`) holds its
+interpreter, its JIT, its corpus tests and its own inspection tool.
 
 ## The JIT: one interpreter, a translation layer, two backends
 
-`src/modules/arm926/jit/jit.h` is that module's own JIT contract:
+`machines/arm926/jit/jit.h` is that machine's own JIT contract:
 `Jit::run/run_insns`, `invalidate_range`, `flush_all`, `on_exception`,
 `on_env_change` - internal to the module, because a CPU module is free to have
 an execution engine of its own or none at all (toy8 has none). Between the guest
@@ -326,7 +367,7 @@ reconstructed in one place for both engines.
 
 Correctness is checked by running both engines on identical machines and
 comparing: `test_instr --jit` replays the whole ISA corpus through the cache, and
-`tests/test_jit_x64.cpp` executes emitted blocks in-process against the
+`machines/arm926/tests/test_jit_x64.cpp` executes emitted blocks in-process against the
 interpreter (every data-processing opcode over a spread of operands, entry flag
 sets and rotated immediates; every load/store form over the addresses that matter;
 all fifteen branch conditions against all sixteen flag words; a Thumb program list,

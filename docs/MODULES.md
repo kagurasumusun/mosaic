@@ -7,25 +7,34 @@ project exists — is the *first* CPU module, not the shape of the emulator; a
 second processor is a new directory, not a new emulator.
 
 ```
-include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
-include/brainemu/core/module.h     ModuleInfo, CpuModule, ModuleRegistry
-include/brainemu/core/machine.h    MachineConfig, Machine (bus + CPU + devices)
-include/brainemu/core/monitor.h    Monitor: an observer the run loop reports to
-include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
-include/brainemu/device/device.h   Device + FuncDevice/BufferDevice/ConsoleDevice
-include/brainemu/loader/loader.h   Loader (probe + load) and the image description
-src/core/bus.cpp                   the address space
-src/core/device.cpp                the device base class and its adapters
-src/core/module.cpp                the registry
-src/core/machine.cpp               build, run, reset, load
-src/api.cpp                        the C API over the Machine
-src/loader/elf.cpp                 the two built-in loader modules
-src/modules/builtin.cpp            the list of modules this build contains
-src/modules/arm926/                the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
-src/modules/toy8/                  a second CPU, in 300 lines, on purpose
-src/modules/console/               a device module: a window that collects text
-src/modules/exit/                  a device module: a store that stops the run
+core/include/brainemu/bus.h        Bus: regions, per-page descriptors, byte access
+core/include/brainemu/module.h     ModuleInfo, CpuModule, ModuleRegistry
+core/include/brainemu/machine.h    MachineConfig, Machine (bus + CPU + devices)
+core/include/brainemu/cpu.h        CpuCore: the whole CPU contract
+core/include/brainemu/device.h     Device + FuncDevice/BufferDevice
+core/include/brainemu/loader.h     Loader (probe + load) and the image description
+core/include/brainemu/monitor.h    Monitor: an observer the run loop reports to
+core/src/                          the address space, the registry, the machine, the C API
+machines/arm926/                   the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
+machines/toy8/                     a second CPU, in 300 lines, on purpose
+devices/console/                   a device module: a window that collects text
+devices/exit/                      a device module: a store that stops the run
+devices/timer/  devices/intc/      a device with an output, a device with inputs
+loaders/elf32/  loaders/raw/       one image format per directory
+boards/                            named machine presets
+builtin/builtin.cpp                the list of what this build contains
+testkit/test_support.h             what every suite shares (CHECK, LevelLog, ...)
 ```
+
+**The layout rule** (the long version is in `docs/ARCHITECTURE.md`): `core/` is the
+foundation, and everything else is a component of exactly one kind, one directory
+per module.  A component directory holds its sources, the single header that
+declares its `register_*()`, and a `tests/` directory with its own suites.  The
+build globs the kind's directories and `builtin/builtin.cpp` calls the
+registration functions, so **adding a component is a directory plus two lines in
+that one file** - nothing else in the tree has to be touched, because nothing else
+names it.
+
 
 ## The kinds of module
 
@@ -39,7 +48,7 @@ src/modules/exit/                  a device module: a store that stops the run
 
 All five kinds are *registry* modules and all five are created through a factory
 (`CpuModule`, `Loader`, `DeviceModule`, `MonitorModule`, `BoardModule` in
-`include/brainemu/core/module.h`), so a machine can be assembled out of ids:
+`core/include/brainemu/module.h`), so a machine can be assembled out of ids:
 `MachineConfig::cpu_id`, `devices[]`, `monitors[]`, `wires[]` and `board`, or
 `Machine::add_device_by_id` / `add_monitor_by_id` / `add_wire` after the fact.
 The C API mirrors the latter (`brain_add_device_module`,
@@ -52,22 +61,27 @@ mostly about.
 
 ## The CPU contract
 
-`CpuCore` (`include/brainemu/cpu/cpu.h`) is deliberately small. A module says
+`CpuCore` (`core/include/brainemu/cpu.h`) is deliberately small. A module says
 what it is (`info()`), binds to the address space (`init`), executes when asked
-(`run_insns`, `run_cycles`, `step`), can be interrupted and reset, and reports
+(`run_until`, and its two one-sided cases `run_insns`/`run_cycles`, plus `step`),
+can be interrupted and reset, and reports
 registers and counters. Everything else — opcodes, exceptions, an MMU, a CP15, a
 JIT — belongs to the module and the core never learns about it.
 
 Three rules shape the interface:
 
-1. **Every call is a slice boundary.** `run_insns(n)` means "retire at most `n`
-   instructions", not "tell me about each one". Nothing in the core calls into a
-   module per instruction, so the virtual calls are noise and a module's inner
-   loop stays a plain, non-virtual, monomorphic function over its own state.
-   (This is also why there is no `execute_one_instruction()` hook: an ISA with
-   variable-length or parallel instructions is exactly the case a
-   per-instruction interface punishes. `step()` exists for debuggers, and calls
-   `run_insns(1)` by another name.)
+1. **Every call is a slice boundary.** `run_until(max_insns, max_cycles)` means
+   "retire at most `max_insns` and charge at most `max_cycles` (0 = no bound on
+   that axis), then come back", not "tell me about each one". The two-sided
+   bound is what a machine with devices needs: a guest waiting for an interrupt
+   retires nothing at all, so a slice bounded on instructions alone would never
+   come back and the device that is supposed to wake it would never be ticked.
+   Nothing in the core calls into a module per instruction, so the virtual calls
+   are noise and a module's inner loop stays a plain, non-virtual, monomorphic
+   function over its own state.  (This is also why there is no
+   `execute_one_instruction()` hook: an ISA with variable-length or parallel
+   instructions is exactly the case a per-instruction interface punishes.
+   `step()` exists for debuggers, and is one instruction by another name.)
 2. **The module owns its own view of state.** The core never reads a CPSR. It
    asks `info()` for the register *indices* a caller would use
    (`pc_index`, `status_index`, `saved_status_index`, `sp_index`), and passes
@@ -87,16 +101,24 @@ What the core guarantees a module:
 * one thread per machine; no locks anywhere;
 * `init` is called once per machine build, `reset` whenever the machine resets,
   and the module is destroyed before the bus (see `Machine::~Machine`);
-* the run loop stops calling `run_*` when `request_stop` was honoured: a module
-  that returns from `run_insns` early is normal, and the core will simply ask
-  again (which is why `request_stop` must be sticky until `reset`);
+* the run loop calls `run_until` again only while the slice is productive: a
+  module that returns early is normal (it stopped, or it is waiting), and a
+  slice in which nothing happened ends the call instead of being asked again;
+* a stop request belongs to the run it interrupts.  The machine reads
+  `stop_requested()` after every slice and ends the call there; a module clears
+  it when a run starts, so a stopped machine is runnable again without a reset
+  (a caller that wants it to stay stopped keeps its own flag - a monitor's
+  watchpoint, an exit device);
 * the slice ends in exactly one place - the devices are ticked and the monitors
   are told - so a module never has to know that either exists.
 
 What a module must guarantee the core:
 
-* `run_insns(n)`/`run_cycles(n)` return after at most `n` (0 = until stopped),
-  and never loop forever on their own;
+* `run_until(max_insns, max_cycles)` returns once either bound is met, the CPU
+  is stopped, or it cannot get anywhere (its state is unchanged and no
+  instruction will change it) - a module must never loop for ever on its own
+  waiting for something only the machine can give it.  `run_insns(n)` (0 = until
+  stopped) and `run_cycles(n)` are the two one-sided cases;
 * `insns()` and `cycles()` are the machine's clock: the device tick and every
   counter the C API reports come from them;
 * a fault the module cannot complete is the module's own business to model. The
@@ -105,7 +127,7 @@ What a module must guarantee the core:
 
 ## Adding a CPU: five steps
 
-The worked example is `src/modules/toy8/`, which is deliberately a
+The worked example is `machines/toy8/`, which is deliberately a
 five-register accumulator machine with no MMU and no JIT: it proves the core
 does not need an ARM to run.
 
@@ -118,9 +140,10 @@ does not need an ARM to run.
    indices of the PC/flags/stack pointer, and whether bit 0 of an entry address
    selects a second instruction set) and a `ModuleInfo`.
 4. **Provide a factory.** A `CpuModule` whose `create()` returns a fresh core.
-5. **Register it.** One `register_<id>_module()` and one line in
-   `src/modules/builtin.cpp`. The Makefile globs `src/modules/*/*.cpp`, so a new
-   directory needs no build edit at all.
+5. **Register it.** A directory `machines/<id>/` with a header declaring one
+   `register_<id>_module()`, and two lines in `builtin/builtin.cpp`: the include
+   and the call. The build globs `machines/*/` (and `machines/*/cpu/`,
+   `machines/*/jit/`), so no build edit is needed either.
 
 Then:
 
@@ -159,7 +182,7 @@ build/brainemu --cpu mycpu --cpu-opt cache_bits=13 prog.bin
 
 The ARM module's keys are `jazelle_trap`, `strict_unpredictable`,
 `serror_on_busfault`, `tlb_bits`, `max_block_insns`, `jit_cache_mb`,
-`jit_fast_mem` and `big_endian_data` (`src/modules/arm926/arm926.cpp`).
+`jit_fast_mem` and `big_endian_data` (`machines/arm926/arm926.cpp`).
 
 ### Devices and monitors after the machine exists
 
@@ -194,7 +217,16 @@ An id nothing registered is refused with the ids that would have worked
 
 ### Adding a device
 
-A device module is a factory for a `Device` (`include/brainemu/device/device.h`)
+A device is `devices/<id>/`: one `.cpp` with the device class and its
+`DeviceModule`, one header declaring `register_<id>_module()`, and two lines in
+`builtin/builtin.cpp`. If the device has tests they go in `devices/<id>/tests/`
+or `devices/tests/`, and they are picked up by the same glob that builds every
+other suite. `devices/timer/` (an output), `devices/intc/` (inputs) and
+`devices/console/` (no interrupts at all, plus the device class its own header
+declares) are the three shapes.
+
+
+A device module is a factory for a `Device` (`core/include/brainemu/device.h`)
 plus its identity: implement `info()`, `create(base)` and, if the window has a
 home, `default_base()`. `Machine::add_device_by_id("uart")` then builds it,
 calls `on_attach(*this)` so the device can keep a pointer to the machine if it
@@ -264,7 +296,7 @@ if (!m.init(cfg)) { /* last_error() names the end that is missing */ }
 
 The destination decides the kind: a bare name is a CPU input, a dotted one is a
 device input (`intc.irq0`).  `--board dual-timer` is that machine, and
-`src/modules/intc/` is the controller in it.
+`devices/intc/` is the controller in it.
 
 The wire is resolved by name at the moment a level changes, not when it is
 declared, which is what makes the order above irrelevant - a board may name a
@@ -282,7 +314,7 @@ device works in a machine, in a unit test and in a debugger without a flag.
 
 ### Adding an interrupt controller
 
-`src/modules/intc/intc_module.cpp` is the worked example of a device with
+`devices/intc/intc.cpp` is the worked example of a device with
 *inputs*, and the shape a real collector (the i.MX28's, an ARM PL190) has: N input
 pins, a mask register, a status/pending pair, and one output that is the OR of the
 unmasked inputs.  The three pieces that make it a device like any other:
@@ -302,7 +334,10 @@ grows registers; nothing in the core changes.
 
 ### Adding a board
 
-A board is the answer to "what machine is this?".  It owns no behaviour - it
+All the boards live in `boards/boards.cpp` with `boards/boards.h` declaring
+`register_builtin_boards()`, because a board *is* a preset: it has no behaviour of
+its own to grow, and a preset is only meaningful next to the other presets of the
+same build.  A board is the answer to "what machine is this?".  It owns no behaviour - it
 fills in the same `MachineConfig` a caller would, and the machine then builds it
 exactly as if the caller had written it out by hand:
 
@@ -343,7 +378,7 @@ it only names them.
 
 ### The timer, as the reference device
 
-`src/modules/timer/timer_module.cpp` is the smallest device that exercises the
+`devices/timer/timer.cpp` is the smallest device that exercises the
 whole path a real peripheral needs, and is meant to be copied:
 
 * a window in the address space (`base()`, `size()`, byte-addressable registers,
@@ -377,14 +412,21 @@ after a reset. A *monitor module* is a `MonitorModule` factory;
 watchpoint layer or a gdb stub belongs - the core gains a *report*, not a
 feature.  A hook may read registers and memory freely, and may call
 `Machine::stop()`: the stop takes effect at the next slice boundary, which is
-exactly the semantics a watchpoint wants.  `tests/test_module.cpp` has a
+exactly the semantics a watchpoint wants.  `core/tests/test_machine.cpp` has a
 counting monitor and a stopping one.
 
 ### Adding a loader
 
+A loader is `loaders/<id>/`: a `.cpp` with the `Loader` subclass and the
+registration, a header declaring `register_<id>_loader()`, and two lines in
+`builtin/builtin.cpp`.  `loaders/image.h` has the few things two loaders would
+otherwise both write (little-endian field readers, a hex formatter, and the
+"is this whole range writable?" question every loader has to ask before it writes
+a byte).
+
 Derive from `Loader`, implement `probe` (does this buffer look like mine?) and
 `load` (place it through the bus, report `ImageInfo`), and add it in
-`loader.h`'s spirit — `tests/test_loader.cpp` contains a complete 20-line
+`loader.h`'s spirit — `loaders/tests/test_loader.cpp` contains a complete 20-line
 example that registers itself inside the test. Two rules the built-in ones
 follow and a new one should too: **write physical memory** (the CPU comes out of
 reset with its MMU off) and **refuse before you write** (`Bus::range_writable`
@@ -397,7 +439,7 @@ linked into a program, so a module that registered itself from a static
 constructor would silently vanish from the build — the worst kind of bug, since
 `--list-cpus` would look plausible and the module would simply not be there.
 
-`register_builtin_modules()` (`src/modules/builtin.cpp`) is therefore the
+`register_builtin_modules()` (`builtin/builtin.cpp`) is therefore the
 explicit list of what a build contains. Dropping a module from that list is a
 linker error naming the missing function, not a runtime surprise. The C API
 calls it before it answers anything about modules, so a caller never has to.

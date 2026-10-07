@@ -13,7 +13,7 @@ Two execution paths, both live: the interpreter, and a JIT that runs *this*
 host's code (x86-64 and AArch64 backends), selected per machine. Nothing about
 the core is ARM-specific - the CPU is a module (`arm926`), the loaders are
 modules (`elf32`, `raw`), devices and monitors are modules too (`console`,
-`exit`, and any the tests declare), and `src/modules/toy8/` is a complete second
+`exit`, and any the tests declare), and `machines/toy8/` is a complete second
 CPU that exists to keep that claim honest. A machine is assembled out of *ids*
 (`--cpu`, `--device`, `--monitor`, or the same fields in `MachineConfig` /
 `brain_config_t`), so a build can contain a peripheral the core has never heard
@@ -91,28 +91,28 @@ never heard of still reports in.
 
 `make check` runs:
 
-* `tests/test_instr.cpp` — the ISA corpus: single- and multi-instruction cases,
-  register/memory/flag state compared against `tests/data/corpus.txt`. The
+* `machines/arm926/tests/test_instr.cpp` — the ISA corpus: single- and multi-instruction cases,
+  register/memory/flag state compared against `machines/arm926/tests/data/corpus.txt`. The
   corpus is *generated* from Unicorn (QEMU's ARM core) by
-  `tests/gen_instr_tests.py` (`make corpus`), which needs a Python
+  `machines/arm926/tests/gen_instr_tests.py` (`make corpus`), which needs a Python
   environment with `unicorn`, `keystone` and `capstone`; running the tests needs
   none of them. Cases whose expectations depend on an emulator default rather than on
   the architecture are deliberately left out; see the notes in the generator.
-* `tests/test_unit.cpp` — the API surface around the core: image loading
+* `machines/arm926/tests/test_arm926.cpp` — the API surface around the core: image loading
   (raw and ELF32), device mapping and one-hook-call-per-access behaviour,
   MMIO above 32 MB with the MMU off, register access with the PC aliases,
   and the counters.
-* `tests/test_module.cpp` — the core as a core: the module registry, the second
+* `core/tests/test_machine.cpp` — the core as a core: the module registry, the second
   CPU module (toy8) driven by the machine and by the C API, a CPU module
   declared inside the test file, monitors, the device adapters, the device and
   monitor *modules* (built by id, sharing a page, describing themselves), and the
-  option and error paths. If this passes, no part of `src/core` needs an ARM to
+  option and error paths. If this passes, no part of `core/` needs an ARM to
   run.
-* `tests/test_loader.cpp` — the loaders as modules, over a bare `Bus` with no
+* `loaders/tests/test_loader.cpp` — the loaders as modules, over a bare `Bus` with no
   CPU: raw placement, ELF32 acceptance and every refusal, a loader declared
   inside the test, and the all-or-nothing promise (a refused image leaves memory
   untouched).
-* `tests/test_jit_x64.cpp` (x86-64 hosts; skips elsewhere) — the emitted host
+* `machines/arm926/tests/test_jit_x64.cpp` (x86-64 hosts; skips elsewhere) — the emitted host
   code, executed in-process: encoder byte pins, the shadow-buffer ABI (a
   sentinel-filled buffer, so a wrong offset shows up as a clobbered word), a
   sweep over every data-processing opcode and operand shape, a load/store sweep
@@ -127,26 +127,40 @@ never heard of still reports in.
 ## Layout
 
 ```
-include/brainemu/     the public headers: the C API (brainemu.h) and the core's
-                      interfaces (cpu/, core/, device/, loader/)
-src/core/             the machine: bus, devices, module registry, run loop
-src/modules/*/        the modules this build contains
-  arm926/             the ARM926EJ-S: ARM/Thumb, CP15 + MMU + TLB, interpreter
-  arm926/jit/         its block cache, IR and host backends
-  toy8/               a second CPU module: the worked example of the interface
-  console/            a device module: bytes written there become text
-  exit/               a device module: a store there stops the machine
-  timer/              a device module with an interrupt output (the reference)
-  intc/               a device with interrupt *inputs*: a controller
-  boards/             board modules: named machine presets
-src/loader/           the built-in image formats (elf32, raw)
-src/api.cpp           the C API, implemented against the machine
-tools/                brainemu (runner), bench (throughput), jit_emit (encoder)
-tests/                the corpus generator, corpus-driven and unit tests
+core/                 the foundation: no CPU, no device, no target in it
+  include/brainemu/   the public interface (brainemu.h, machine.h, module.h,
+                      bus.h, cpu.h, device.h, monitor.h, loader.h, types.h)
+  src/                the machine, the bus, the module registry, the C API
+  tests/              the core's own suite (it names no machine)
+machines/arm926/      the primary target: ARM926EJ-S (ARMv5TEJ)
+  cpu/                the interpreter: decode (ARM + Thumb), CP15, MMU/TLB, ops
+  jit/                its block cache, IR and host backends (x86-64, AArch64)
+  tests/              its suites (unit, corpus, MMU, JIT, AArch64) + the corpus
+  tools/              jit_emit: translate one word and print what came out
+machines/toy8/        a second CPU module: the worked example of the interface
+devices/console/      a device module: bytes written there become text
+devices/exit/         a device module: a store there stops the machine
+devices/timer/        a device module with an interrupt output (the reference)
+devices/intc/         a device with interrupt *inputs*: a controller
+loaders/elf32/        one image format per directory (elf32, raw)
+loaders/raw/
+boards/               named machine presets (minimal, timer, dual-timer)
+builtin/              the list of what this build contains
+testkit/              what every test suite shares
+tools/                brainemu (runner), bench (throughput)
 reference/            the ARM documents this code is written against
 docs/                 ARCHITECTURE.md, MODULES.md, ISA-COVERAGE.md, LICENSE-NOTES.md
 LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.md)
 ```
+
+The rule is one line long and holds everywhere: **`core/` is the foundation, and
+everything else is a component of exactly one kind** - a machine (`machines/<id>/`),
+a device (`devices/<id>/`), a loader (`loaders/<id>/`) or a board (`boards/`).  A
+component's directory holds its sources, its header with the one function that
+registers it, and (if it has tests) a `tests/` directory next to them.  The build
+globs those directories and `builtin/builtin.cpp` calls their registration
+functions, so adding a component is a directory plus two lines there - and nothing
+else in the tree has to change, because nothing else names it.
 
 ## Status
 
@@ -187,7 +201,7 @@ LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES
   interpreter, and the same loop in Thumb at ~126 against ~53, because the loop
   is now one block instead of three instructions and an interpreted branch.  On
   AArch64 the AArch64 backend is selected (data processing only) and checked
-  against a model by `tests/test_jit_arm64.py`; on any other host `use_jit`
+  against a model by `machines/arm926/tests/test_jit_arm64.py`; on any other host `use_jit`
   degrades to the interpreter (the counters show `interp N jit 0`).
 * Not implemented on purpose: Jazelle, Vectored FIQ, TCM, cache-line semantics,
   32-bit Thumb encodings (ARMv6+), `MCR2/MRC2` (ARMv7), `IT`, `CBZ/CBB`,
