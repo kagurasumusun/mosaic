@@ -11,7 +11,7 @@
 #include "core/ops.h"   /* shift_arm(), the primitive both engines share */
 #include "core/cpu.h"
 #include "jit/cache.h"
-#include "jit/jit.h"   /* BRAIN_JIT_BACKEND (must be 0 on this host) */
+#include "jit/jit.h"   /* BRAIN_JIT_BACKEND (which host generator is in) */
 
 #include <cstdio>
 #include <cstring>

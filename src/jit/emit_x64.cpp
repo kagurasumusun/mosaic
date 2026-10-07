@@ -205,7 +205,7 @@ void compute_liveness(const IrBlock& b, Liveness* lv) {
      * not write them, or writes them as a copy of the old ones), or this
      * instruction needs the carry for its own result. */
     lv[i].live_out = live;
-    live = live && (!def || copies_carry_through(in)) || reads_carry_for_value(in);
+    live = (live && (!def || copies_carry_through(in))) || reads_carry_for_value(in);
     lv[i].live_in = live;
     /* V again, from the same point of view: an arithmetic op defines V (one
      * `seto`, which the emitter will emit whenever either variable says the

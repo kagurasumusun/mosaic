@@ -4,8 +4,12 @@ Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
 `src/core/decode_arm.cpp`, `src/core/decode_thumb.cpp` and the single execution
 engine in `src/core/interp_arm.cpp`. "Checked" below means a case in
 `tests/data/corpus.txt` compares this core against a golden emulator for that
-encoding; 303 cases exist today (169 ARM, 73 Thumb, 59 randomised multi-instruction
-sequences).
+encoding; 341 cases exist today (239 in ARM state, 102 in Thumb: single
+encodings, short sequences that carry a flag or a register from one instruction
+into the next, and 59 randomised multi-instruction sequences). The same corpus
+is replayed a second time through the JIT when a backend is compiled in
+(`test_instr --jit`), so every "checked" below is checked on both execution
+paths.
 
 The design rule for anything not on this list: an unimplemented *encoding* must
 decode to `AOP_UNDEF` and take the undefined-instruction exception. Nothing may

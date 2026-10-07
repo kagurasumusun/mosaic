@@ -206,7 +206,7 @@ static void jit_cache_prepare(JitCache* jc, u32* s) {
  * neither the CPSR word nor anything but the flag halves, so this is the same
  * arithmetic `interp_arm.cpp` does when it updates `vflag` after a flag write. */
 static void jit_cache_finish(JitCache* jc, u32* s) {
-  Cpu* c = jc->cpu;
+  (void)jc;
   const u32 f = s[SH_EFLAGS / 4];
   u32 cpsr = s[SH_CPSR / 4] & ~0xF0000000u;
   if (f & 0x0080) cpsr |= 0x80000000u;
