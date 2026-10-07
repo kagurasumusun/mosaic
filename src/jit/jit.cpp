@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "jit/jit.h"
+#include "jit/cache.h"
 
 namespace brain {
 

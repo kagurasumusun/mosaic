@@ -9,6 +9,9 @@
 #include <brainemu/brainemu.h>
 
 #include "core/ops.h"   /* shift_arm(), the primitive both engines share */
+#include "core/cpu.h"
+#include "jit/cache.h"
+#include "jit/jit.h"   /* BRAIN_JIT_BACKEND (must be 0 on this host) */
 
 #include <cstdio>
 #include <cstring>
@@ -982,6 +985,112 @@ static void test_shifter_primitive() {
   }
 }
 
+
+/* ---- block cache: bookkeeping + the dispatcher, with no host code executed.
+ *
+ * The one step a real backend owns - calling into the arena - is replaced by
+ * `jit_cache_exec_hook`, which lets this test drive translate/enter/retire on
+ * a host without AArch64 execution.  What the generated code itself computes
+ * is the business of tests/test_jit_arm64.py (AArch64 model); here we pin the
+ * contract around it: what a block is, when it may run, when it must not, and
+ * exactly what state crosses the shadow-register boundary. */
+static int g_hook_calls = 0;
+
+static void jit_cache_test_hook(uint32_t* s) {
+  ++g_hook_calls;
+  /* Play both block insns honestly: ADDS r0,r1,r2 then MOV r3,#5. */
+  s[0] = s[1] + s[2];
+  s[3] = 5;
+}
+
+static void test_jit_cache() {
+  std::printf("[jit cache]\n");
+  CHECK(BRAIN_JIT_BACKEND == 0);            /* no arena execution here        */
+
+  brain::Cpu cpu;
+  brain::CpuConfig cfg;
+  cfg.ram_size = 1u << 20;
+  CHECK(cpu.init(cfg));
+
+  /* ADDS r0,r1,r2 ; MOV r3,#5 ; B .  - the branch must end the block. */
+  /* ADDS ; MOV ; B . then at 0x8008 a `B` back to 0x8000 - a loop with two
+   * translatable insns and an interpreted branch, so the dispatcher sees both
+   * kinds of boundary; the branch retires through the interpreter. */
+  const uint32_t prog[3] = {0xE0910002u, 0xE3A03005u, 3942645756u};
+  for (uint32_t i = 0; i < 3; ++i) cpu.phys_write(0x8000 + i * 4, prog[i], 4);
+  cpu.npc = 0x8000; cpu.cur = 0x8000; cpu.regs[15] = 0x8008;
+  cpu.regs[1] = 1; cpu.regs[2] = 2;
+
+  brain::JitCache* jc = brain::jit_cache_create(&cpu, 1);
+  CHECK(jc != nullptr);
+  if (!jc) return;
+
+  CHECK(brain::jit_cache_lookup(jc, 0x8000) == nullptr);
+  brain::JitBlock* b = nullptr;
+  CHECK(brain::jit_cache_translate(jc, 0x8000, &b));
+  CHECK(b != nullptr);
+  if (!b) { brain::jit_cache_destroy(jc); return; }
+  CHECK(b->pc == 0x8000);
+  CHECK(b->end_pc == 0x8008);               /* stops before the B              */
+  CHECK(b->insns == 2 && b->cycles == 2);   /* flat kIssue; cache.cpp why-note */
+  CHECK(b->gen == cpu.trans_gen);
+  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b);
+
+  /* enter(): copy-in, "run", copy-back, rebuild the pipeline view, retire. */
+  g_hook_calls = 0;
+  const uint64_t i0 = cpu.insns, c0 = cpu.cycles;
+  brain::jit_cache_exec_hook = jit_cache_test_hook;
+  brain::jit_cache_enter(jc, b);
+  CHECK(g_hook_calls == 1);
+  CHECK(cpu.regs[0] == 3u && cpu.regs[3] == 5u);
+  CHECK(cpu.npc == 0x8008 && cpu.cur == 0x8004 && cpu.regs[15] == 0x800C);
+  CHECK(cpu.insns == i0 + 2 && cpu.cycles == c0 + 2);
+  CHECK(cpu.stats.insns_jit == 2 && cpu.stats.cycles_jit == 2);
+  CHECK(cpu.stats.blocks == 1 && cpu.stats.code_bytes > 0);
+
+  /* The dispatcher loop: block, block, ... with the untranslatable `B .`
+   * interpreted between them; budgets cut across blocks, never inside. */
+  brain::jit_cache_run_insns(jc, 4);         /* B, block, B: two interpreted + */
+  CHECK(cpu.insns == i0 + 6);                /* two retired from one entry     */
+  CHECK(cpu.stats.insns_jit == 4);
+  CHECK(cpu.npc == 0x8000);                  /* the last interpreted B landed  */
+  const uint64_t j1 = cpu.stats.insns_jit;
+  brain::jit_cache_run_insns(jc, 1);         /* block would over-run: one DP   */
+  CHECK(cpu.insns == i0 + 7 && cpu.stats.insns_jit == j1);
+  brain::jit_cache_run_insns(jc, 3);         /* 1-instruction block at 0x8004, */
+  CHECK(cpu.insns == i0 + 10 &&               /* then B, then a single DP too  */
+        cpu.stats.insns_jit == j1 + 1);
+
+  /* A stale block never runs: the boundary flushes instead, and the next
+   * lookups see a freshly translated, current-generation block. */
+  ++cpu.trans_gen;                            /* as flush_all/exceptions do      */
+  const uint64_t j2 = cpu.stats.insns_jit, i2 = cpu.insns;
+  brain::jit_cache_run_insns(jc, 2);
+  /* The block at 0x8004 is stale: the boundary flushes the whole cache and
+   * the budget is spent under the interpreter (MOV, then B). */
+  CHECK(cpu.insns == i2 + 2 && cpu.stats.insns_jit == j2);
+  CHECK(brain::jit_cache_lookup(jc, 0x8004) == nullptr);
+
+  /* invalidation: overlap strictly, touching ends alone do not. */
+  brain::JitBlock* b3 = nullptr;
+  CHECK(brain::jit_cache_translate(jc, 0x8000, &b3) && b3 != nullptr);
+  brain::jit_cache_invalidate(jc, 0x7FFC, 4); /* ends exactly at pc: keeps     */
+  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b3);
+  brain::jit_cache_invalidate(jc, 0x8008, 4); /* starts at end_pc: keeps       */
+  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b3);
+  brain::jit_cache_invalidate(jc, 0x8004, 4); /* inside: drops                 */
+  CHECK(brain::jit_cache_lookup(jc, 0x8000) == nullptr);
+
+  /* The core's SMC plumbing (`write_mem -> invalidate_code -> Jit::invalidate_
+   * range`) runs only when the control plane owns a Jit, which on this host
+   * `Jit::init()` refuses by design; the cache-side contract it calls into is
+   * the invalidate() already pinned above, and `test_instr --jit` on aarch64
+   * exercises the whole path under the real backend. */
+
+  brain::jit_cache_exec_hook = nullptr;
+  brain::jit_cache_destroy(jc);
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -995,6 +1104,7 @@ int main() {
   test_load_pc_and_l4();
   test_push_pop_return();
   test_exception_entry();
+  test_jit_cache();
   test_interrupt_inputs();
   test_shifter_primitive();
   test_thumb_shift_zero();

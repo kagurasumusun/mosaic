@@ -23,14 +23,13 @@
  * ARM-specific logic exists once, in the IR of jit/ir.h, and a backend only ever
  * sees that.
  *
- * What is *not* here yet: there is no block cache and no dispatcher hook.  The
- * AArch64 code generator (jit/emit_arm64.h, fed by jit/frontend.h) is complete and
- * verified against a real AArch64 model by tests/test_jit_arm64.py, but the only
- * thing that drives it today is tools/jit_emit.cpp - nothing calls it from
- * Cpu::run_insns yet, which is why BRAIN_JIT_BACKEND stays 0 and why the
- * `jit_cache_*` entry points the calls below refer to have no definition.  Wiring
- * those up is the remaining step, and it needs a cache with invalidation that the
- * six operations above can drive.
+ * The AArch64 code generator (jit/emit_arm64.h, fed by jit/frontend.h) is complete
+ * and verified against a real AArch64 model by tests/test_jit_arm64.py; the block
+ * cache and dispatcher that give it a home live in jit/cache.h + jit/cache.cpp,
+ * driven by exactly the six entry points below.  The one call `jit_cache_enter`
+ * makes into host code is the only line that needs a runnable backend; everything
+ * else in the cache is plain bookkeeping, which is what tests/test_unit.cpp
+ * exercises (via its exec hook) on hosts where no code executes.
  */
 #ifndef BRAIN_JIT_JIT_H
 #define BRAIN_JIT_JIT_H
@@ -43,8 +42,12 @@
  * what `--jit` reports: "REQUESTED but no backend retired anything".  Do not turn
  * this on for __aarch64__ until the cache above exists: the run path below calls
  * jit_cache_* functions that are only declared. */
-#ifndef BRAIN_JIT_BACKEND
-#define BRAIN_JIT_BACKEND 0
+#if !defined(BRAIN_JIT_BACKEND)
+#  if defined(__aarch64__)
+#    define BRAIN_JIT_BACKEND 1
+#  else
+#    define BRAIN_JIT_BACKEND 0
+#  endif
 #endif
 
 namespace brain {

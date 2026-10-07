@@ -9,6 +9,7 @@
  * The comparison deliberately ignores CPSR bits whose meaning changed after
  * ARMv5 (J, GE, A, E) -- see the header of the generator for why.
  */
+#include "jit/jit.h"   /* BRAIN_JIT_BACKEND for the --jit self-check */
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -296,6 +297,16 @@ int main(int argc, char** argv) {
    * instruction falls back to the interpreter, and a run that says "passed (jit)"
    * would then be claiming coverage it does not have.  Report the engine that
    * actually retired the instructions. */
+#if BRAIN_JIT_BACKEND
+  /* A host that CAN retire through the backend must actually do so on the
+   * corpus; a silent all-interpreter run would make `--jit` green without
+   * proving anything.  (The x86 CI run is the mirror case: BRAIN_JIT_BACKEND
+   * is 0 and the note below is the expected outcome there.) */
+  if (use_jit && !total_jit_insns) {
+    std::printf("FAIL --jit: the backend retired 0 instructions on a host with a code generator\n");
+    return 1;
+  }
+#endif
   const char* engine;
   if (!use_jit) engine = "interpreter";
   else if (total_jit_insns) engine = "jit";

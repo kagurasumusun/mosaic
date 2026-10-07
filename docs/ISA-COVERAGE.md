@@ -94,11 +94,17 @@ machine.
 
 ## Gaps to close next
 
-1. A host code generator, so `Stats::insns_jit` becomes non-zero and the corpus
-   can be replayed through the JIT.  `test_instr --jit` sets `cfg.use_jit` and
-   compares results, which on a host without a backend is a relabelled interpreter
-   run; the summary line now reports the engine that actually retired
-   instructions (`insns_jit`) instead of trusting the flag.
+1. A code generator for *this* host.  The AArch64 backend now has the block
+   cache and dispatcher it was waiting for (`jit/cache.h` + `jit/cache.cpp`):
+   on an AArch64 host `Stats::insns_jit` is non-zero, the corpus replays
+   through generated blocks, and `test_instr --jit` *fails* if the backend
+   retires nothing - so a green `--jit` run there proves the JIT end to end.
+   The cache's contract itself - translate/enter/retire, the budget and stale-
+   generation gates, SMC-range unlink - is pinned on every host by
+   `test_unit.cpp::test_jit_cache` through an exec hook that stands in for the
+   one arena call.  What remains is an x86-64 emitter, without which every
+   number in this file is still an interpreter number on CI; `--jit` reports
+   the engine that actually retired the instructions rather than the flag.
 2. Unaligned device accesses.  (`LDC/STC` for p15 is closed and was based on a
    wrong reading: neither the TRM nor the Microchip SAM9G15 datasheet gives CP15
    a load/store interface - "other instructions like CDP, LDC, STC can cause an
@@ -225,10 +231,14 @@ corpus case that only proves the core does not crash.
 ## The AArch64 JIT backend
 
 `src/jit/emit_arm64.h` and `src/jit/frontend.cpp` generate AArch64 for the subset
-the front end accepts, and they are **emit-only**: no block cache exists,
-`Cpu::run_insns` never enters generated code, and `BRAIN_JIT_BACKEND` stays 0, so
-every coverage number in this file is an interpreter number.  What `--jit` reports
-(`insns_jit 0`) is that fact, not a failure.
+the front end accepts, are driven through a block cache and dispatcher
+(`jit/cache.cpp`) whenever `BRAIN_JIT_BACKEND` is 1 - which today means an
+AArch64 host, and only there does `Cpu::run_insns` enter generated code.  On
+x86 CI no x64 emitter exists, the backend stays 0, and every coverage number
+in this file is an interpreter number; what `--jit` reports there
+(`insns_jit 0`) is that fact, not a failure - while on AArch64 a `--jit` run
+that retired *nothing* through the cache is a hard failure of this file's
+number-one claim.
 
 The accepted set is unconditional ARM-state data processing with every operand in
 R0-R12: the four barrel shifts by an immediate (including RRX, which the emitter
