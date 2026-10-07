@@ -1,11 +1,20 @@
 # brain-emu
 
-ARM926EJ-S (ARMv5TEJ) core emulator, aimed at `cpu=imx28 (arm926ej-s) (armel)`.
+A CPU emulator for the i.MX28's processor - ARM926EJ-S, `cpu=imx28
+(arm926ej-s) (armel)` - built as **one core plus modules**, so a second
+processor is a new directory rather than a new emulator.
 
 Functional-first: an interpreter with an integrated MMU/CP15 model, a block
 cache and translation layer that a JIT backend plugs into, and an instruction
 corpus generated from a golden emulator so the semantics are checked rather than
 asserted.
+
+Two execution paths, both live: the interpreter, and a JIT that runs *this*
+host's code (x86-64 and AArch64 backends), selected per machine. Nothing about
+the core is ARM-specific - the CPU is a module (`arm926`), the loaders are
+modules (`elf32`, `raw`), devices are modules, and `src/modules/toy8/` is a
+complete second CPU that exists to keep that claim honest. `docs/MODULES.md` is
+the guide to the split.
 
 ## Build
 
@@ -18,7 +27,9 @@ make clean
 
 The only build requirements are a C++17 compiler and GNU make. `CMakeLists.txt`
 mirrors the same source lists for IDEs and CI (`cmake -S . -B build-cmake &&
-cmake --build build-cmake && ctest --test-dir build-cmake`).
+cmake --build build-cmake && ctest --test-dir build-cmake`).  A build tree from
+before a module moved needs `make clean`: the source lists are globs, and a
+stale archive is not rebuilt for a source that no longer exists.
 
 ## Running something
 
@@ -28,7 +39,16 @@ build/brainemu --raw --addr 0x8000 --steps 1000 --regs program.bin
 
 # a statically linked armel ELF, with the guest deciding when to stop
 build/brainemu --elf --exit-port 0x80000000 --stats prog.elf; echo $?
+
+# what CPUs this build contains, and one that is not an ARM
+build/brainemu --list-cpus
+build/brainemu --cpu toy8 --regs program.t8
 ```
+
+`--list-cpus` prints the module list with descriptions, `--cpu ID` builds the
+machine around another CPU module, and `--cpu-opt K=V` hands a module an option
+the generic config does not carry. A `--regs` dump names its registers from the
+module's own description, so it works for a CPU whose PC is not register 15.
 
 `--exit-port A` maps a one-page device at `A`: a guest store there ends the run
 and the value written becomes the tool's exit status, which is all a test image
@@ -59,20 +79,29 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
 ## Layout
 
 ```
-include/brainemu/   public headers: the C API (brainemu.h), bus, types
-src/core/           Cpu state, decoders, interpreter, CP15 + MMU + TLB, bus
-src/jit/            block cache and driver; host backends plug in here
-src/loader/         ELF32 / raw image loading
-src/api.cpp         the C API, implemented against the core
-tools/              brainemu (runner), bench (throughput)
-tests/              the corpus generator, corpus-driven and unit tests
-reference/          the ARM documents this code is written against
-docs/               ARCHITECTURE.md, ISA-COVERAGE.md, LICENSE-NOTES.md
-LICENSE             the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.md)
+include/brainemu/     the public headers: the C API (brainemu.h) and the core's
+                      interfaces (cpu/, core/, device/, loader/)
+src/core/             the machine: bus, devices, module registry, run loop
+src/modules/*/        the modules this build contains
+  arm926/             the ARM926EJ-S: ARM/Thumb, CP15 + MMU + TLB, interpreter
+  arm926/jit/         its block cache, IR and host backends
+  toy8/               a second CPU module: the worked example of the interface
+src/loader/           the built-in image formats (elf32, raw)
+src/api.cpp           the C API, implemented against the machine
+tools/                brainemu (runner), bench (throughput), jit_emit (encoder)
+tests/                the corpus generator, corpus-driven and unit tests
+reference/            the ARM documents this code is written against
+docs/                 ARCHITECTURE.md, MODULES.md, ISA-COVERAGE.md, LICENSE-NOTES.md
+LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.md)
 ```
 
 ## Status
 
+* One core, modules: `Machine` (bus + one CPU + devices + run loop) over a module
+  registry; `CpuCore` is the whole CPU contract and is only called at slice
+  boundaries, so a module's inner loop stays non-virtual and monomorphic. Two CPU
+  modules ship (`arm926`, `toy8`) and the loaders (`elf32`, `raw`) are modules
+  too. `docs/MODULES.md` documents the contract and how to add a processor.
 * ARM and Thumb state, ARMv5TEJ data processing, loads/stores (including the
   halfword, signed, dual and swap families), multiply, CLZ, MRS/MSR, branch and
   coprocessor groups, with the exceptions, banked registers, CP15 c1 (Table
@@ -96,8 +125,9 @@ LICENSE             the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.m
 * No operating-system layer: an ELF's segments are placed in physical memory and
   a stack pointer is provided, but there are no Linux system calls.
 
-See `docs/ARCHITECTURE.md` for the invariants the core relies on, and
-`docs/ISA-COVERAGE.md` for the instruction-by-instruction status.
+See `docs/ARCHITECTURE.md` for the invariants the core relies on,
+`docs/MODULES.md` for the module system, and `docs/ISA-COVERAGE.md` for the
+instruction-by-instruction status.
 
 ## License
 

@@ -23,11 +23,11 @@
 
 #include <brainemu/brainemu.h>
 
-#include "jit/emit_arm64.h"
-#include "jit/frontend.h"
+#include "arm926/jit/emit_arm64.h"
+#include "arm926/jit/frontend.h"
 
-using brain::IrBlock;
-using brain::arm64::Buf;
+using namespace brain::arm926;
+using namespace brain::arm926::arm64;   /* the AArch64 encoding model */
 
 static bool auto_mode = false;
 
@@ -41,23 +41,23 @@ static void print_forms() {
   { Buf b; b.add_imm(1, 2, 0x1f, true); v.push_back({"adds_imm", b}); }
   { Buf b; b.sub_imm(1, 2, 4); v.push_back({"sub_imm", b}); }
   { Buf b; b.add_shifted(1, 2, 3); v.push_back({"add_reg", b}); }
-  { Buf b; b.add_shifted(1, 2, 3, brain::arm64::SH_LSL, 4); v.push_back({"add_lsl", b}); }
-  { Buf b; b.add_shifted(1, 2, 3, brain::arm64::SH_ASR, 2); v.push_back({"add_asr", b}); }
-  { Buf b; b.add_shifted(1, 2, 3, brain::arm64::SH_LSL, 0, true); v.push_back({"adds_reg", b}); }
+  { Buf b; b.add_shifted(1, 2, 3, SH_LSL, 4); v.push_back({"add_lsl", b}); }
+  { Buf b; b.add_shifted(1, 2, 3, SH_ASR, 2); v.push_back({"add_asr", b}); }
+  { Buf b; b.add_shifted(1, 2, 3, SH_LSL, 0, true); v.push_back({"adds_reg", b}); }
   { Buf b; b.sub_shifted(1, 2, 3); v.push_back({"sub_reg", b}); }
-  { Buf b; b.sub_shifted(brain::arm64::XZR, 2, 3, brain::arm64::SH_LSL, 0, true);
+  { Buf b; b.sub_shifted(XZR, 2, 3, SH_LSL, 0, true);
     v.push_back({"cmp_reg", b}); }
   { Buf b; b.and_shifted(1, 2, 3); v.push_back({"and_reg", b}); }
-  { Buf b; b.and_shifted(brain::arm64::XZR, 2, 3, brain::arm64::SH_LSL, 0, true);
+  { Buf b; b.and_shifted(XZR, 2, 3, SH_LSL, 0, true);
     v.push_back({"tst_reg", b}); }
-  { Buf b; b.and_shifted(1, 2, 3, brain::arm64::SH_LSL, 4, true); v.push_back({"ands_lsl4", b}); }
+  { Buf b; b.and_shifted(1, 2, 3, SH_LSL, 4, true); v.push_back({"ands_lsl4", b}); }
   { Buf b; b.bic_shifted(1, 2, 3); v.push_back({"bic_reg", b}); }
-  { Buf b; b.bic_shifted(1, 2, 3, brain::arm64::SH_LSL, 0, true); v.push_back({"bics_reg", b}); }
-  { Buf b; b.orr_shifted(1, 2, 3, brain::arm64::SH_LSR, 7); v.push_back({"orr_lsr7", b}); }
+  { Buf b; b.bic_shifted(1, 2, 3, SH_LSL, 0, true); v.push_back({"bics_reg", b}); }
+  { Buf b; b.orr_shifted(1, 2, 3, SH_LSR, 7); v.push_back({"orr_lsr7", b}); }
   { Buf b; b.orr_shifted(1, 2, 3); v.push_back({"orr_reg", b}); }
   { Buf b; b.set_nz_from(1); v.push_back({"set_nz_from", b}); }
   { Buf b; b.eor_shifted(1, 2, 3); v.push_back({"eor_reg", b}); }
-  { Buf b; b.eor_shifted(1, 2, 3, brain::arm64::SH_ROR, 11); v.push_back({"eor_ror11", b}); }
+  { Buf b; b.eor_shifted(1, 2, 3, SH_ROR, 11); v.push_back({"eor_ror11", b}); }
   { Buf b; b.orn_shifted(1, 2, 3); v.push_back({"orn_reg", b}); }
   { Buf b; b.mvn(1, 2); v.push_back({"mvn", b}); }
   { Buf b; b.neg_shifted(1, 2); v.push_back({"neg", b}); }
@@ -69,14 +69,14 @@ static void print_forms() {
    * the emitter shifts the operand separately instead.) */
   { Buf b; b.sbc(1, 3, 2); v.push_back({"rsc", b}); }
   { Buf b; b.sbc(1, 3, 2, true); v.push_back({"rscs", b}); }
-  { Buf b; b.shift(1, 2, brain::arm64::SH_LSL, 4); v.push_back({"lsl_imm", b}); }
-  { Buf b; b.shift(1, 2, brain::arm64::SH_LSR, 3); v.push_back({"lsr_imm", b}); }
-  { Buf b; b.shift(1, 2, brain::arm64::SH_ASR, 2); v.push_back({"asr_imm", b}); }
-  { Buf b; b.shift(1, 2, brain::arm64::SH_ROR, 1); v.push_back({"ror1", b}); }
+  { Buf b; b.shift(1, 2, SH_LSL, 4); v.push_back({"lsl_imm", b}); }
+  { Buf b; b.shift(1, 2, SH_LSR, 3); v.push_back({"lsr_imm", b}); }
+  { Buf b; b.shift(1, 2, SH_ASR, 2); v.push_back({"asr_imm", b}); }
+  { Buf b; b.shift(1, 2, SH_ROR, 1); v.push_back({"ror1", b}); }
   { Buf b; b.ldr32(1, 0, 4); v.push_back({"ldr_w", b}); }
   { Buf b; b.str32(1, 0, 4); v.push_back({"str_w", b}); }
   { Buf b; b.ubfx(16, 15, 29, 1); v.push_back({"ubfx", b}); }
-  { Buf b; b.flags_patch(0x30000000u, 28, brain::arm64::SCR2, 28, 2);
+  { Buf b; b.flags_patch(0x30000000u, 28, SCR2, 28, 2);
     v.push_back({"flags_patch", b}); }
   { Buf b; b.mov_rrx(1, 2); v.push_back({"mov_rrx", b}); }
   { Buf b; b.mrs_nzcv(14); v.push_back({"mrs_nzcv", b}); }
@@ -156,7 +156,7 @@ static int print_sweep(int argc, char** argv) {
             IrBlock blk{};
             const uint32_t used = jit_translate_arm_words(&w, 1, pc, &blk);
             std::vector<uint32_t> code;
-            if (!used || !brain::jit_emit_arm64(blk, true, &code)) {
+            if (!used || !jit_emit_arm64(blk, true, &code)) {
               std::printf("SW %08x skip\n", w);
               ++n_skip;
               continue;
@@ -342,9 +342,9 @@ int main(int argc, char** argv) {
   std::printf("STOP %s\n", blk.stop ? blk.stop : "?");
   std::printf("TRUNC %d\n", blk.truncated ? 1 : 0);
   for (uint32_t i = 0; i < blk.n; ++i) {
-    const brain::IrInsn& in = blk.in[i];
-    std::printf("IR %u %s", i, brain::ir_op_name(in.op));
-    if (in.dst != brain::IR_NO_DST) std::printf(" r%u", in.dst);
+    const IrInsn& in = blk.in[i];
+    std::printf("IR %u %s", i, ir_op_name(in.op));
+    if (in.dst != IR_NO_DST) std::printf(" r%u", in.dst);
     std::printf(", r%u", in.a);
     if (in.b_is_imm) std::printf(", #0x%x", in.imm);
     else std::printf(", r%u", in.b);
@@ -381,7 +381,7 @@ int main(int argc, char** argv) {
 
   std::vector<uint32_t> code;
   if (!used) { std::printf("CODE\n"); brain_emu_destroy(e); return translate_only ? 0 : 1; }
-  if (!brain::jit_emit_arm64(blk, true, &code)) { std::printf("EMIT_FAILED\n"); return 1; }
+  if (!jit_emit_arm64(blk, true, &code)) { std::printf("EMIT_FAILED\n"); return 1; }
   std::printf("CODE %u", (unsigned)code.size());
   for (size_t i = 0; i < code.size(); ++i) std::printf(" %08x", code[i]);
   std::printf("\n");

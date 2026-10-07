@@ -1,16 +1,24 @@
-/* brain-emu -- ELF32 / raw image loading.
+/* brain-emu -- the ELF32 and raw image loaders.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ *
+ * Both write *physical* memory through the bus (the core comes out of reset
+ * with the MMU off, so a virtual-only address would be a lie), both refuse
+ * rather than half-load, and neither touches a CPU: an image is placed in the
+ * address space, and pointing the processor at it is the machine's job
+ * (`Machine::load_elf32`).  That is what makes a loader a module.
+ *
+ * The ELF subset is what a bootable, statically linked armel binary needs:
+ * ELFCLASS32, little-endian, ET_EXEC, PT_LOAD segments with memsz >= filesz.
+ * Everything else is refused by name, because a loader that guesses is worse
+ * than one that says "link with -no-pie".
  */
-#include "loader/loader.h"
+#include "brainemu/loader/loader.h"
 
 #include <cstring>
 
-#include "core/cpu.h"
+#include "brainemu/core/bus.h"
 
 namespace brain {
-
-/* The subset of the ELF32 layout this loader reads.  Kept here rather than
- * pulling in <elf.h> so the file builds the same on every host. */
 namespace {
 
 constexpr size_t kEhSize = 52;
@@ -50,8 +58,6 @@ std::string hex(u32 v) {
   return std::string(buf);
 }
 
-/* Decode the fixed-size header tables from a little-endian byte stream.  Only
- * called after the size and identification checks below. */
 void parse_ehdr(const u8* b, Ehdr* h) {
   std::memcpy(h->ident, b, 16);
   h->type = get_le16(b + 16);
@@ -80,26 +86,99 @@ void parse_phdr(const u8* b, Phdr* p) {
   p->align = get_le32(b + 28);
 }
 
+/* Does the bus have writable RAM for every byte of [addr, addr+n)?  A loader
+ * has to know *before* it writes anything, or a refused image leaves a
+ * half-loaded machine behind. */
+bool writable_range(Bus& bus, u32 addr, size_t n) { return bus.range_writable(addr, n); }
+
+/* --------------------------------------------------------------- modules -- */
+
+class Elf32Loader final : public Loader {
+ public:
+  const ModuleInfo& info() const override {
+    static const ModuleInfo kMod = {"elf32", "ELF32 little-endian (ARM)",
+                                    ModuleKind::Loader,
+                                    "ET_EXEC PT_LOAD segments at their physical "
+                                    "addresses; no PIE, no REL, no dynamic"};
+    return kMod;
+  }
+  bool probe(const void* data, u64 size) const override {
+    const u8* b = static_cast<const u8*>(data);
+    return size >= kEhSize && b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' &&
+           b[3] == 'F' && b[4] == ELFCLASS32_ && b[5] == ELFDATA2LSB_;
+  }
+  int load(Bus& bus, const void* data, u64 size, ImageInfo* out,
+           std::string& err) const override {
+    return elf32_load(bus, data, (size_t)size, out, err);
+  }
+};
+
+class RawLoader final : public Loader {
+ public:
+  const ModuleInfo& info() const override {
+    static const ModuleInfo kMod = {"raw", "flat binary", ModuleKind::Loader,
+                                    "an image with no header, placed at the "
+                                    "address the caller gives"};
+    return kMod;
+  }
+  /* A flat image has nothing to recognise: it is what a boot ROM has when the
+   * design decided load address and image together, so it is never
+   * auto-detected - the caller asks for it (Machine::load_raw). */
+  bool probe(const void*, u64) const override { return false; }
+  int load(Bus& bus, const void* data, u64 size, ImageInfo* out,
+           std::string& err) const override {
+    /* Without an address a flat image cannot be placed; the machine passes one
+     * through load_raw, and this path exists so the interface is total. */
+    ImageInfo info;
+    info.format = "raw";
+    info.entry = 0;
+    info.segments = 1;
+    info.max = (u32)size;
+    if (size && !writable_range(bus, 0, (size_t)size)) {
+      err = "a raw image needs a load address (see --addr)";
+      return -1;
+    }
+    if (size && !bus.write_bytes(0, data, (size_t)size)) {
+      err = "raw image does not fit in writable memory";
+      return -1;
+    }
+    if (out) *out = info;
+    return 0;
+  }
+};
+
 }  // namespace
 
-int raw_load(Cpu* cpu, const void* image, size_t size, u32 addr,
+const Loader& loader_elf32() {
+  static const Elf32Loader kLoader;
+  return kLoader;
+}
+
+const Loader& loader_raw() {
+  static const RawLoader kLoader;
+  return kLoader;
+}
+
+/* ------------------------------------------------------ implementations -- */
+
+int raw_load(Bus& bus, const void* image, size_t size, u32 addr,
              std::string& err) {
   if (!image || !size) {
     err = "empty image";
     return -1;
   }
-  if (!cpu->bus->range_writable(addr, size)) {
+  if (!writable_range(bus, addr, size)) {
     err = "image does not fit in writable memory";
     return -1;
   }
-  if (!cpu->load_image(addr, image, size)) {
+  if (!bus.write_bytes(addr, image, size)) {
     err = "image does not fit in mapped memory";
     return -1;
   }
   return 0;
 }
 
-int elf32_load(Cpu* cpu, const void* image, size_t size, ImageInfo* out,
+int elf32_load(Bus& bus, const void* image, size_t size, ImageInfo* out,
                std::string& err) {
   const u8* b = static_cast<const u8*>(image);
   if (size < kEhSize) {
@@ -143,8 +222,30 @@ int elf32_load(Cpu* cpu, const void* image, size_t size, ImageInfo* out,
     return -1;
   }
 
+  /* Two passes: check every segment before writing any.  A loader that fails
+   * halfway leaves the machine in a state no caller asked for. */
+  for (u32 i = 0; i < h.phnum; ++i) {
+    Phdr p;
+    parse_phdr(b + h.phoff + (size_t)i * h.phentsize, &p);
+    if (p.type != PT_LOAD_ || p.memsz == 0) continue;
+    if ((size_t)p.offset + p.filesz > size) {
+      err = "PT_LOAD segment extends past the file";
+      return -1;
+    }
+    if (p.memsz < p.filesz) {
+      err = "PT_LOAD segment has memsz < filesz";
+      return -1;
+    }
+    if (!writable_range(bus, p.paddr, p.memsz)) {
+      err = "PT_LOAD segment at 0x" + hex(p.paddr) +
+            " is not inside writable memory";
+      return -1;
+    }
+  }
+
   ImageInfo info;
   info.is_elf = true;
+  info.format = "elf32";
   info.entry = h.entry;
   info.machine = h.machine;
   info.type = h.type;
@@ -154,30 +255,20 @@ int elf32_load(Cpu* cpu, const void* image, size_t size, ImageInfo* out,
   for (u32 i = 0; i < h.phnum; ++i) {
     Phdr p;
     parse_phdr(b + h.phoff + (size_t)i * h.phentsize, &p);
-    if (p.type != PT_LOAD_) continue;
-    if (p.memsz == 0) continue;
-    if ((size_t)p.offset + p.filesz > size) {
-      err = "PT_LOAD segment extends past the file";
-      return -1;
-    }
-    if (p.memsz < p.filesz) {
-      err = "PT_LOAD segment has memsz < filesz";
-      return -1;
-    }
+    if (p.type != PT_LOAD_ || p.memsz == 0) continue;
     /* Everything is placed at the physical address: the core boots with the
      * MMU off, so a virtual-only address would not be reachable.  For the
      * static armel binaries this loader is meant for they are equal anyway. */
-    if (!cpu->bus->range_writable(p.paddr, p.memsz)) {
-      err = "PT_LOAD segment at 0x" + hex(p.paddr) +
-            " is not inside writable memory";
-      return -1;
-    }
-    if (!cpu->load_image(p.paddr, b + p.offset, p.filesz)) {
+    if (p.filesz && !bus.write_bytes(p.paddr, b + p.offset, p.filesz)) {
       err = "PT_LOAD segment at 0x" + hex(p.paddr) + " could not be written";
       return -1;
     }
-    for (u32 o = p.filesz; o < p.memsz; ++o) cpu->phys_write(p.paddr + o, 0, 1);
-
+    for (u32 o = p.filesz; o < p.memsz; ++o) {
+      if (!bus.write_byte(p.paddr + o, 0)) {
+        err = "bss of the segment at 0x" + hex(p.paddr) + " is not writable";
+        return -1;
+      }
+    }
     info.segments++;
     if (p.paddr < info.min) info.min = p.paddr;
     if (p.paddr + p.memsz > info.max) info.max = p.paddr + p.memsz;
@@ -188,6 +279,24 @@ int elf32_load(Cpu* cpu, const void* image, size_t size, ImageInfo* out,
   }
   if (out) *out = info;
   return 0;
+}
+
+namespace {
+
+/* Registered by `register_builtin_modules()` through the loader registry, so
+ * `Machine::load_image` can find them by content or by id. */
+struct LoaderRegistrar {
+  LoaderRegistrar() {
+    ModuleRegistry::instance().add_loader(&loader_elf32());
+    ModuleRegistry::instance().add_loader(&loader_raw());
+  }
+};
+
+}  // namespace
+
+void register_builtin_loaders() {
+  static LoaderRegistrar once;
+  (void)once;
 }
 
 }  // namespace brain

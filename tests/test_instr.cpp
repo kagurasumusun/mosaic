@@ -10,17 +10,18 @@
  * The comparison deliberately ignores CPSR bits whose meaning changed after
  * ARMv5 (J, GE, A, E) -- see the header of the generator for why.
  */
-#include "jit/jit.h"   /* BRAIN_JIT_BACKEND for the --jit self-check */
+#include "arm926/jit/jit.h"   /* BRAIN_JIT_BACKEND for the --jit self-check */
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#include "core/cpu.h"
-#include "core/ops.h"
+#include "arm926/cpu.h"
+#include "arm926/ops.h"
 
 using namespace brain;
+using namespace brain::arm926;
 
 namespace {
 

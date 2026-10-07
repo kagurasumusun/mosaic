@@ -7,22 +7,55 @@ follows — not Linux's expectations, not QEMU's defaults, not ARMv7/v8 syntax.
 
 ## Layers
 
+The emulator is one core plus modules: the core owns the address space, the run
+loop and the C API, and a module owns one piece of the emulated world.  The
+ARM926EJ-S is the first CPU module, not the shape of the emulator
+(`docs/MODULES.md` is the guide to the split, and to adding a processor).
+
 ```
-include/brainemu/brainemu.h    public C API: create/load/run/state/stats
-include/brainemu/bus.h         Bus: regions, per-page descriptors, byte access
-src/core/state.h               Cpu: the register file, CP15, TLB, inlines
-src/core/decode_arm.cpp        ARM instruction -> ArmDec
-src/core/decode_thumb.cpp      Thumb halfword -> ArmDec (the same struct)
-src/core/interp_arm.cpp        executes an ArmDec: the one semantic engine
-src/core/helpers.cpp           decoder helpers + the disassembly printer
-src/core/cp15_mmu.cpp          CP15, FCSE, translation, TLB, fault reporting
-src/core/bus.cpp               region lookup, byte/sized access, code watch
-src/jit/                       block cache, IR, x86-64 + AArch64 backends
-src/loader/elf.cpp             ELF32 PT_LOAD placement, raw image placement
-src/api.cpp                    the C API over the above
+include/brainemu/brainemu.h        public C API: create/load/run/state/stats
+include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
+include/brainemu/core/module.h     ModuleInfo, CpuModule, ModuleRegistry
+include/brainemu/core/machine.h    MachineConfig, Machine (bus + CPU + devices)
+include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
+include/brainemu/device/device.h   Device, FuncDevice, BufferDevice, ConsoleDevice
+include/brainemu/loader/loader.h   Loader (probe + load) + ImageInfo
+src/core/bus.cpp                   the address space (RAM, ROM, devices, watch)
+src/core/device.cpp                the device base class and its adapters
+src/core/module.cpp                the registry
+src/core/machine.cpp               build, run, reset, load
+src/loader/elf.cpp                 the elf32 + raw loader modules
+src/modules/builtin.cpp            the list of modules this build contains
+src/api.cpp                        the C API over the Machine
+
+src/modules/arm926/arm926.cpp      the ARM926 module: its CPU module + adapter
+src/modules/arm926/state.h         Cpu: the register file, CP15, TLB, inlines
+src/modules/arm926/decode_arm.cpp  ARM instruction -> ArmDec
+src/modules/arm926/decode_thumb.cpp  Thumb halfword -> ArmDec (the same struct)
+src/modules/arm926/interp_arm.cpp  executes an ArmDec: the one semantic engine
+src/modules/arm926/helpers.cpp     decoder helpers + the disassembly printer
+src/modules/arm926/cp15_mmu.cpp    CP15, FCSE, translation, TLB, fault reporting
+src/modules/arm926/jit/            block cache, IR, x86-64 + AArch64 backends
+src/modules/toy8/                  a second CPU module, to keep the core honest
 ```
 
-`Cpu` keeps the fields generated code will need at fixed, documented offsets
+The core talks to a processor only through `CpuCore`, and only at *slice*
+boundaries - run a budget, step once, read a register, reset.  Nothing in
+`src/core` knows an opcode, a CPSR or a Thumb bit; nothing in
+`src/modules/arm926` knows what a device is.  Two seams are worth naming here
+because they used to be the other way round:
+
+* `Bus::set_store_observer(fn, user)` is how the ARM module learns that a store
+  landed in a page holding translated code.  It replaced a `Bus::cpu`
+  back-pointer, so the address space no longer knows that a processor exists
+  (and `PageDesc` stays trivially copyable, which the MMU code relies on).
+* `Machine::load_image` places an image and then asks the CPU module to enter it
+  (`CpuCore::set_entry`).  Seeding the stack is the module's job because only
+  the module knows what a stack pointer is; the module's `CpuInfo` is what tells
+  the C API which register index the PC, the flags and the stack pointer are.
+
+`Cpu` (in the ARM926 module) keeps the fields generated code will need at
+fixed, documented offsets
 (comments in `state.h`): `regs[16]`, `npc`, `cur`, `insn`, `cpsr`, `vflag`,
 `thumb`, `halted`, `exit_req`, `cycles`, `insns`, `jit_flags`, `trans_gen`,
 `bus`, `jit`, `ram`, `ram_gbase`, `ram_mask`, `ram_fast`, `exc*`. Keeping them
@@ -115,9 +148,11 @@ tolerate being read four times per instruction.
 
 ## The JIT: one interpreter, a translation layer, two backends
 
-`src/jit/jit.h` is the contract: `Jit::run/run_insns`, `invalidate_range`,
-`flush_all`, `on_exception`, `on_env_change`. Between the guest and a backend sit
-three things that are backend-independent:
+`src/modules/arm926/jit/jit.h` is that module's own JIT contract:
+`Jit::run/run_insns`, `invalidate_range`, `flush_all`, `on_exception`,
+`on_env_change` - internal to the module, because a CPU module is free to have
+an execution engine of its own or none at all (toy8 has none). Between the guest
+and a backend sit three things that are backend-independent:
 
 * the *block cache* (`cache.cpp`) — one entry per guest basic block, hashed on
   the pc, with `trans_gen` versioning (a control-register write invalidates every

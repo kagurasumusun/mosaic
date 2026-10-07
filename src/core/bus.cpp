@@ -1,14 +1,12 @@
 /* SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  * Copyright (c) 2026 the brain-emu authors.  See LICENSE. */
-#include "brainemu/bus.h"
+#include "brainemu/core/bus.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
 #include <sys/mman.h>
-
-#include "core/cpu.h"
 
 namespace brain {
 
@@ -18,9 +16,16 @@ Bus::~Bus() {
   for (PageDesc*& l1 : l1_) {
     if (l1) delete[] l1;
   }
-  if (owns_ram_ && ram_host_) {
-    munmap(ram_host_, ram_size_);
-  }
+  for (u32 i = 0; i < nregions_; ++i) release_region(regions_[i]);
+  nregions_ = 0;
+}
+
+/* Only memory the bus allocated itself: a caller's buffer (map_host) belongs to
+ * the caller, and a board that mapped its ROM in will map it again. */
+void Bus::release_region(BusRegion& r) {
+  if (r.owned && r.host) munmap(r.host, r.size);
+  r.host = nullptr;
+  r.owned = false;
 }
 
 void Bus::reset() {
@@ -29,13 +34,10 @@ void Bus::reset() {
       memset(l1, 0, sizeof(PageDesc) * kL2Size);
     }
   }
-  for (u32 i = 0; i < nregions_; ++i) {
-    BusRegion& r = regions_[i];
-    if ((r.flags & REG_RAM) && owns_ram_ && r.host == ram_host_) continue;
-    if (r.host && (r.flags & REG_RAM)) free(r.host);
-  }
+  for (u32 i = 0; i < nregions_; ++i) release_region(regions_[i]);
   nregions_ = 0;
-  if (owns_ram_ && ram_host_) memset(ram_host_, 0, ram_size_);
+  ram_host_ = nullptr;
+  ram_base_ = ram_size_ = ram_mask_ = 0;
   stat_reads = stat_writes = stat_device = 0;
 }
 
@@ -48,11 +50,10 @@ static u8* alloc_backed(u32 size) {
 bool Bus::map_ram(u32 base, u32 size, const char* name) {
   u8* p = alloc_backed(size);
   if (!p) return false;
-  if (!map_host(base, size, p, REG_RAM, name)) {
+  if (!map_backing(base, size, p, REG_RAM, name, /*owned=*/true)) {
     munmap(p, size);
     return false;
   }
-  if (ram_host_ == p) owns_ram_ = true;
   return true;
 }
 
@@ -63,6 +64,11 @@ bool Bus::span_taken(u32 base, u32 size, u32 against) const {
 }
 
 bool Bus::map_host(u32 base, u32 size, u8* host, u32 flags, const char* name) {
+  return map_backing(base, size, host, flags, name, /*owned=*/false);
+}
+
+bool Bus::map_backing(u32 base, u32 size, u8* host, u32 flags, const char* name,
+                      bool owned) {
   if (!size || nregions_ == kMaxRegions) return false;
   /* A RAM window may not cover a device: the core's identity fast path serves
    * RAM without consulting the per-page table, so a shadowed device would be
@@ -70,12 +76,13 @@ bool Bus::map_host(u32 base, u32 size, u8* host, u32 flags, const char* name) {
   if (span_taken(base, size, PG_DEVICE)) return false;
   BusRegion& r = regions_[nregions_++];
   r = BusRegion{base, size, flags, host, nullptr, nullptr, nullptr,
-                name ? name : "ram"};
+                name ? name : "ram", owned};
   for (u32 off = 0; off < size; off += 0x1000) {
     PageDesc& p = l2_lookup((base + off) >> 12);
     p.host = host + off;
-    p.region = &r;      /* NOTE: invalidated by later push_back; refreshed
-                         * below whenever a region vector grows. */
+    /* regions_ is a fixed array, so a page's region pointer stays valid for
+     * the life of the mapping. */
+    p.region = &r;
     p.flags = PG_PRESENT | ((flags & REG_RAM) ? u32(PG_RAM) : 0u) |
               ((flags & REG_ROM) ? u32(PG_ROM) : 0u);
     p.gbase = base + off;
@@ -98,7 +105,7 @@ bool Bus::map_device(u32 base, u32 size, BusReadFn r, BusWriteFn w,
   if (span_taken(base, size, PG_PRESENT)) return false;   /* no shadowing */
   BusRegion& nr = regions_[nregions_++];
   nr = BusRegion{base, size, REG_DEVICE, nullptr, user, r, w,
-                 name ? name : "dev"};
+                 name ? name : "dev", false};
   BusRegion* rp = &nr;
   for (u32 off = 0; off < size; off += 0x1000) {
     PageDesc& p = l2_lookup((base + off) >> 12);
@@ -113,7 +120,16 @@ bool Bus::map_device(u32 base, u32 size, BusReadFn r, BusWriteFn w,
 bool Bus::unmap(u32 base, u32 size) {
   for (u32 i = 0; i < nregions_; ++i) {
     if (regions_[i].base == base) {
+      /* Release the backing store only if the bus allocated it: a caller's
+       * buffer (map_host) is the caller's to free.  The identity RAM window is
+       * dropped with the region, so a CPU's cached pointer into it must not be
+       * used afterwards. */
+      release_region(regions_[i]);
       regions_[i] = regions_[--nregions_];
+      if (ram_base_ == base) {
+        ram_host_ = nullptr;
+        ram_base_ = ram_size_ = ram_mask_ = 0;
+      }
       break;
     }
   }
@@ -170,9 +186,10 @@ bool Bus::write_byte(u32 addr, u8 v) {
 
 void Bus::note_store(u32 addr) {
   /* Cheap filter: only pages that currently host translated code need the
-   * JIT's attention.  `cpu` is null for interpreter-only builds. */
-  if (!cpu) return;
-  if (page_has_code(addr)) cpu->invalidate_code(addr, 4);
+   * observer's attention, and an interpreter-only machine has no observer to
+   * tell.  Both checks are a load and a branch. */
+  if (!store_fn_) return;
+  if (page_has_code(addr)) store_fn_(store_user_, addr, 4);
 }
 
 void Bus::mark_code_page(u32 addr, bool code) {
@@ -219,65 +236,5 @@ bool Bus::read_bytes(u32 addr, void* dst, size_t n) const {
   for (size_t i = 0; i < n; ++i) (void)((Bus*)this)->read_byte(addr + (u32)i, &d[i]);
   return true;
 }
-
-/* ------------------------------------------------------------ console -- */
-
-namespace {
-/* One process-wide console: the ARM926EJ-S SoCs this core targets all have a
- * UART at a fixed address, and a test only ever needs "the bytes the guest
- * printed".  The buffer wraps; log() always returns the last kCap bytes. */
-struct Console {
-  static constexpr u32 kCap = 64u * 1024u;
-  char data[kCap];
-  u64 total = 0;          /* bytes ever written, monotonic                  */
-};
-Console g_console;
-
-inline void console_put(char c) {
-  g_console.data[g_console.total % Console::kCap] = c;
-  ++g_console.total;
-}
-}  // namespace
-
-u32 ConsoleDevice::Read(void* user, u32 addr, u32 size) {
-  /* A UART's data register would be here; the log is drained from the host
-   * side instead, so reads are simply "no data".  `user` is unused. */
-  (void)user; (void)addr; (void)size;
-  return 0;
-}
-
-void ConsoleDevice::Write(void* user, u32 addr, u32 val, u32 size) {
-  (void)user;
-  if (addr & 3u) {
-    console_put((char)val);            /* byte lane write                    */
-    return;
-  }
-  for (u32 i = 0; i < size; ++i) console_put((char)(val >> (i * 8)));
-}
-
-void* ConsoleDevice::user() { return &g_console; }
-
-const char* ConsoleDevice::log() {
-  /* The buffer is not NUL-terminated in guest-visible order, so terminate into
-   * a static string: log_len() <= kCap and the copy is one per dump. */
-  static char out[Console::kCap + 1];
-  u32 n = (u32)(g_console.total < Console::kCap ? g_console.total
-                                                : Console::kCap);
-  u32 start = (u32)(g_console.total % Console::kCap);
-  if (g_console.total >= Console::kCap) {
-    for (u32 i = 0; i < n; ++i) out[i] = g_console.data[(start + i) % Console::kCap];
-  } else {
-    for (u32 i = 0; i < n; ++i) out[i] = g_console.data[i];
-  }
-  out[n] = 0;
-  return out;
-}
-
-u32 ConsoleDevice::log_len() {
-  return (u32)(g_console.total < Console::kCap ? g_console.total
-                                               : Console::kCap);
-}
-
-void ConsoleDevice::log_clear() { g_console.total = 0; }
 
 }  // namespace brain

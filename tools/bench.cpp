@@ -103,11 +103,9 @@ int main(int argc, char** argv) {
               (unsigned long long)retired, secs,
               secs > 0 ? (double)retired / secs / 1e6 : 0.0,
               retired ? (double)s.cycles / (double)retired : 0.0);
-  std::printf("  engine split: interp %llu jit %llu | blocks %llu links %llu "
-              "flushes %llu\n",
+  std::printf("  engine split: interp %llu jit %llu | blocks %llu flushes %llu\n",
               (unsigned long long)s.insns_interp, (unsigned long long)s.insns_jit,
-              (unsigned long long)s.blocks, (unsigned long long)s.links,
-              (unsigned long long)s.flushes);
+              (unsigned long long)s.blocks, (unsigned long long)s.flushes);
   std::printf("  tlb hits %llu miss %llu | code bytes %llu\n",
               (unsigned long long)s.tlb_hits, (unsigned long long)s.tlb_miss,
               (unsigned long long)s.code_bytes);

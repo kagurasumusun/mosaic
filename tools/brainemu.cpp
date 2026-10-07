@@ -1,10 +1,14 @@
-/* brain-emu -- command line runner for the ARM926EJ-S core.
+/* brain-emu -- command line runner for the emulator core.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * This is the smallest thing that is still useful: load an image, run it for a
  * bounded amount of time, look at the machine afterwards.  It speaks only the
  * public API (brainemu/brainemu.h), so it doubles as the example of how to
- * embed the core.
+ * embed the core - including how to pick a CPU module with `--cpu` and how to
+ * drive one whose registers it has never heard of.
+ *
+ * The default CPU is this build's primary one (the ARM926EJ-S); `--list-cpus`
+ * prints what the build contains.
  */
 #include <brainemu/brainemu.h>
 
@@ -18,6 +22,8 @@ namespace {
 
 struct Options {
   std::string file;
+  std::string cpu;          /* --cpu: a CPU module id, empty = default       */
+  std::string cpu_opts;     /* --cpu-opt K=V, joined with ';' for the core    */
   bool elf = false;
   bool raw = true;
   bool thumb = false;
@@ -74,12 +80,27 @@ uint64_t parse_num64(const char* s) {
   return v;
 }
 
+/* One line per module this build contains, so a user can see what a build is
+ * before choosing a CPU for it. */
+void list_modules() {
+  std::printf("modules in this build (default CPU: %s)\n", brain_default_cpu_id());
+  for (uint32_t i = 0; i < brain_module_count(); ++i) {
+    std::printf("  %-8s %-8s %-12s %s\n", brain_module_id(i),
+                brain_module_kind(i), brain_module_name(i),
+                brain_module_description(i));
+  }
+}
+
 void usage(const char* argv0) {
   std::printf(
       "usage: %s [options] FILE\n"
       "\n"
-      "Load and run an image on an ARM926EJ-S (ARMv5TEJ) core.\n"
+      "Load and run an image on this build's default CPU (an ARM926EJ-S,\n"
+      "ARMv5TEJ); --cpu picks another module, --list-cpus lists them.\n"
       "\n"
+      "  --cpu ID         CPU module to run on (default: %s)\n"
+      "  --cpu-opt K=V    hand an option to the CPU module (repeatable)\n"
+      "  --list-cpus      list the modules this build contains and exit\n"
       "  --elf            FILE is an ELF32 little-endian ARM executable\n"
       "  --raw            FILE is a flat binary (default)\n"
       "  --addr N         load address for a raw image (default 0x8000)\n"
@@ -97,7 +118,7 @@ void usage(const char* argv0) {
       "  --stats          after the run, print the counters\n"
       "  --jit            enable the JIT (no host backend -> interpreter)\n"
       "  --trace          trace every instruction the core retires\n",
-      argv0);
+      argv0, brain_default_cpu_id());
 }
 
 bool parse_args(int argc, char** argv, Options* o) {
@@ -135,6 +156,17 @@ bool parse_args(int argc, char** argv, Options* o) {
       o->have_dump = true;
       ++i;
     }
+    else if (a == "--cpu") { o->cpu = take("--cpu"); ++i; }
+    else if (a == "--cpu-opt") {
+      const char* v = take("--cpu-opt");
+      if (!o->cpu_opts.empty()) o->cpu_opts += ';';
+      o->cpu_opts += v;
+      ++i;
+    }
+    else if (a == "--list-cpus" || a == "--list-modules") {
+      list_modules();
+      std::exit(0);
+    }
     else if (a == "-h" || a == "--help") { usage(argv[0]); std::exit(0); }
     else if (!a.empty() && a[0] == '-') {
       std::fprintf(stderr, "brainemu: unknown option %s\n", a.c_str());
@@ -161,24 +193,50 @@ std::vector<uint8_t> read_file(const std::string& path, size_t max = 64u << 20) 
   return v;
 }
 
+/* Registers, named the way the CPU module describes them.  The ARM926 has the
+ * names everyone knows (R0-R15 with SP/LR/PC, CPSR, SPSR) and gets the flag and
+ * mode breakdown too; any other module gets its numbering and no assumptions. */
 void print_regs(brain_emu_t* e) {
-  static const char* kName[16] = {"R0","R1","R2","R3","R4","R5","R6","R7",
-                                  "R8","R9","R10","R11","R12","SP","LR","PC"};
-  for (int i = 0; i < 16; ++i) {
-    std::printf("  %-3s = 0x%08x", kName[i], brain_get_reg(e, i));
+  const int pc_reg = brain_cpu_pc_reg(e);
+  const int sp_reg = brain_cpu_sp_reg(e);
+  const int st_reg = brain_cpu_status_reg(e);
+  const uint32_t count = brain_cpu_reg_count(e);
+  const bool arm = brain_cpu_saved_status_reg(e) == BRAIN_REG_SPSR &&
+                   st_reg == BRAIN_REG_CPSR;
+  static const char* kArm[16] = {"R0","R1","R2","R3","R4","R5","R6","R7",
+                                 "R8","R9","R10","R11","R12","SP","LR","PC"};
+  for (uint32_t i = 0; i < count; ++i) {
+    const char* name;
+    char buf[16];
+    if (arm && i < 16) name = kArm[i];
+    else {
+      std::snprintf(buf, sizeof buf, "r%u", i);
+      name = buf;
+    }
+    std::printf("  %-3s = 0x%08x", name, brain_get_reg(e, (int)i));
     if ((i & 1) == 1) std::printf("\n");
+    (void)pc_reg; (void)sp_reg;
   }
-  const uint32_t cpsr = brain_get_reg(e, BRAIN_REG_CPSR);
-  static const char* kMode[8] = {"USR", "FIQ", "IRQ", "SVC", "ABT", "UND",
-                                "reserved", "SYS"};
-  const uint32_t mode = cpsr & 0x1Fu;
-  const char* mn = (mode & 0x10u) ? kMode[mode & 7u] : kMode[0];
-  std::printf("  CPSR = 0x%08x   %c%c%c%c%c  %s state, %s mode\n", cpsr,
-              (cpsr & (1u << 31)) ? 'N' : '-', (cpsr & (1u << 30)) ? 'Z' : '-',
-              (cpsr & (1u << 29)) ? 'C' : '-', (cpsr & (1u << 28)) ? 'V' : '-',
-              (cpsr & (1u << 27)) ? 'Q' : '-', (cpsr & (1u << 5)) ? "Thumb" : "ARM",
-              mn);
-  std::printf("  SPSR = 0x%08x\n", brain_get_reg(e, BRAIN_REG_SPSR));
+  if (count & 1) std::printf("\n");
+  if (st_reg >= 0) {
+    const uint32_t v = brain_get_reg(e, st_reg);
+    if (arm) {
+      static const char* kMode[8] = {"USR", "FIQ", "IRQ", "SVC", "ABT", "UND",
+                                     "reserved", "SYS"};
+      const uint32_t mode = v & 0x1Fu;
+      std::printf("  CPSR = 0x%08x   %c%c%c%c%c  %s state, %s mode\n", v,
+                  (v & (1u << 31)) ? 'N' : '-', (v & (1u << 30)) ? 'Z' : '-',
+                  (v & (1u << 29)) ? 'C' : '-', (v & (1u << 28)) ? 'V' : '-',
+                  (v & (1u << 27)) ? 'Q' : '-',
+                  (v & (1u << 5)) ? brain_cpu_alternate_state(e) ? "Thumb" : "?"
+                                  : "ARM",
+                  (mode & 0x10u) ? kMode[mode & 7u] : kMode[0]);
+    } else {
+      std::printf("  flags = 0x%08x\n", v);
+    }
+  }
+  const int ss = brain_cpu_saved_status_reg(e);
+  if (ss >= 0) std::printf("  SPSR = 0x%08x\n", brain_get_reg(e, ss));
 }
 
 }  // namespace
@@ -205,6 +263,8 @@ int main(int argc, char** argv) {
   brain_config_t cfg;
   std::memset(&cfg, 0, sizeof(cfg));
   cfg.ram_size = o.ram_size;
+  cfg.cpu_id = o.cpu.empty() ? nullptr : o.cpu.c_str();
+  cfg.cpu_options = o.cpu_opts.empty() ? nullptr : o.cpu_opts.c_str();
   cfg.use_jit = o.jit ? 1 : 0;
   cfg.trace = o.trace ? 1 : 0;
   brain_emu_t* e = brain_emu_create(&cfg);
@@ -213,6 +273,8 @@ int main(int argc, char** argv) {
     return 2;
   }
   g_emu = e;
+  std::printf("cpu: %s (%s), %s\n", brain_cpu_id(e), brain_cpu_name(e),
+              brain_cpu_isa(e));
 
   uint32_t entry = 0;
   if (o.elf) {
@@ -230,13 +292,19 @@ int main(int argc, char** argv) {
       return 2;
     }
     entry = o.addr | (o.thumb ? 1u : 0u);
-    std::printf("loaded raw: %zu bytes at 0x%08x, %s state\n", image.size(),
-                o.addr, o.thumb ? "Thumb" : "ARM");
+    if (brain_cpu_alternate_state(e))
+      std::printf("loaded raw: %zu bytes at 0x%08x, %s state\n", image.size(),
+                  o.addr, o.thumb ? "Thumb" : "ARM");
+    else
+      std::printf("loaded raw: %zu bytes at 0x%08x\n", image.size(), o.addr);
   }
-  if (o.have_entry) {
-    brain_set_reg(e, 15, o.entry | (o.thumb ? 1u : 0u));
-  }
-  if (o.have_sp) brain_set_reg(e, 13, o.sp);
+  /* The entry and stack go through the register indices the CPU module
+   * reports, so this works for a CPU whose PC is not register 15. */
+  const int pc_reg = brain_cpu_pc_reg(e);
+  const int sp_reg = brain_cpu_sp_reg(e);
+  if (o.have_entry && pc_reg >= 0)
+    brain_set_reg(e, pc_reg, o.entry | (o.thumb ? 1u : 0u));
+  if (o.have_sp && sp_reg >= 0) brain_set_reg(e, sp_reg, o.sp);
   if (o.have_exit_port) {
     if (brain_map_device(e, o.exit_port, 4096, exit_read, exit_write, nullptr,
                          "exit")) {
@@ -272,8 +340,8 @@ int main(int argc, char** argv) {
                 (unsigned long long)s.insns, (unsigned long long)s.insns_interp,
                 (unsigned long long)s.insns_jit);
     std::printf("  cycles       %llu\n", (unsigned long long)s.cycles);
-    std::printf("  blocks       %llu  links %llu  flushes %llu (smc %llu)\n",
-                (unsigned long long)s.blocks, (unsigned long long)s.links,
+    std::printf("  blocks       %llu  flushes %llu (smc %llu)\n",
+                (unsigned long long)s.blocks,
                 (unsigned long long)s.flushes, (unsigned long long)s.smc_flushes);
     std::printf("  tlb          hits %llu miss %llu walks %llu faults %llu\n",
                 (unsigned long long)s.tlb_hits, (unsigned long long)s.tlb_miss,

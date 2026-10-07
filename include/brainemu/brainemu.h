@@ -1,12 +1,24 @@
-/* brain-emu -- ARM926EJ-S (ARMv5TEJ) core emulator
+/* brain-emu -- emulator core with pluggable CPUs
  * Public C API: an embeddable, allocation-light interface to the core.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ *
+ * The emulator is a core plus modules, and this header is the core's whole
+ * surface: an address space, one CPU chosen from the modules this build
+ * contains, image loading, devices, and the run loop.  The primary module is
+ * the ARM926EJ-S (ARMv5TEJ) core of an i.MX28, which is what a default
+ * `brain_emu_create()` gives you; `brain_config_t::cpu_id` picks another one,
+ * and the `brain_module_*` calls list what exists.
  *
  * The API is deliberately small and C-compatible: everything the core can do
  * that an embedder needs (load an image, poke registers, run for a while, read
  * counters, hook a device) is here, and nothing that would tie a caller to the
  * internal layout is.  Handles are opaque; the calls are not thread-safe per
  * handle (one CPU = one thread, as the core keeps no locks).
+ *
+ * Register numbering is the CPU module's: 0..reg_count-1 are its general
+ * registers, and `brain_cpu_status_reg()` names the flags/mode word (16 for the
+ * ARM module, which is also BRAIN_REG_CPSR).  A caller that wants to be
+ * CPU-agnostic asks rather than assumes.
  */
 #ifndef BRAINEMU_BRAINEMU_H
 #define BRAINEMU_BRAINEMU_H
@@ -49,6 +61,8 @@ typedef void (*brain_bus_write_t)(void* user, uint32_t addr, uint32_t value,
 typedef struct {
   uint32_t ram_base;      /* physical address of the RAM window (0 = default) */
   uint32_t ram_size;      /* bytes; 0 = 32 MiB                                */
+  const char* cpu_id;     /* CPU module id, e.g. "arm926"; NULL = the default */
+  const char* cpu_options;/* "key=value;key=value" handed to the CPU module   */
   int use_jit;            /* ask the JIT for blocks (falls back if no backend)*/
   int big_endian_data;    /* BE8 data accesses                                */
   int high_vectors;       /* CP15 c1 V at reset: 0xFFFF0000 vectors           */
@@ -64,7 +78,6 @@ typedef struct {
   uint64_t insns_jit;
   uint64_t cycles;
   uint64_t blocks;        /* JIT blocks built                                 */
-  uint64_t links;         /* direct block-to-block links installed            */
   uint64_t flushes;       /* code cache flushes                               */
   uint64_t smc_flushes;   /* flushes caused by a store into a code page       */
   uint64_t tlb_hits, tlb_miss, walks, page_faults;
@@ -73,9 +86,42 @@ typedef struct {
   uint64_t exc[BRAIN_EXC_COUNT];
 } brain_stats_t;
 
+/* ---- modules ------------------------------------------------------------ */
+
+/* What this build can do, without creating a machine.  `brain_module_*` are
+ * indexed 0..brain_module_count()-1; a CPU module is what a machine can be
+ * built around, the other kinds (devices, loaders) come with the core. */
+uint32_t brain_module_count(void);
+const char* brain_module_id(uint32_t index);
+const char* brain_module_name(uint32_t index);
+const char* brain_module_kind(uint32_t index);        /* "cpu", "loader", ... */
+const char* brain_module_description(uint32_t index);
+/* The id a default machine uses: the build's primary CPU. */
+const char* brain_default_cpu_id(void);
+
+/* The CPU a machine was built around, and what the core can say about it
+ * without knowing its instruction set. */
+const char* brain_cpu_id(const brain_emu_t* e);
+const char* brain_cpu_name(const brain_emu_t* e);
+const char* brain_cpu_isa(const brain_emu_t* e);
+uint32_t brain_cpu_reg_count(const brain_emu_t* e);
+/* Register indices: -1 when the CPU has no such register. */
+int brain_cpu_pc_reg(const brain_emu_t* e);
+int brain_cpu_status_reg(const brain_emu_t* e);
+int brain_cpu_saved_status_reg(const brain_emu_t* e);
+int brain_cpu_sp_reg(const brain_emu_t* e);
+/* Non-zero when the CPU has a second instruction set bit 0 of the PC selects. */
+int brain_cpu_alternate_state(const brain_emu_t* e);
+
+/* Hand a module an option the core's config does not carry ("key=value" is the
+ * CLI spelling).  Returns 1 if the module accepted it. */
+int brain_set_option(brain_emu_t* e, const char* key, const char* value);
+
 /* ---- lifecycle ---------------------------------------------------------- */
 
-/* Returns NULL on failure; call brain_last_error() for the reason. */
+/* Returns NULL on failure.  The reason is available afterwards from
+ * brain_last_error(NULL) - a handle that was never created cannot carry it, and
+ * "no CPU module named X" is worth reading. */
 brain_emu_t* brain_emu_create(const brain_config_t* cfg);
 void brain_emu_destroy(brain_emu_t* e);
 

@@ -8,10 +8,14 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-file(GLOB BRAIN_CORE_SRCS CONFIGURE_DEPENDS src/core/*.cpp src/jit/*.cpp
+# The library is the core plus the modules (see the Makefile, which is the
+# primary build): src/core is the machine, src/modules/<id> is a module, and
+# src/modules/builtin.cpp is the list of modules this build contains.
+file(GLOB BRAIN_CORE_SRCS CONFIGURE_DEPENDS src/core/*.cpp
+     src/modules/*.cpp src/modules/*/*.cpp src/modules/*/jit/*.cpp
      src/loader/*.cpp)
 add_library(brainemu STATIC ${BRAIN_CORE_SRCS} src/api.cpp)
-target_include_directories(brainemu PUBLIC include PRIVATE src)
+target_include_directories(brainemu PUBLIC include PRIVATE src src/modules)
 target_compile_options(brainemu PRIVATE -Wall -Wextra -Wshadow
                        -Wpointer-arith -Wcast-align -Wwrite-strings
                        -fno-strict-aliasing)

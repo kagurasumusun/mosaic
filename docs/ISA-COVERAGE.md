@@ -1,8 +1,8 @@
 # ISA coverage
 
 Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
-`src/core/decode_arm.cpp`, `src/core/decode_thumb.cpp` and the single execution
-engine in `src/core/interp_arm.cpp`. "Checked" below means a case in
+`src/modules/arm926/decode_arm.cpp`, `src/modules/arm926/decode_thumb.cpp` and the single execution
+engine in `src/modules/arm926/interp_arm.cpp`. "Checked" below means a case in
 `tests/data/corpus.txt` compares this core against a golden emulator for that
 encoding; 347 cases exist today (245 in ARM state, 102 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
@@ -98,7 +98,7 @@ machine.
 
 ## Gaps to close next
 
-1. ~~A code generator for *this* host.~~  Closed: `src/jit/emit_x64.cpp` is the
+1. ~~A code generator for *this* host.~~  Closed: `src/modules/arm926/jit/emit_x64.cpp` is the
    x86-64 backend, selected by `BRAIN_JIT_BACKEND` on an x86-64 host, so
    `Stats::insns_jit` is non-zero and the corpus replays through generated
    blocks natively; `test_instr --jit` *fails* if the backend retires nothing,
@@ -233,7 +233,7 @@ corpus case that only proves the core does not crash.
 
 One interpreter, two code generators, one translation layer.  `BRAIN_JIT_BACKEND`
 (`jit/jit.h`) picks the backend from the *host*: 1 is AArch64
-(`src/jit/emit_arm64.h`), 2 is x86-64 (`src/jit/emit_x64.cpp`), 0 means neither
+(`src/modules/arm926/jit/emit_arm64.h`), 2 is x86-64 (`src/modules/arm926/jit/emit_x64.cpp`), 0 means neither
 is compiled in and `use_jit` degrades to the interpreter, which is what `--jit`
 reports as `insns_jit 0` rather than pretending to have run anything.  On a
 given host exactly one backend can run, because a block is host machine code.

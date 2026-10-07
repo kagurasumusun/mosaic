@@ -35,14 +35,16 @@
 #include <string>
 #include <vector>
 
-#include "core/cpu.h"
-#include "jit/cache.h"
-#include "jit/jit.h"
-#include "jit/x64_asm.h"
+#include "arm926/cpu.h"
+#include "arm926/jit/cache.h"
+#include "arm926/jit/jit.h"
+#include "arm926/jit/x64_asm.h"
 
 namespace {
 
-using namespace brain::x64;
+using namespace brain;
+using namespace brain::arm926;
+using namespace brain::arm926::x64;
 
 int g_checks = 0;
 int g_failed = 0;
@@ -157,9 +159,9 @@ struct Rng {
  * false when the block was not translatable (nothing to compare). */
 bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
                    uint32_t cpsr, const char* tag) {
-  brain::CpuConfig cfg;
+  CpuConfig cfg;
   cfg.ram_size = kRamSize;
-  brain::Cpu a, b;
+  Cpu a, b;
   if (!a.init(cfg) || !b.init(cfg)) return false;
   a.reset();
   b.reset();
@@ -170,20 +172,20 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
   for (int i = 0; i < 13; ++i) a.regs[i] = b.regs[i] = regs[i];
   a.cpsr = b.cpsr = cpsr;
   a.vflag = b.vflag = (cpsr >> 28) & 1u;
-  for (brain::Cpu* c : {&a, &b}) {
+  for (Cpu* c : {&a, &b}) {
     c->npc = kCode; c->cur = kCode; c->regs[15] = kCode + 8;
     c->bank[3].r[15] = kCode + 8;
   }
 
-  brain::JitCache* jc = brain::jit_cache_create(&a, 1);
+  JitCache* jc = jit_cache_create(&a, 1);
   if (!jc) return false;
-  brain::JitBlock* blk = nullptr;
-  const bool ok = brain::jit_cache_translate(jc, kCode, &blk) && blk && blk->insns;
-  if (!ok) { brain::jit_cache_destroy(jc); return false; }
+  JitBlock* blk = nullptr;
+  const bool ok = jit_cache_translate(jc, kCode, &blk) && blk && blk->insns;
+  if (!ok) { jit_cache_destroy(jc); return false; }
   const uint32_t retired = blk->insns;
-  brain::jit_cache_enter(jc, blk);
+  jit_cache_enter(jc, blk);
   b.run_insns(retired);
-  brain::jit_cache_destroy(jc);
+  jit_cache_destroy(jc);
 
   bool bad = false;
   std::string why;
@@ -263,15 +265,16 @@ uint32_t random_dp(Rng* r) {
  * values in the words it *should* have written pin the layout itself. */
 void test_shadow_layout() {
   using namespace brain;
+using namespace brain::arm926;
   std::printf("[x64 shadow ABI]\n");
   check(SH_R0 == 0x00 && SH_R15 == 0x3C, "the register file is the first 16 words");
   check(SH_CPSR == 0x40 && SH_EFLAGS == 0x44 && SH_VFLAG == 0x48,
         "the CPSR word and the two flag halves");
   check(SH_ABORT_PC == 0x4C && SH_WORDS * 4 > SH_ABORT_PC, "the exit words fit");
 
-  brain::CpuConfig cfg;
+  CpuConfig cfg;
   cfg.ram_size = kRamSize;
-  brain::Cpu cpu;
+  Cpu cpu;
   if (!cpu.init(cfg)) return;
   /* `subs r1, r2, r3` then `movs r4, r1, lsl #2`: a subtraction (whose V comes
    * out of `seto` and whose C comes out of host CF, inverted) feeding a logical
@@ -288,14 +291,14 @@ void test_shadow_layout() {
                              * be mistaken for one that was passed through. */
   cpu.vflag = 1;
 
-  brain::JitCache* jc = brain::jit_cache_create(&cpu, 1);
+  JitCache* jc = jit_cache_create(&cpu, 1);
   check(jc != nullptr, "the cache is created");
   if (!jc) return;
-  brain::JitBlock* blk = nullptr;
-  const bool ok = brain::jit_cache_translate(jc, kCode, &blk) && blk && blk->insns == 2;
+  JitBlock* blk = nullptr;
+  const bool ok = jit_cache_translate(jc, kCode, &blk) && blk && blk->insns == 2;
   check(ok, "the sample block translates");
   if (!ok || !jc->arena_exec) {
-    brain::jit_cache_destroy(jc);
+    jit_cache_destroy(jc);
     return;
   }
   std::vector<uint32_t> s(SH_WORDS, 0xDEADBEEFu);
@@ -326,7 +329,7 @@ void test_shadow_layout() {
         "nor the two words past R12, which a block may not name");
   check(s[SH_CPSR / 4] == cpu.cpsr,
         "the block leaves the CPSR word to the dispatcher");
-  brain::jit_cache_destroy(jc);
+  jit_cache_destroy(jc);
 }
 
 /* ------------------------------------------------------- the DP sweep ----- */

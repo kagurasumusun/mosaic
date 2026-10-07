@@ -8,10 +8,10 @@
  */
 #include <brainemu/brainemu.h>
 
-#include "core/ops.h"   /* shift_arm(), the primitive both engines share */
-#include "core/cpu.h"
-#include "jit/cache.h"
-#include "jit/jit.h"   /* BRAIN_JIT_BACKEND (which host generator is in) */
+#include "arm926/ops.h"   /* shift_arm(), the primitive both engines share */
+#include "arm926/cpu.h"
+#include "arm926/jit/cache.h"
+#include "arm926/jit/jit.h"   /* BRAIN_JIT_BACKEND (which host generator is in) */
 
 #include <cstdio>
 #include <cstring>
@@ -873,110 +873,110 @@ static void test_shifter_primitive() {
     uint32_t x, type, amt, cin, val, carry;
   };
   static const Row kRows[] = {
-      {0x80000001, brain::SH_LSL,   0, 0, 0x80000001, 0},
-      {0x80000001, brain::SH_LSL,   0, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_LSL,   1, 1, 0x00000002, 1},
-      {0x80000001, brain::SH_LSL,   2, 1, 0x00000004, 0},
-      {0x80000001, brain::SH_LSL,  15, 1, 0x00008000, 0},
-      {0x80000001, brain::SH_LSL,  16, 1, 0x00010000, 0},
-      {0x80000001, brain::SH_LSL,  30, 1, 0x40000000, 0},
-      {0x80000001, brain::SH_LSL,  31, 1, 0x80000000, 0},
-      {0x80000001, brain::SH_LSL,  32, 1, 0x00000000, 1},
-      {0x80000001, brain::SH_LSL,  33, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_LSL,  64, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_LSL, 255, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_LSR,   0, 0, 0x80000001, 0},
-      {0x80000001, brain::SH_LSR,   0, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_LSR,   1, 1, 0x40000000, 1},
-      {0x80000001, brain::SH_LSR,   2, 1, 0x20000000, 0},
-      {0x80000001, brain::SH_LSR,  15, 1, 0x00010000, 0},
-      {0x80000001, brain::SH_LSR,  16, 1, 0x00008000, 0},
-      {0x80000001, brain::SH_LSR,  30, 1, 0x00000002, 0},
-      {0x80000001, brain::SH_LSR,  31, 1, 0x00000001, 0},
-      {0x80000001, brain::SH_LSR,  32, 1, 0x00000000, 1},
-      {0x80000001, brain::SH_LSR,  33, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_LSR,  64, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_LSR, 255, 1, 0x00000000, 0},
-      {0x80000001, brain::SH_ASR,   0, 0, 0x80000001, 0},
-      {0x80000001, brain::SH_ASR,   0, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_ASR,   1, 1, 0xC0000000, 1},
-      {0x80000001, brain::SH_ASR,   2, 1, 0xE0000000, 0},
-      {0x80000001, brain::SH_ASR,  15, 1, 0xFFFF0000, 0},
-      {0x80000001, brain::SH_ASR,  16, 1, 0xFFFF8000, 0},
-      {0x80000001, brain::SH_ASR,  30, 1, 0xFFFFFFFE, 0},
-      {0x80000001, brain::SH_ASR,  31, 1, 0xFFFFFFFF, 0},
-      {0x80000001, brain::SH_ASR,  32, 1, 0xFFFFFFFF, 1},
-      {0x80000001, brain::SH_ASR,  33, 1, 0xFFFFFFFF, 1},
-      {0x80000001, brain::SH_ASR,  64, 1, 0xFFFFFFFF, 1},
-      {0x80000001, brain::SH_ASR, 255, 1, 0xFFFFFFFF, 1},
-      {0x80000001, brain::SH_ROR,   0, 0, 0x80000001, 0},
-      {0x80000001, brain::SH_ROR,   0, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_ROR,   1, 1, 0xC0000000, 1},
-      {0x80000001, brain::SH_ROR,   2, 1, 0x60000000, 0},
-      {0x80000001, brain::SH_ROR,  15, 1, 0x00030000, 0},
-      {0x80000001, brain::SH_ROR,  16, 1, 0x00018000, 0},
-      {0x80000001, brain::SH_ROR,  30, 1, 0x00000006, 0},
-      {0x80000001, brain::SH_ROR,  31, 1, 0x00000003, 0},
-      {0x80000001, brain::SH_ROR,  32, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_ROR,  33, 1, 0xC0000000, 1},
-      {0x80000001, brain::SH_ROR,  64, 1, 0x80000001, 1},
-      {0x80000001, brain::SH_ROR, 255, 1, 0x00000003, 0},
-      {0x80000001, brain::SH_RRX,   0, 0, 0x40000000, 1},
-      {0x80000001, brain::SH_RRX,   0, 1, 0xC0000000, 1},
-      {0x12345678, brain::SH_LSL,   0, 0, 0x12345678, 0},
-      {0x12345678, brain::SH_LSL,   0, 1, 0x12345678, 1},
-      {0x12345678, brain::SH_LSL,   1, 1, 0x2468ACF0, 0},
-      {0x12345678, brain::SH_LSL,   2, 1, 0x48D159E0, 0},
-      {0x12345678, brain::SH_LSL,  15, 1, 0x2B3C0000, 0},
-      {0x12345678, brain::SH_LSL,  16, 1, 0x56780000, 0},
-      {0x12345678, brain::SH_LSL,  30, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSL,  31, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSL,  32, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSL,  33, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSL,  64, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSL, 255, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR,   0, 0, 0x12345678, 0},
-      {0x12345678, brain::SH_LSR,   0, 1, 0x12345678, 1},
-      {0x12345678, brain::SH_LSR,   1, 1, 0x091A2B3C, 0},
-      {0x12345678, brain::SH_LSR,   2, 1, 0x048D159E, 0},
-      {0x12345678, brain::SH_LSR,  15, 1, 0x00002468, 1},
-      {0x12345678, brain::SH_LSR,  16, 1, 0x00001234, 0},
-      {0x12345678, brain::SH_LSR,  30, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR,  31, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR,  32, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR,  33, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR,  64, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_LSR, 255, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR,   0, 0, 0x12345678, 0},
-      {0x12345678, brain::SH_ASR,   0, 1, 0x12345678, 1},
-      {0x12345678, brain::SH_ASR,   1, 1, 0x091A2B3C, 0},
-      {0x12345678, brain::SH_ASR,   2, 1, 0x048D159E, 0},
-      {0x12345678, brain::SH_ASR,  15, 1, 0x00002468, 1},
-      {0x12345678, brain::SH_ASR,  16, 1, 0x00001234, 0},
-      {0x12345678, brain::SH_ASR,  30, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR,  31, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR,  32, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR,  33, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR,  64, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ASR, 255, 1, 0x00000000, 0},
-      {0x12345678, brain::SH_ROR,   0, 0, 0x12345678, 0},
-      {0x12345678, brain::SH_ROR,   0, 1, 0x12345678, 1},
-      {0x12345678, brain::SH_ROR,   1, 1, 0x091A2B3C, 0},
-      {0x12345678, brain::SH_ROR,   2, 1, 0x048D159E, 0},
-      {0x12345678, brain::SH_ROR,  15, 1, 0xACF02468, 1},
-      {0x12345678, brain::SH_ROR,  16, 1, 0x56781234, 0},
-      {0x12345678, brain::SH_ROR,  30, 1, 0x48D159E0, 0},
-      {0x12345678, brain::SH_ROR,  31, 1, 0x2468ACF0, 0},
-      {0x12345678, brain::SH_ROR,  32, 1, 0x12345678, 0},
-      {0x12345678, brain::SH_ROR,  33, 1, 0x091A2B3C, 0},
-      {0x12345678, brain::SH_ROR,  64, 1, 0x12345678, 0},
-      {0x12345678, brain::SH_ROR, 255, 1, 0x2468ACF0, 0},
-      {0x12345678, brain::SH_RRX,   0, 0, 0x091A2B3C, 0},
-      {0x12345678, brain::SH_RRX,   0, 1, 0x891A2B3C, 0},
+      {0x80000001, brain::arm926::SH_LSL,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::arm926::SH_LSL,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_LSL,   1, 1, 0x00000002, 1},
+      {0x80000001, brain::arm926::SH_LSL,   2, 1, 0x00000004, 0},
+      {0x80000001, brain::arm926::SH_LSL,  15, 1, 0x00008000, 0},
+      {0x80000001, brain::arm926::SH_LSL,  16, 1, 0x00010000, 0},
+      {0x80000001, brain::arm926::SH_LSL,  30, 1, 0x40000000, 0},
+      {0x80000001, brain::arm926::SH_LSL,  31, 1, 0x80000000, 0},
+      {0x80000001, brain::arm926::SH_LSL,  32, 1, 0x00000000, 1},
+      {0x80000001, brain::arm926::SH_LSL,  33, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_LSL,  64, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_LSL, 255, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_LSR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::arm926::SH_LSR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_LSR,   1, 1, 0x40000000, 1},
+      {0x80000001, brain::arm926::SH_LSR,   2, 1, 0x20000000, 0},
+      {0x80000001, brain::arm926::SH_LSR,  15, 1, 0x00010000, 0},
+      {0x80000001, brain::arm926::SH_LSR,  16, 1, 0x00008000, 0},
+      {0x80000001, brain::arm926::SH_LSR,  30, 1, 0x00000002, 0},
+      {0x80000001, brain::arm926::SH_LSR,  31, 1, 0x00000001, 0},
+      {0x80000001, brain::arm926::SH_LSR,  32, 1, 0x00000000, 1},
+      {0x80000001, brain::arm926::SH_LSR,  33, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_LSR,  64, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_LSR, 255, 1, 0x00000000, 0},
+      {0x80000001, brain::arm926::SH_ASR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::arm926::SH_ASR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_ASR,   1, 1, 0xC0000000, 1},
+      {0x80000001, brain::arm926::SH_ASR,   2, 1, 0xE0000000, 0},
+      {0x80000001, brain::arm926::SH_ASR,  15, 1, 0xFFFF0000, 0},
+      {0x80000001, brain::arm926::SH_ASR,  16, 1, 0xFFFF8000, 0},
+      {0x80000001, brain::arm926::SH_ASR,  30, 1, 0xFFFFFFFE, 0},
+      {0x80000001, brain::arm926::SH_ASR,  31, 1, 0xFFFFFFFF, 0},
+      {0x80000001, brain::arm926::SH_ASR,  32, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::arm926::SH_ASR,  33, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::arm926::SH_ASR,  64, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::arm926::SH_ASR, 255, 1, 0xFFFFFFFF, 1},
+      {0x80000001, brain::arm926::SH_ROR,   0, 0, 0x80000001, 0},
+      {0x80000001, brain::arm926::SH_ROR,   0, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_ROR,   1, 1, 0xC0000000, 1},
+      {0x80000001, brain::arm926::SH_ROR,   2, 1, 0x60000000, 0},
+      {0x80000001, brain::arm926::SH_ROR,  15, 1, 0x00030000, 0},
+      {0x80000001, brain::arm926::SH_ROR,  16, 1, 0x00018000, 0},
+      {0x80000001, brain::arm926::SH_ROR,  30, 1, 0x00000006, 0},
+      {0x80000001, brain::arm926::SH_ROR,  31, 1, 0x00000003, 0},
+      {0x80000001, brain::arm926::SH_ROR,  32, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_ROR,  33, 1, 0xC0000000, 1},
+      {0x80000001, brain::arm926::SH_ROR,  64, 1, 0x80000001, 1},
+      {0x80000001, brain::arm926::SH_ROR, 255, 1, 0x00000003, 0},
+      {0x80000001, brain::arm926::SH_RRX,   0, 0, 0x40000000, 1},
+      {0x80000001, brain::arm926::SH_RRX,   0, 1, 0xC0000000, 1},
+      {0x12345678, brain::arm926::SH_LSL,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_LSL,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::arm926::SH_LSL,   1, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::arm926::SH_LSL,   2, 1, 0x48D159E0, 0},
+      {0x12345678, brain::arm926::SH_LSL,  15, 1, 0x2B3C0000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  16, 1, 0x56780000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSL,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSL, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_LSR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::arm926::SH_LSR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::arm926::SH_LSR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::arm926::SH_LSR,  15, 1, 0x00002468, 1},
+      {0x12345678, brain::arm926::SH_LSR,  16, 1, 0x00001234, 0},
+      {0x12345678, brain::arm926::SH_LSR,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_LSR, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_ASR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::arm926::SH_ASR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::arm926::SH_ASR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::arm926::SH_ASR,  15, 1, 0x00002468, 1},
+      {0x12345678, brain::arm926::SH_ASR,  16, 1, 0x00001234, 0},
+      {0x12345678, brain::arm926::SH_ASR,  30, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR,  31, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR,  32, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR,  33, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR,  64, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ASR, 255, 1, 0x00000000, 0},
+      {0x12345678, brain::arm926::SH_ROR,   0, 0, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_ROR,   0, 1, 0x12345678, 1},
+      {0x12345678, brain::arm926::SH_ROR,   1, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::arm926::SH_ROR,   2, 1, 0x048D159E, 0},
+      {0x12345678, brain::arm926::SH_ROR,  15, 1, 0xACF02468, 1},
+      {0x12345678, brain::arm926::SH_ROR,  16, 1, 0x56781234, 0},
+      {0x12345678, brain::arm926::SH_ROR,  30, 1, 0x48D159E0, 0},
+      {0x12345678, brain::arm926::SH_ROR,  31, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::arm926::SH_ROR,  32, 1, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_ROR,  33, 1, 0x091A2B3C, 0},
+      {0x12345678, brain::arm926::SH_ROR,  64, 1, 0x12345678, 0},
+      {0x12345678, brain::arm926::SH_ROR, 255, 1, 0x2468ACF0, 0},
+      {0x12345678, brain::arm926::SH_RRX,   0, 0, 0x091A2B3C, 0},
+      {0x12345678, brain::arm926::SH_RRX,   0, 1, 0x891A2B3C, 0},
   };
   for (size_t i = 0; i < sizeof kRows / sizeof kRows[0]; ++i) {
     const Row& r = kRows[i];
-    const brain::Shifted g = brain::shift_arm(r.x, r.type, r.amt, r.cin);
+    const brain::arm926::Shifted g = brain::arm926::shift_arm(r.x, r.type, r.amt, r.cin);
     char nm[96];
     std::snprintf(nm, sizeof nm,
                   "shift_arm(%08x, type %u, amt %u, cin %u) -> %08x c=%u", r.x,
@@ -1017,8 +1017,8 @@ static void test_jit_cache() {
   CHECK(BRAIN_JIT_BACKEND == 0);
 #endif
 
-  brain::Cpu cpu;
-  brain::CpuConfig cfg;
+  brain::arm926::Cpu cpu;
+  brain::arm926::CpuConfig cfg;
   cfg.ram_size = 1u << 20;
   CHECK(cpu.init(cfg));
 
@@ -1031,26 +1031,26 @@ static void test_jit_cache() {
   cpu.npc = 0x8000; cpu.cur = 0x8000; cpu.regs[15] = 0x8008;
   cpu.regs[1] = 1; cpu.regs[2] = 2;
 
-  brain::JitCache* jc = brain::jit_cache_create(&cpu, 1);
+  brain::arm926::JitCache* jc = brain::arm926::jit_cache_create(&cpu, 1);
   CHECK(jc != nullptr);
   if (!jc) return;
 
-  CHECK(brain::jit_cache_lookup(jc, 0x8000) == nullptr);
-  brain::JitBlock* b = nullptr;
-  CHECK(brain::jit_cache_translate(jc, 0x8000, &b));
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == nullptr);
+  brain::arm926::JitBlock* b = nullptr;
+  CHECK(brain::arm926::jit_cache_translate(jc, 0x8000, &b));
   CHECK(b != nullptr);
-  if (!b) { brain::jit_cache_destroy(jc); return; }
+  if (!b) { brain::arm926::jit_cache_destroy(jc); return; }
   CHECK(b->pc == 0x8000);
   CHECK(b->end_pc == 0x8008);               /* stops before the B              */
   CHECK(b->insns == 2 && b->cycles == 2);   /* flat kIssue; cache.cpp why-note */
   CHECK(b->gen == cpu.trans_gen);
-  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b);
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b);
 
   /* enter(): copy-in, "run", copy-back, rebuild the pipeline view, retire. */
   g_hook_calls = 0;
   const uint64_t i0 = cpu.insns, c0 = cpu.cycles;
-  brain::jit_cache_exec_hook = jit_cache_test_hook;
-  brain::jit_cache_enter(jc, b);
+  brain::arm926::jit_cache_exec_hook = jit_cache_test_hook;
+  brain::arm926::jit_cache_enter(jc, b);
   CHECK(g_hook_calls == 1);
   CHECK(cpu.regs[0] == 3u && cpu.regs[3] == 5u);
   CHECK(cpu.npc == 0x8008 && cpu.cur == 0x8004 && cpu.regs[15] == 0x800C);
@@ -1060,14 +1060,14 @@ static void test_jit_cache() {
 
   /* The dispatcher loop: block, block, ... with the untranslatable `B .`
    * interpreted between them; budgets cut across blocks, never inside. */
-  brain::jit_cache_run_insns(jc, 4);         /* B, block, B: two interpreted + */
+  brain::arm926::jit_cache_run_insns(jc, 4);         /* B, block, B: two interpreted + */
   CHECK(cpu.insns == i0 + 6);                /* two retired from one entry     */
   CHECK(cpu.stats.insns_jit == 4);
   CHECK(cpu.npc == 0x8000);                  /* the last interpreted B landed  */
   const uint64_t j1 = cpu.stats.insns_jit;
-  brain::jit_cache_run_insns(jc, 1);         /* block would over-run: one DP   */
+  brain::arm926::jit_cache_run_insns(jc, 1);         /* block would over-run: one DP   */
   CHECK(cpu.insns == i0 + 7 && cpu.stats.insns_jit == j1);
-  brain::jit_cache_run_insns(jc, 3);         /* 1-instruction block at 0x8004, */
+  brain::arm926::jit_cache_run_insns(jc, 3);         /* 1-instruction block at 0x8004, */
   CHECK(cpu.insns == i0 + 10 &&               /* then B, then a single DP too  */
         cpu.stats.insns_jit == j1 + 1);
 
@@ -1075,21 +1075,21 @@ static void test_jit_cache() {
    * lookups see a freshly translated, current-generation block. */
   ++cpu.trans_gen;                            /* as flush_all/exceptions do      */
   const uint64_t j2 = cpu.stats.insns_jit, i2 = cpu.insns;
-  brain::jit_cache_run_insns(jc, 2);
+  brain::arm926::jit_cache_run_insns(jc, 2);
   /* The block at 0x8004 is stale: the boundary flushes the whole cache and
    * the budget is spent under the interpreter (MOV, then B). */
   CHECK(cpu.insns == i2 + 2 && cpu.stats.insns_jit == j2);
-  CHECK(brain::jit_cache_lookup(jc, 0x8004) == nullptr);
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8004) == nullptr);
 
   /* invalidation: overlap strictly, touching ends alone do not. */
-  brain::JitBlock* b3 = nullptr;
-  CHECK(brain::jit_cache_translate(jc, 0x8000, &b3) && b3 != nullptr);
-  brain::jit_cache_invalidate(jc, 0x7FFC, 4); /* ends exactly at pc: keeps     */
-  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b3);
-  brain::jit_cache_invalidate(jc, 0x8008, 4); /* starts at end_pc: keeps       */
-  CHECK(brain::jit_cache_lookup(jc, 0x8000) == b3);
-  brain::jit_cache_invalidate(jc, 0x8004, 4); /* inside: drops                 */
-  CHECK(brain::jit_cache_lookup(jc, 0x8000) == nullptr);
+  brain::arm926::JitBlock* b3 = nullptr;
+  CHECK(brain::arm926::jit_cache_translate(jc, 0x8000, &b3) && b3 != nullptr);
+  brain::arm926::jit_cache_invalidate(jc, 0x7FFC, 4); /* ends exactly at pc: keeps     */
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b3);
+  brain::arm926::jit_cache_invalidate(jc, 0x8008, 4); /* starts at end_pc: keeps       */
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b3);
+  brain::arm926::jit_cache_invalidate(jc, 0x8004, 4); /* inside: drops                 */
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == nullptr);
 
   /* The core's SMC plumbing (`write_mem -> invalidate_code -> Jit::invalidate_
    * range`) runs only when the control plane owns a Jit; the cache-side contract
@@ -1097,8 +1097,8 @@ static void test_jit_cache() {
    * exercised end to end by `test_instr --jit` (x86-64 and AArch64) and by
    * tests/test_jit_x64.cpp, which runs the emitted bytes for real. */
 
-  brain::jit_cache_exec_hook = nullptr;
-  brain::jit_cache_destroy(jc);
+  brain::arm926::jit_cache_exec_hook = nullptr;
+  brain::arm926::jit_cache_destroy(jc);
 }
 
 int main() {

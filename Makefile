@@ -21,14 +21,26 @@ BUILD    ?= build
 LIBDIR   := $(BUILD)/obj
 BIN      := $(BUILD)
 
-INC      := -Iinclude -Isrc
+# `src/modules` on the include path is what makes a module's headers reachable
+# as `<id>/<file>` from anywhere (and a third-party module from its own -I).
+INC      := -Iinclude -Isrc -Isrc/modules
 CXXFLAGS := $(CXXSTD) $(OPT) $(WARN) $(SAN) $(DEFINES) -fno-strict-aliasing -g \
             -pthread -MMD -MP $(INC) $(EXTRA)
 LDFLAGS  ?=
 LDLIBS   ?= -lm
 
-# sources: only what exists, so the tree builds while the JIT/loader land
-CORE_SRCS  := $(sort $(wildcard src/core/*.cpp) $(wildcard src/jit/*.cpp) \
+# The library is the core plus the modules.
+#
+#   src/core        the machine itself: bus, device base, module registry, run loop
+#   src/modules/*   the modules this build contains (CPU modules included)
+#   src/loader      the built-in image formats
+#   src/api.cpp     the C API over the core
+#
+# Everything is globbed, so a new module directory needs no Makefile edit - only
+# a line in src/modules/builtin.cpp, which is the list of what exists.
+CORE_SRCS  := $(sort $(wildcard src/core/*.cpp) $(wildcard src/modules/*.cpp) \
+                     $(wildcard src/modules/*/*.cpp) \
+                     $(wildcard src/modules/*/jit/*.cpp) \
                      $(wildcard src/loader/*.cpp) $(wildcard src/api.cpp))
 TOOL_SRCS  := $(wildcard tools/*.cpp)
 TEST_SRCS  := $(wildcard tests/test_*.cpp)
@@ -90,7 +102,8 @@ check: tests
 	@echo "all tests passed"
 
 # The ISA corpus is generated from a golden emulator (Unicorn) so the tests
-# do not depend on an ARM cross toolchain being installed.
+# do not depend on an ARM cross toolchain being installed.  It exercises the
+# ARM926 module, which is the module the corpus is written in.
 corpus:
 	@mkdir -p tests/data
 	$(PY) tests/gen_instr_tests.py
