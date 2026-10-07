@@ -75,10 +75,19 @@ is host code with the guest words already compiled in:
 The granularity is per page and deliberately conservative: a flagged page with
 no block left costs one range check per store, while a live block can never sit
 on a page whose flag has been cleared, which is the property that matters.
+`Bus::note_store(addr, size)` is the only way to raise the flag's consequences,
+so every writer of guest memory goes through it: the CPU's own store path in
+both engines, `Bus::write_bytes` (the loaders and `brain_write_mem`), the ELF
+loader's bss fill, and `brain_poke*`, which writes into the host buffer behind a
+page. A debugger that patches code while a machine runs is the case that is easy
+to forget - it does not look like a guest store at all.
+
 `tests/test_unit.cpp::test_self_modifying_code()` pins the plumbing directly
 (the observer is called for a store to the code page and not for one to a data
-page, a covering store drops the block, a flush clears flag and guard) and
-`Stats::smc_flushes` counts the drops.
+page, a covering store drops the block, a write that straddles a page boundary
+is reported for the page it ends in, a flush clears flag and guard, a poke into
+translated code makes the next run use the new word) and `Stats::smc_flushes`
+counts the drops.
 
 Three corpus cases pin the behaviour against the oracle, all with the patch
 landing on a word the store has already passed: `arm_smc_patch_loop` (the loop

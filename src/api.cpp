@@ -323,7 +323,13 @@ void brain_write32(brain_emu_t* e, u32 addr, u32 value) {
  * perturbs a FIFO or a "read clear" register is worse than no inspector.  A
  * read from somewhere that is not RAM reports 0, and a write outside writable
  * RAM is dropped -- both are the caller's bug to find, not the core's to
- * report through the guest's exception pins. */
+ * report through the guest's exception pins.
+ *
+ * A poke still has to tell the bus: it is a write into guest memory that the
+ * CPU's store path never sees, so without `note_store` a JIT block translated
+ * from the bytes it overwrites would keep running.  That is the same rule the
+ * bulk loader writes follow in `Bus::write_bytes`; a *read* has nothing to
+ * report. */
 static u8* peek_ptr(brain_emu* e, u32 addr, u32 size, bool write) {
   if (!e) return nullptr;
   brain::Bus& bus = e->m.bus();
@@ -350,17 +356,22 @@ u32 brain_peek32(brain_emu_t* e, u32 addr) {
 }
 void brain_poke8(brain_emu_t* e, u32 addr, u32 value) {
   u8* p = peek_ptr(e, addr, 1, true);
-  if (p) p[0] = (u8)value;
+  if (!p) return;
+  p[0] = (u8)value;
+  e->m.bus().note_store(addr, 1);
 }
 void brain_poke16(brain_emu_t* e, u32 addr, u32 value) {
   u8* p = peek_ptr(e, addr, 2, true);
-  if (p) { p[0] = (u8)value; p[1] = (u8)(value >> 8); }
+  if (!p) return;
+  p[0] = (u8)value; p[1] = (u8)(value >> 8);
+  e->m.bus().note_store(addr, 2);
 }
 void brain_poke32(brain_emu_t* e, u32 addr, u32 value) {
   u8* p = peek_ptr(e, addr, 4, true);
   if (!p) return;
   p[0] = (u8)value; p[1] = (u8)(value >> 8);
   p[2] = (u8)(value >> 16); p[3] = (u8)(value >> 24);
+  e->m.bus().note_store(addr, 4);
 }
 
 int brain_read_mem(brain_emu_t* e, u32 addr, void* dst, size_t n) {

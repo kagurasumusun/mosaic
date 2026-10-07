@@ -579,7 +579,7 @@ ALWAYS_INLINE void Cpu::mem_write(u32 addr, u32 val, u32 size, u32 flags) {
     } else {
       p[0] = (u8)val;
     }
-    if (BRAIN_UNLIKELY(smc_watch)) bus->note_store(addr);
+    if (BRAIN_UNLIKELY(smc_watch)) bus->note_store(addr, size);
     return;
   }
   mem_write_slow(addr, val, size, flags);

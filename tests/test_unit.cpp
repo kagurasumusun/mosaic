@@ -1227,6 +1227,45 @@ void test_self_modifying_code() {
     brain_emu_destroy(e);
   }
 
+  /* The debugger's route into guest memory.  `brain_poke32` writes into the
+   * host buffer behind the page, so the guest's own store path never sees it -
+   * and a block translated from those bytes would keep running unless the poke
+   * tells the bus.  The check is behavioural: patch the loop body to a
+   * different immediate and watch the next run use it. */
+  {
+    brain_config_t cfg;
+    std::memset(&cfg, 0, sizeof cfg);
+    cfg.ram_size = 1u << 20;
+    cfg.use_jit = 1;
+    brain_emu_t* e = brain_emu_create(&cfg);
+    CHECK(e != nullptr);
+    if (e) {
+      const uint32_t kAdd[] = {0xE2800001u, 0xE2800001u, 0xEAFFFFFEu};
+      CHECK(brain_load_raw(e, kAdd, sizeof kAdd, 0x8000, 0) == 0);
+      brain_set_reg(e, 0, 0);
+      CHECK(brain_run_insns(e, 2) == 2);          /* the whole block         */
+      CHECK(brain_get_reg(e, 0) == 2);
+      brain_stats_t s;
+      brain_get_stats(e, &s);
+#if BRAIN_JIT_BACKEND
+      CHECK(s.insns_jit == 2);                    /* both ran as host code   */
+#endif
+      const uint64_t drops = s.smc_flushes;
+      brain_poke32(e, 0x8004, 0xE2800005u);       /* add r0, r0, #1 -> #5     */
+      brain_get_stats(e, &s);
+#if BRAIN_JIT_BACKEND
+      CHECK(s.smc_flushes == drops + 1);
+#endif
+      /* Rewind and run it again: the block must be gone, and the new immediate
+       * is what the guest executes. */
+      brain_set_reg(e, 0, 0);
+      brain_set_reg(e, 15, 0x8000);
+      CHECK(brain_run_insns(e, 2) == 2);
+      CHECK(brain_get_reg(e, 0) == 6);
+      brain_emu_destroy(e);
+    }
+  }
+
   /* The bookkeeping behind it, at the level the guard actually lives on. */
   brain::arm926::Cpu cpu;
   brain::arm926::CpuConfig cfg;
@@ -1272,13 +1311,26 @@ void test_self_modifying_code() {
     cpu.write32(0x8004, 3);
     CHECK(sc.hits == 2 && sc.last == 0x8004);
 
+    /* A write that does not go through the CPU at all - the loaders, a
+     * debugger's `brain_write_mem` - reports through the same hook, and it is
+     * checked per page: a bulk write that starts in a page with no code and
+     * ends in one that has code is reported for the page it *ends* in. */
+    cpu.phys_write(0xA000, 0xE2800001u, 4);          /* add r0, r0, #1        */
+    CHECK(brain::arm926::jit_cache_translate(jc, 0xA000, &b));
+    const uint8_t tail[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+    CHECK(cpu.bus->write_bytes(0x9FFE, tail, 4));
+    CHECK(sc.hits == 3 && sc.last == 0x9FFE);
+    CHECK(cpu.bus->write_bytes(0xB000, tail, 4));      /* no code page: quiet  */
+    CHECK(sc.hits == 3);
+
     /* A flush is the one place that clears the flags, and with no block left
      * the guard goes off with them: the interpreter's stores pay nothing. */
+    const int hits_before_flush = sc.hits;
     brain::arm926::jit_cache_flush(jc);
     CHECK(cpu.smc_watch == 0);
     CHECK(!cpu.bus->page_has_code(0x8000));
     cpu.write32(0x8004, 4);
-    CHECK(sc.hits == 2);
+    CHECK(sc.hits == hits_before_flush);
 
     /* Destroying the cache must put the guard back too - the core keeps
      * running with the JIT off, and a live `smc_watch` would make every store

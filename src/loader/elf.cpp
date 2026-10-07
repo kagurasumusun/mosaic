@@ -263,12 +263,17 @@ int elf32_load(Bus& bus, const void* image, size_t size, ImageInfo* out,
       err = "PT_LOAD segment at 0x" + hex(p.paddr) + " could not be written";
       return -1;
     }
-    for (u32 o = p.filesz; o < p.memsz; ++o) {
-      if (!bus.write_byte(p.paddr + o, 0)) {
-        err = "bss of the segment at 0x" + hex(p.paddr) + " is not writable";
-        return -1;
-      }
+    /* Zero-fill the rest of the segment's memory.  The range is checked first
+     * so a segment that does not fit leaves nothing behind, and the fill is
+     * reported to the bus the same way a bulk write is: the loader may be
+     * running over bytes some translated block was built from. */
+    const u32 bss = p.memsz - p.filesz;
+    if (bss && !bus.range_writable(p.paddr + p.filesz, bss)) {
+      err = "bss of the segment at 0x" + hex(p.paddr) + " is not writable";
+      return -1;
     }
+    for (u32 o = 0; o < bss; ++o) bus.write_byte(p.paddr + p.filesz + o, 0);
+    if (bss) bus.note_store(p.paddr + p.filesz, bss);
     info.segments++;
     if (p.paddr < info.min) info.min = p.paddr;
     if (p.paddr + p.memsz > info.max) info.max = p.paddr + p.memsz;

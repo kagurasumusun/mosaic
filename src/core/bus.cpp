@@ -184,12 +184,17 @@ bool Bus::write_byte(u32 addr, u8 v) {
   return false;   /* ROM or unmapped: caller raises the external abort     */
 }
 
-void Bus::note_store(u32 addr) {
+void Bus::note_store(u32 addr, u32 size) {
   /* Cheap filter: only pages that currently host translated code need the
    * observer's attention, and an interpreter-only machine has no observer to
    * tell.  Both checks are a load and a branch. */
-  if (!store_fn_) return;
-  if (page_has_code(addr)) store_fn_(store_user_, addr, 4);
+  if (!store_fn_ || !size) return;
+  const u64 end = (u64)addr + size;
+  for (u64 p = addr & ~(u64)0xFFF; p < end; p += 0x1000) {
+    /* One report for the whole range: the observer invalidates by overlap, so a
+     * superset costs one range check and is always safe. */
+    if (page_has_code((u32)p)) { store_fn_(store_user_, addr, size); return; }
+  }
 }
 
 void Bus::mark_code_page(u32 addr, bool code) {
@@ -227,6 +232,11 @@ bool Bus::write_bytes(u32 addr, const void* src, size_t n) {
   if (!range_writable(addr, n)) return false;
   const u8* s = (const u8*)src;
   for (size_t i = 0; i < n; ++i) write_byte(addr + (u32)i, s[i]);
+  /* A bulk write is the loaders' and a debugger's way into guest memory, and it
+   * lands in the host buffer behind the page - the CPU's own store path never
+   * sees it, so the translation guard is told here instead. */
+  const u64 len = n > 0xFFFFFFFFull ? 0xFFFFFFFFull : (u64)n;
+  note_store(addr, (u32)len);
   return true;
 }
 

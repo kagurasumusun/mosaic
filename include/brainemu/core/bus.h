@@ -25,7 +25,8 @@ using BusWriteFn = void  (*)(void* user, u32 addr, u32 val, u32 size);
 
 /* Store observation, for a CPU that caches translated code: the bus reports a
  * write as soon as it lands, so code that has just been overwritten can be
- * dropped.  A function pointer rather than an interface because PageDesc and the
+ * dropped.  Bulk writes go through the same hook - see `Bus::note_store`.
+ * A function pointer rather than an interface because PageDesc and the
  * bus itself are memset/memcpy'd around by the MMU code, which a vptr-bearing
  * member would not survive. */
 using BusStoreFn = void (*)(void* user, u32 addr, u32 size);
@@ -125,8 +126,16 @@ class Bus {
     return (p.flags & (PG_RAM | PG_ROM)) ? p.host + (addr & 0xFFFu) : nullptr;
   }
 
-  /* Notified by the core after every store so the JIT can drop stale code. */
-  void note_store(u32 addr);
+  /* Notified after every store so the JIT can drop stale code.  Called by the
+   * core's store path, which knows the size, and by this bus's own bulk write
+   * (`write_bytes`: loaders, `brain_write_mem`, `brain_poke*` writes into the
+   * host buffer behind a page) - every way bytes can reach guest memory has to
+   * come past here, or a block translated from those bytes survives the
+   * overwrite.  The range is walked page by page because the per-page flag is
+   * what makes this cheap: a store that touches no code page - nearly all of
+   * them - costs one load and one branch, and a range that straddles a page
+   * boundary is checked on both sides. */
+  void note_store(u32 addr, u32 size);
   void mark_code_page(u32 addr, bool code);
   bool page_has_code(u32 addr) const {
     return (l2_lookup_const(addr >> 12).flags & PG_CODE) != 0;

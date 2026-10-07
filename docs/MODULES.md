@@ -190,7 +190,14 @@ calls it before it answers anything about modules, so a caller never has to.
   `Bus::cpu` back-pointer, which was the one place the address space knew about
   a processor. A callback plus a user pointer keeps `Bus` and `PageDesc`
   trivially copyable (the MMU code memsets and memcpys them) and keeps a
-  non-ARM CPU from having to have a `Cpu` at all.
+  non-ARM CPU from having to have a `Cpu` at all. `Bus::note_store(addr, size)`
+  is the one way to raise it, and *every* writer of guest memory has to call it:
+  the CPU's store path (fast RAM and the MMU slow path), `Bus::write_bytes` (the
+  loaders, `brain_write_mem`), the ELF loader's bss fill and `brain_poke*`,
+  which writes into the host buffer behind a page. A writer that skips it leaves
+  a translated block running over bytes that changed underneath it, which is the
+  one bug this hook exists to make impossible. A CPU with no code cache has no
+  observer, and then the call is one null check.
 * `Machine::reinit()`: a full rebuild from the last configuration. The CPU goes
   first (it holds pointers into the bus), then the address space is released and
   rebuilt. `Bus::reset()` releases only the backing stores the bus allocated

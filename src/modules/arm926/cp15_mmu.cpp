@@ -400,7 +400,7 @@ void Cpu::mem_write_slow(u32 addr, u32 val, u32 size, u32 flags) {
     if (size == 4) memcpy(p, &val, 4);
     else if (size == 2) { p[0] = (u8)val; p[1] = (u8)(val >> 8); }
     else p[0] = (u8)val;
-    if (BRAIN_UNLIKELY(smc_watch)) bus->note_store(addr);
+    if (BRAIN_UNLIKELY(smc_watch)) bus->note_store(addr, size);
     return;
   }
   BusRegion* r = bus->page(e->gpa + (addr & 0xFFF))->region;
