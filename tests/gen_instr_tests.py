@@ -231,6 +231,33 @@ def arith_cases(rnd, n_each=3):
     return out
 
 
+def adc_sbc_cases():
+    """Add/subtract *with carry*, across the whole flag-in/flag-out surface.
+
+    ADC and SBC read C as a value and write it from the sum, so a case is only
+    meaningful with C pinned: every operand shape below runs with C clear, C set,
+    and once with V set as well (V must come out of the signed overflow of the
+    *whole* sum, C being part of it).  The shifted and rotated forms are in here
+    too: ARMv5's carry-in rule for them is the shifter's own carry rather than C,
+    which is the one detail no host instruction implements - the JIT refuses
+    those shapes, and the oracle cases then pin the interpreter.
+    """
+    out = []
+    shapes = ["ADCS R0, R1, R2", "SBCS R0, R1, R2", "ADCS R0, R1, #0x10",
+              "SBCS R0, R1, #0x10", "ADCS R0, R1, R2, LSL #3",
+              "SBCS R0, R1, R2, LSR #5", "ADCS R0, R1, #0x01000000",
+              "SBCS R0, R1, #0x80000000", "ADC R0, R1, R2", "SBC R0, R1, R2"]
+    # C clear, C set, and C set with V set (a stale V must not survive), plus the
+    # entry where only V is set: an ADC that reads only C has to leave V alone
+    # unless its own sum overflows.
+    cpsrs = [0x10000000, 0x20000000, 0x30000000, 0x70000000, 0x90000000]
+    for line in shapes:
+        for cpsr in cpsrs:
+            name = "adcsbc_%s_c%x" % (slug(line), cpsr >> 28)
+            out.append((name, "arm", [line], None, cpsr))
+    return out
+
+
 def logical_imm_cases():
     """Flag-setting *logical* operations with an immediate operand.
 
@@ -701,6 +728,7 @@ def main():
     cases = []
     cases += arith_cases(rnd)
     cases += logical_imm_cases()
+    cases += adc_sbc_cases()
     cases += mem_cases()
     cases += misc_cases()
     cases += branch_cases(rnd)

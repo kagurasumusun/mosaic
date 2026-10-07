@@ -149,8 +149,11 @@ class Buf {
                    bool flags = false) {
     sub_shifted(rd, XZR, rm, sh, amt, flags);
   }
-  void adc(uint32_t rd, uint32_t rn, uint32_t rm) {
-    emit(0x1A000000u | (rm << 16) | (rn << 5) | rd);
+  /* Add with carry.  `ADCS` (bit 29) is the flag-setting form: N and Z from the
+   * result, C the carry out of the sum including the carry in, V the signed
+   * overflow - all of them ARM's rule for ADC with a non-shifting operand. */
+  void adc(uint32_t rd, uint32_t rn, uint32_t rm, bool flags = false) {
+    emit((flags ? 0x3A000000u : 0x1A000000u) | (rm << 16) | (rn << 5) | rd);
   }
   /* Subtract with carry.  Unlike the shifted-register group, add/subtract
    * *with carry* has no shift field - an operand that needs one is shifted

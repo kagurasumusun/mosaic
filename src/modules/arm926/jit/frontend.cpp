@@ -42,6 +42,18 @@ uint32_t reg_of(uint32_t r) { return r + 1u; }
  * with `cond = 0xF` (its "unconditional" marker) and only ever sets a condition
  * for `B<cond>`, so a Thumb instruction is never predicated and this check is
  * the ARM one. */
+/* The operand shapes the carry-consuming arithmetic (ADC/SBC/MVN's neighbours,
+ * see translate_dp) can take: one where the *shifter* supplies no carry, so the
+ * instruction's carry-in is the C flag.  A register operand has no shift at all
+ * (`decode_op2_reg` reports OP2_REG only for `Rm` with no shift bits set, and
+ * RRX/ROR #0 as a separate shape), and an immediate with a zero rotate field is
+ * the raw imm8.  Everything else is the ARMv5 shifter-carry rule and stays with
+ * the dispatcher. */
+bool adc_sbc_operand(const ArmDec& d) {
+  if (d.op2 == OP2_REG) return true;
+  return d.op2 == OP2_IMM && d.rot == 0;
+}
+
 bool translate_dp(const ArmDec& d, uint32_t pc, bool thumb, IrInsn* out) {
   /* `ArmDec::cond` is the Thumb branch field; for ARM words the decoder reports a
    * failed condition as AOP_SATISFY and executes nothing, so the only thing left to
@@ -73,12 +85,16 @@ bool translate_dp(const ArmDec& d, uint32_t pc, bool thumb, IrInsn* out) {
    * banked registers in general) stay the interpreter's, and the dispatcher is what
    * handles them, so a block ends here instead. */
   if (d.rd > 12u || d.rn > 12u || d.ra > 12u) return false;
-  /* `d.rm` is only *a register* for the two register forms: decode_arm() pre-seeds
-   * it with the instruction's low nibble, which for an immediate is part of the
-   * immediate itself (`and r2, r1, #0x0F` would read rm = 15 and every value whose
-   * low nibble is 0xD..0xF would be refused as if it named R13/R14/R15). */
-  if (d.op2 == OP2_REG && d.rm > 12u) return false;
-  if (d.op2 == OP2_REG_SHIFT && (d.rm > 12u || d.rs > 12u)) return false;
+  /* `d.rm` is only *a register* when the encoding says so, and `d.rs` only for the
+   * register-*specified* shift: decode_arm() pre-seeds `rm` with the instruction's
+   * low nibble - which for an immediate is part of the immediate itself (`and r2,
+   * r1, #0x0F` would read rm = 15, so a blanket check refuses every value ending in
+   * 0xD..0xF) - and for an immediate shift it holds the shift amount in bits[11:7],
+   * so a check on `rs` there refuses every shift by 13..31.  Both forms of the
+   * mistake turn a working encoding into a silent fallback to the interpreter,
+   * which is why they are named per shape here rather than lumped together. */
+  if ((d.op2 == OP2_REG || d.op2 == OP2_REG_SHIFT) && d.rm > 12u) return false;
+  if (d.op2 == OP2_REG_RS && (d.rm > 12u || d.rs > 12u)) return false;
   if (d.op2 != OP2_NONE && d.op2 != OP2_IMM && d.op2 != OP2_REG &&
       d.op2 != OP2_REG_SHIFT)
     return false;
@@ -163,17 +179,21 @@ bool translate_dp(const ArmDec& d, uint32_t pc, bool thumb, IrInsn* out) {
     case DP_SUB: in.op = IR_SUB; break;
     case DP_RSB: in.op = IR_RSB; break;
     case DP_ADD: in.op = IR_ADD; break;
-    /* ADC/SBC take their carry input from the flags, and AArch64 has no
-     * flag-setting form of either: `ADCS Rd, Rn, Rm` would need the carry *and*
-     * overflow out of a three-operand sum, which is not one instruction.  So only
-     * the flag-free versions are translated, and the flag versions end the block -
-     * the dispatcher runs them. */
+    /* ADC/SBC read C as a *value* and write it from the sum, which both hosts
+     * compute natively (`adc`/`adcs`, `sbb`/`sbcs`).  What they cannot do is the
+     * operand shape ARMv5 feeds them: when the shifter itself produces a carry
+     * (a register-specified shift with a non-zero amount, or a rotated
+     * immediate), that carry is what ADC/SBC/RSC take *in* - instead of C - and
+     * no host instruction has a second carry input.  Those shapes end the block;
+     * what is left is the plain register operand and the unrotated immediate,
+     * where the carry-in is the C flag and the carry-out is the sum's, on ARM
+     * and on both hosts. */
     case DP_ADC:
-      if (d.op2 != OP2_REG || d.s) return false;
+      if (!adc_sbc_operand(d)) return false;
       in.op = IR_ADC;
       break;
     case DP_SBC:
-      if (d.op2 != OP2_REG || d.s) return false;
+      if (!adc_sbc_operand(d)) return false;
       in.op = IR_SBC;
       break;
     /* RSC is the same operation with the shifter operand as the minuend
@@ -821,12 +841,17 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
         b.neg_shifted(rd, operand, st, amt, in.setflags);
         break;
       case IR_ADC:
-        if (in.setflags) return false;      /* refused by the front end too */
-        b.adc(rd, ra, operand);
+        /* `ADCS` is a real AArch64 instruction, and its C is the sum's carry-out
+         * with the flag register's C added in - ARM's rule whenever the shifter
+         * supplied no carry itself (which the front end guarantees here). */
+        b.adc(rd, ra, operand, in.setflags);
         break;
       case IR_SBC:
-        if (in.setflags) return false;
-        b.sbc(rd, ra, operand);
+        /* Same story: AArch64's SBC subtracts `NOT(C)` and defines C as the
+         * inverse of the borrow, exactly ARM's.  An immediate operand has already
+         * been materialised into SCR1 above (minus the S bit, which is why the
+         * immediate form used to be refused here). */
+        b.sbc(rd, ra, operand, in.setflags);
         break;
       case IR_RSC:
         /* Rd = Op2 - Rn - NOT(C): AArch64's SBC with the operands exchanged, and

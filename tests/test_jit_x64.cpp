@@ -502,6 +502,121 @@ void test_logical_imm() {
   std::printf("  %u translations compared\n", compared);
 }
 
+/* ------------------------------------------------------ ADC and SBC + C --- */
+
+/* The carry-consuming arithmetic.  ADC and SBC *read* C as a value and write it
+ * from the sum, so a case is only meaningful with C pinned - and the entry flag
+ * words below are chosen so that C is the only bit that differs between them,
+ * which makes a wrong carry-in (or a carry-out that was not repaired) visible.
+ *
+ * ARMv5's rule for the shapes the front end *refuses* is checked here as a
+ * refusal: a rotated immediate or a shifted register supplies the carry-in from
+ * the shifter, not from C, and no host instruction has a second carry input, so
+ * those words must end the block rather than be translated wrongly. */
+void test_adc_sbc_flags() {
+  std::printf("[x64 ADC/SBC carry]\n");
+  static const uint32_t kCpsr[5] = {0x10000013u, 0x20000013u, 0x30000013u,
+                                    0x70000013u, 0x90000013u};
+  const uint32_t regs[13] = {0x9abcdef0u, 0xffffffffu, 0x00000001u, 0x80000000u,
+                             0x0000ffffu, 0x12345678u, 0x00000000u, 0x7fffffffu,
+                             0xdeadbeefu, 0x00010000u, 0xffff0000u, 0x00000080u,
+                             0xabcdef01u};
+  /* adc/sbc, register and unrotated immediate, with both S settings; the
+   * destination is R0 and both operands are chosen so a borrow (or its absence)
+   * actually happens. */
+  static const uint32_t kWords[] = {
+    0xE0B00002u,   /* adcs r0, r0, r2   */
+    0xE0B10002u,   /* adcs r0, r1, r2   */
+    0xE0D10002u,   /* sbcs r0, r1, r2   */
+    0xE0B00001u,   /* adcs r0, r0, r1   */
+    0xE2B10010u,   /* adcs r0, r1, #0x10 */
+    0xE2D10010u,   /* sbcs r0, r1, #0x10 */
+    0xE2A00001u,   /* adc  r0, r0, #0x1  (no S; rot 0, so C_in stays C) */
+    0xE0A00002u,   /* adc  r0, r0, r2   (no S) */
+  };
+  uint32_t compared = 0, want = 0;
+  for (uint32_t w : kWords)
+    for (uint32_t ci = 0; ci < 5; ++ci) {
+      ++want;
+      if (compare_block(&w, 1, regs, kCpsr[ci], "adc")) ++compared;
+    }
+  check(compared == want, "every ADC/SBC shape translated and agreed");
+  std::printf("  %u translations compared\n", compared);
+
+  /* A *sequence* is where the carry chain shows: `adds` sets C, the `adc` after
+   * it consumes that C (not the entry one), and the block's exit has to hand
+   * back the last carry. */
+  const uint32_t chain[4] = {0xE0910002u,   /* adds r0, r1, r2 */
+                             0xE0A03001u,   /* adc  r3, r1, r1 -> r3 = r1 + r1 + C */
+                             0xE0D34002u,   /* sbcs r4, r3, r2 */
+                             0xE2B45001u};  /* adcs r5, r4, #0x1 */
+  for (uint32_t ci = 0; ci < 5; ++ci)
+    check(compare_block(chain, 4, regs, kCpsr[ci], "adc chain"),
+          "a carry chain through the block agreed");
+
+  /* The ARMv5 shifter-carry shapes must stay out of a block: the carry *in* is
+   * the shifter's, which no host can supply. */
+  static const uint32_t kRefused[] = {
+    0xE0B03102u,   /* adcs r0, r1, r2, lsl #3    */
+    0xE0D13402u,   /* sbcs r0, r1, r2, lsl #8    */
+    0xE2B10201u,   /* adcs r0, r1, #0x01000000   (rot != 0) */
+    0xE2D10202u,   /* sbcs r0, r1, #0x80000000   (rot != 0) */
+  };
+  bool all_refused = true;
+  for (uint32_t w : kRefused) {
+    IrBlock b{};
+    if (jit_translate_arm_words(&w, 1, kCode, &b) != 0) all_refused = false;
+  }
+  check(all_refused, "the shifter-carry ADC/SBC shapes are not translated");
+}
+
+/* --------------------------------------------------- every shift amount --- */
+
+/* Both shift *amounts* an encoding can hold, and both operand fields that look
+ * like registers and are not.  A front end that validates `rs` on an
+ * immediate-shift operand refuses every shift by 13..31 (the amount lives in
+ * bits[11:7], so its top bits read as a large register number), and one that
+ * validates `rm` on an immediate operand refuses every immediate ending in
+ * 0xD..0xF.  Neither failure is visible in a comparison - the dispatcher just
+ * runs the instruction instead - which is why they are pinned here as
+ * *translations*, not as results. */
+void test_shift_amounts() {
+  std::printf("[x64 shift amounts and operand fields]\n");
+  static const uint32_t kOps[] = {0u, 1u, 4u, 12u, 13u};   /* and eor add orr mov */
+  const uint32_t regs[13] = {0x9abcdef0u, 0xffffffffu, 0x00000001u, 0x80000000u,
+                             0x0000ffffu, 0x12345678u, 0x00000000u, 0x7fffffffu,
+                             0xdeadbeefu, 0x00010000u, 0xffff0000u, 0x00000080u,
+                             0xabcdef01u};
+  uint32_t want = 0, got = 0, compared = 0;
+  for (uint32_t op : kOps)
+    for (uint32_t st = 0; st < 4; ++st)
+      for (uint32_t amt = 1; amt <= 31; ++amt) {
+        /* rd = R2, rn = R1, rm = R3, shifted by #amt. */
+        const uint32_t w = 0xE0000000u | (op << 21) | (1u << 16) | (2u << 12) |
+                           (st << 5) | (amt << 7) | 3u;
+        ++want;
+        IrBlock b{};
+        if (jit_translate_arm_words(&w, 1, kCode, &b) == 1) ++got;
+        /* One entry per (op, st) really runs, so the amounts are not merely
+         * counted as translatable. */
+        if (amt == 17 || amt == 31)
+          compared += compare_block(&w, 1, regs, 0x60000013u, "shamt") ? 1u : 0u;
+      }
+  check(want == got, "every immediate shift amount 1..31 translated");
+  check(compared == 40u, "the deep amounts agreed with the interpreter");
+  std::printf("  %u/%u shapes translated, %u compared\n", got, want, compared);
+
+  /* The same for the immediate operand's low nibble: 0xD..0xF are values, not
+   * register numbers. */
+  uint32_t imm_ok = 0;
+  for (uint32_t imm = 0; imm < 256; ++imm) {
+    const uint32_t w = 0xE0000000u | (1u << 25) | (1u << 16) | (2u << 12) | imm;
+    IrBlock b{};
+    if (jit_translate_arm_words(&w, 1, kCode, &b) == 1) ++imm_ok;
+  }
+  check(imm_ok == 256u, "every 8-bit immediate translated");
+}
+
 /* ------------------------------------------------------ random sequences --- */
 
 void test_random_blocks() {
@@ -905,6 +1020,8 @@ int main() {
   test_shadow_layout();
   test_dp_sweep();
   test_logical_imm();
+  test_adc_sbc_flags();
+  test_shift_amounts();
   test_mem_sweep();
   test_branch_sweep();
   test_mem_guards();
