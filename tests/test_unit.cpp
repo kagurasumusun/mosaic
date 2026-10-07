@@ -1101,6 +1101,58 @@ static void test_jit_cache() {
   brain::arm926::jit_cache_destroy(jc);
 }
 
+/* The branch counters are the machine's, but only the ARM module can produce
+ * them: a taken B/BL/BX/BLX increments `branch_taken`, and a conditional branch
+ * whose condition fails increments `branch_not` even though it never reaches
+ * the decoder.  Both engines feed the same counter, because a block ends at the
+ * branch and the interpreter retires it either way - which is what the second
+ * half of this test checks with the JIT on. */
+void test_branch_counters() {
+  std::printf("[branch counters]\n");
+  const uint32_t prog[] = {
+      0xE3A00000u,  /* mov r0, #0       - not a branch                        */
+      0x0A000003u,  /* beq 0x8018       - Z is clear, so not taken           */
+      0xEA000001u,  /* b   0x8014       - taken                              */
+      0xEAFFFFFEu,  /* b   .            - (skipped, an escape hatch)         */
+      0xEAFFFFFEu,  /* b   .            - (skipped)                          */
+      0xE12FFF1Eu,  /* bx  lr           - taken                              */
+  };
+  for (int jit = 0; jit < 2; ++jit) {
+    brain_config_t cfg;
+    std::memset(&cfg, 0, sizeof cfg);
+    cfg.ram_size = 1u << 20;
+    cfg.use_jit = jit;
+    brain_emu_t* e = brain_emu_create(&cfg);
+    CHECK(e != nullptr);
+    if (!e) continue;
+    CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000, 0) == 0);
+    CHECK(brain_set_reg(e, 14, 0x8000u) == 0);   /* LR: BX lands back at 0x8000 */
+    CHECK(brain_run_insns(e, 4) == 4);
+    brain_stats_t st;
+    brain_get_stats(e, &st);
+    CHECK(st.branch_taken == 2);     /* the B and the BX                       */
+    CHECK(st.branch_not == 1);       /* the BEQ, which retired as a NOP        */
+    brain_emu_destroy(e);
+  }
+
+  /* The same in Thumb state, where B<cond> is the only conditional branch. */
+  brain_config_t cfg;
+  std::memset(&cfg, 0, sizeof cfg);
+  cfg.ram_size = 1u << 20;
+  brain_emu_t* e = brain_emu_create(&cfg);
+  CHECK(e != nullptr);
+  if (e) {
+    const uint16_t tprog[] = {0xD001u, 0xE000u, 0xE7FEu};   /* beq +1, b +0 */
+    CHECK(brain_load_raw(e, tprog, sizeof tprog, 0x8000, 1) == 0);
+    CHECK(brain_run_insns(e, 2) == 2);
+    brain_stats_t st;
+    brain_get_stats(e, &st);
+    CHECK(st.branch_taken == 1);     /* b +0, which lands on itself            */
+    CHECK(st.branch_not == 1);       /* beq +1 with Z clear                    */
+    brain_emu_destroy(e);
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -1117,6 +1169,7 @@ int main() {
   test_jit_cache();
   test_interrupt_inputs();
   test_shifter_primitive();
+  test_branch_counters();
   test_thumb_shift_zero();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);

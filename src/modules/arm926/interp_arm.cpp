@@ -155,12 +155,26 @@ bool Cpu::valid_mode(u32 m) {
 
 /* ======================================================== exec_arm ===== */
 
+/* Is this ARM word a branch whose *condition check* is the branch decision?
+ * B/BL (opcode 101), BX and BLX(register).  Only the branch counters use this,
+ * and they need it because a failed condition never reaches the decoder
+ * (A6.1.1 makes the instruction a NOP), so "not taken" has to be recognised
+ * from the encoding. */
+static ALWAYS_INLINE bool arm_branch_word(u32 w) {
+  if (((w >> 25) & 7u) == 5u) return true;               /* B, BL            */
+  const u32 k = w & 0x0FFFFFF0u;
+  return k == 0x012FFF10u || k == 0x012FFF30u;           /* BX, BLX Rm       */
+}
+
 void Cpu::exec_arm(u32 insn_word) {
   insns++;
   stats.insns_interp++;
   cycles += CycleModel::kIssue;
 
-  if (BRAIN_UNLIKELY(!condition_true(insn_word >> 28))) return;  /* NOP: A6.1.1 */
+  if (BRAIN_UNLIKELY(!condition_true(insn_word >> 28))) {        /* NOP: A6.1.1 */
+    if (arm_branch_word(insn_word)) stats.branch_not++;
+    return;
+  }
 
   ArmDec d;
   decode_arm(insn_word, &d);
@@ -598,6 +612,10 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
 
   /* --------------------------------------------------- branches ------ */
   case AOP_B: {
+    /* Every B/BL/BLX transfers control except the Thumb long-branch setup half
+     * (kind 4), which only writes LR - so the "taken" counter sits here, once,
+     * instead of at each of the four exits below. */
+    if (d.kind != 4) stats.branch_taken++;
     /* Thumb state: the long branch is a *pair of independent halfwords* in
      * ARMv5T (A7.1.17), so each half is its own instruction here.  kind 4 is
      * the H==10 setup half, 5 the H==11 (BL) half and 6 the H==01 (BLX to ARM)
@@ -650,6 +668,7 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
   case AOP_BX: {
     const u32 t = regs[d.rm];
     if (d.kind == 2) { raise_undef(insn); cycles += CycleModel::kTrap; return; }  /* BXJ */
+    stats.branch_taken++;                       /* BX and BLX Rm always jump  */
     const bool to_thumb = (t & 1) != 0;
     if (!to_thumb && !thumb && (t & 2) && cfg.jazelle_trap) {
       raise_undef(insn);                              /* Jazelle entry    */

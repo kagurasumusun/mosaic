@@ -46,7 +46,12 @@ void Cpu::exec_thumb(u32 hw) {
     return;
   }
 
-  if (d.op == AOP_B && d.kind == 3 && !condition_true(d.cond)) return;
+  /* Thumb has exactly one conditional branch (A6.3.1); a failed condition makes
+   * it a NOP, and it is the not-taken branch the counter wants. */
+  if (d.op == AOP_B && d.kind == 3 && !condition_true(d.cond)) {
+    stats.branch_not++;
+    return;
+  }
 
   exec_arm_dec(d);
 }
