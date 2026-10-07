@@ -120,9 +120,12 @@ machine.
    instruction an ARM926EJ-S would on unallocated first-halfword space; the
    related question of what classic Thumb's `0xCC00-0xCDFF` slice means on this
    core (ARMv6 writeback LDM/STM vs any surviving coprocessor form) is likewise
-   not pinned.  A fix needs pairing-aware fetch in `Cpu::fetch_and_execute()`
-   before `decode_thumb.cpp` can reject orphans; the tests currently say nothing
-   about either half of this.
+   not pinned.  This is an open question, not a proven defect: classic v5
+   leaves standalone second halves UNPREDICTABLE (not undefined), so the model
+   may legitimately resolve them to the A7.1.17 branch component as it does.
+   Resolution needs DDI0100C A5.2's space tables; then either an orphan latch
+   in `Cpu::fetch_and_execute()`, or pin today's choice in `test_instr`.
+   Probe: `build/jit_emit --hex 4680,ed94,e7fe,0000 --thumb --exec --steps 4`.
 5. Nothing remains of the prefetch side: the `L4` half was closed earlier
    (`Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15 as well as for
    the `MOV`-style PC writes, c1[15] is writable and reads back, and
