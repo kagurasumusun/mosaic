@@ -994,14 +994,40 @@ static void test_shifter_primitive() {
  * computes is the business of tests/test_jit_arm64.py (AArch64 model) and
  * tests/test_jit_x64.cpp (native x86-64); here we pin the contract around it:
  * what a block is, when it may run, when it must not, and exactly what state
- * crosses the shadow-register boundary. */
+ * crosses the shadow-register boundary.
+ *
+ * The stub therefore plays a whole *block*: the instruction effects of the one
+ * it stands for, and the handoff words that block's exit path would leave in
+ * the shadow (the address to resume at, how much retired, what it cost, whether
+ * its branch was taken).  The dispatcher reads those back - that is how a block
+ * that leaves early reports a partial retirement - so a stub that wrote only
+ * the registers would be testing a contract no backend has. */
 static int g_hook_calls = 0;
+static bool g_hook_taken = true;      /* what the stub's conditional branch did  */
+static uint32_t g_hook_resume = 0;    /* ...and its target, when it went         */
+static uint32_t g_hook_cycles = 0;    /* override: the not-taken cost is smaller */
 
-static void jit_cache_test_hook(uint32_t* s) {
+static void jit_cache_test_hook(uint32_t* s, const brain::arm926::JitBlock* b) {
   ++g_hook_calls;
-  /* Play both block insns honestly: ADDS r0,r1,r2 then MOV r3,#5. */
-  s[0] = s[1] + s[2];
-  s[3] = 5;
+  if (b->pc == 0x8000) {
+    /* The loop body really is `adds r0, r0, #1 ; mov r3, #5`; play it. */
+    s[0] += 1;
+    s[3] = 5;
+  }
+  /* Where the block resumes: the address its own code picked.  For everything
+   * but a *taken conditional* branch that is `end_pc` - the frontend already put
+   * an unconditional branch's target there - and a taken conditional one goes to
+   * a target the test states.  Its cost is the IR's `cyc_nt` when it is not
+   * taken, which is a property of the block's code and not of the JitBlock, so
+   * the test states that too. */
+  const bool cond_br = b->br == 2;
+  const bool taken = cond_br ? g_hook_taken : (b->br == 1);
+  s[brain::arm926::SH_R15 / 4] = (cond_br && taken) ? g_hook_resume : b->end_pc;
+  s[brain::arm926::SH_RETIRED / 4] = b->insns;
+  s[brain::arm926::SH_CYCLES / 4] =
+      (cond_br && !taken) ? g_hook_cycles : b->cycles;
+  s[brain::arm926::SH_BRANCH / 4] = taken ? 1u : 0u;
+  s[brain::arm926::SH_ABORT_PC / 4] = 0;
 }
 
 static void test_jit_cache() {
@@ -1022,11 +1048,11 @@ static void test_jit_cache() {
   cfg.ram_size = 1u << 20;
   CHECK(cpu.init(cfg));
 
-  /* ADDS r0,r1,r2 ; MOV r3,#5 ; B .  - the branch must end the block. */
-  /* ADDS ; MOV ; B . then at 0x8008 a `B` back to 0x8000 - a loop with two
-   * translatable insns and an interpreted branch, so the dispatcher sees both
-   * kinds of boundary; the branch retires through the interpreter. */
-  const uint32_t prog[3] = {0xE0910002u, 0xE3A03005u, 3942645756u};
+  /* ADDS r0,r0,#1 ; MOV r3,#5 ; B 0x8000 - a three-instruction block that ends
+   * in a branch back to its own start.  The branch is *part of* the block (the
+   * round-4 frontend translates branches), so the dispatcher re-enters the same
+   * block instead of handing every loop iteration to the interpreter. */
+  const uint32_t prog[3] = {0xE2800001u, 0xE3A03005u, 0xEAFFFFFCu};
   for (uint32_t i = 0; i < 3; ++i) cpu.phys_write(0x8000 + i * 4, prog[i], 4);
   cpu.npc = 0x8000; cpu.cur = 0x8000; cpu.regs[15] = 0x8008;
   cpu.regs[1] = 1; cpu.regs[2] = 2;
@@ -1041,8 +1067,10 @@ static void test_jit_cache() {
   CHECK(b != nullptr);
   if (!b) { brain::arm926::jit_cache_destroy(jc); return; }
   CHECK(b->pc == 0x8000);
-  CHECK(b->end_pc == 0x8008);               /* stops before the B              */
-  CHECK(b->insns == 2 && b->cycles == 2);   /* flat kIssue; cache.cpp why-note */
+  CHECK(b->code_end == 0x800C);             /* the source range is all three   */
+  CHECK(b->end_pc == 0x8000);               /* ...and it resumes at the target */
+  CHECK(b->insns == 3 && b->br == 1);
+  CHECK(b->cycles == 4);                    /* kIssue x3 + kBranch; see ops.h  */
   CHECK(b->gen == cpu.trans_gen);
   CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b);
 
@@ -1050,43 +1078,75 @@ static void test_jit_cache() {
   g_hook_calls = 0;
   const uint64_t i0 = cpu.insns, c0 = cpu.cycles;
   brain::arm926::jit_cache_exec_hook = jit_cache_test_hook;
-  brain::arm926::jit_cache_enter(jc, b);
+  jit_cache_enter(jc, b);
   CHECK(g_hook_calls == 1);
-  CHECK(cpu.regs[0] == 3u && cpu.regs[3] == 5u);
-  CHECK(cpu.npc == 0x8008 && cpu.cur == 0x8004 && cpu.regs[15] == 0x800C);
-  CHECK(cpu.insns == i0 + 2 && cpu.cycles == c0 + 2);
-  CHECK(cpu.stats.insns_jit == 2 && cpu.stats.cycles_jit == 2);
+  CHECK(cpu.regs[0] == 1u && cpu.regs[3] == 5u);
+  CHECK(cpu.npc == 0x8000 && cpu.cur == 0x8008 && cpu.regs[15] == 0x8010);
+  CHECK(cpu.insns == i0 + 3 && cpu.cycles == c0 + 4);
+  CHECK(cpu.stats.insns_jit == 3 && cpu.stats.cycles_jit == 4);
   CHECK(cpu.stats.blocks == 1 && cpu.stats.code_bytes > 0);
+#if BRAIN_JIT_BACKEND == 2
+  /* Only the x86-64 backend reports the branch outcome back (the AArch64 one
+   * does not translate branches at all, so its blocks never have one). */
+  CHECK(cpu.stats.branch_taken == 1 && cpu.stats.branch_not == 0);
+#endif
 
-  /* The dispatcher loop: block, block, ... with the untranslatable `B .`
-   * interpreted between them; budgets cut across blocks, never inside. */
-  brain::arm926::jit_cache_run_insns(jc, 4);         /* B, block, B: two interpreted + */
-  CHECK(cpu.insns == i0 + 6);                /* two retired from one entry     */
-  CHECK(cpu.stats.insns_jit == 4);
-  CHECK(cpu.npc == 0x8000);                  /* the last interpreted B landed  */
+  /* The dispatcher loop: whole blocks back to back, and a budget that cuts
+   * *between* blocks rather than inside one - the boundary interprets when the
+   * remaining budget is smaller than the block. */
+  brain::arm926::jit_cache_run_insns(jc, 4);  /* one block (3), then 1 interpreted */
+  CHECK(cpu.insns == i0 + 7);
+  CHECK(cpu.stats.insns_jit == 6);
+  CHECK(cpu.regs[0] == 3u);                  /* the loop body looped once more  */
+  CHECK(cpu.npc == 0x8004);                  /* ...and the leftover was the 2nd */
+  /* Now at 0x8004, where the block is `mov r3,#5 ; b 0x8000` - two insns, so a
+   * budget of two runs it whole rather than splitting it. */
   const uint64_t j1 = cpu.stats.insns_jit;
-  brain::arm926::jit_cache_run_insns(jc, 1);         /* block would over-run: one DP   */
-  CHECK(cpu.insns == i0 + 7 && cpu.stats.insns_jit == j1);
-  brain::arm926::jit_cache_run_insns(jc, 3);         /* 1-instruction block at 0x8004, */
-  CHECK(cpu.insns == i0 + 10 &&               /* then B, then a single DP too  */
-        cpu.stats.insns_jit == j1 + 1);
+  brain::arm926::jit_cache_run_insns(jc, 2);
+  CHECK(cpu.insns == i0 + 9 && cpu.stats.insns_jit == j1 + 2);
+  CHECK(cpu.regs[0] == 3u && cpu.regs[3] == 5u);
 
-  /* A stale block never runs: the boundary flushes instead, and the next
-   * lookups see a freshly translated, current-generation block. */
+  /* A conditional branch, both ways.  The block is the single word `beq
+   * 0xA010`, and which way that branch went is the test's to state (a real
+   * block decides it from the guest's flags); what is pinned is that the
+   * dispatcher resumes where the block reported and feeds the counter that
+   * goes with it - a branch that is not taken is also a branch. */
+  const uint32_t kBeq = 0x0A000002u;         /* beq 0xA010                      */
+  cpu.phys_write(0xA000, kBeq, 4);
+  brain::arm926::JitBlock* bc = nullptr;
+  CHECK(brain::arm926::jit_cache_translate(jc, 0xA000, &bc));
+  if (!bc) { brain::arm926::jit_cache_exec_hook = nullptr; brain::arm926::jit_cache_destroy(jc); return; }
+  CHECK(bc->br == 2 && bc->end_pc == 0xA004 && bc->insns == 1 && bc->cycles == 2);
+  const uint64_t bt = cpu.stats.branch_taken, bn = cpu.stats.branch_not;
+  const uint64_t c1 = cpu.cycles;
+  g_hook_taken = false;
+  g_hook_cycles = 1;                          /* an issue slot and nothing else  */
+  jit_cache_enter(jc, bc);
+  CHECK(cpu.npc == 0xA004 && cpu.cur == 0xA000 && cpu.regs[15] == 0xA008);
+  CHECK(cpu.cycles == c1 + 1);
+  CHECK(cpu.stats.branch_not == bn + 1 && cpu.stats.branch_taken == bt);
+  g_hook_taken = true;
+  g_hook_resume = 0xA010;
+  jit_cache_enter(jc, bc);
+  CHECK(cpu.npc == 0xA010);                   /* the target                      */
+  CHECK(cpu.cycles == c1 + 3);                /* 1 + kBranch for the taken one   */
+  CHECK(cpu.stats.branch_taken == bt + 1 && cpu.stats.branch_not == bn + 1);
+
+  /* A stale block never runs: the boundary flushes instead, and the budget is
+   * spent in the interpreter while the next boundary translates again. */
   ++cpu.trans_gen;                            /* as flush_all/exceptions do      */
   const uint64_t j2 = cpu.stats.insns_jit, i2 = cpu.insns;
+  cpu.npc = cpu.cur = 0x8000; cpu.regs[15] = 0x8008;
   brain::arm926::jit_cache_run_insns(jc, 2);
-  /* The block at 0x8004 is stale: the boundary flushes the whole cache and
-   * the budget is spent under the interpreter (MOV, then B). */
   CHECK(cpu.insns == i2 + 2 && cpu.stats.insns_jit == j2);
-  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8004) == nullptr);
+  CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == nullptr);
 
   /* invalidation: overlap strictly, touching ends alone do not. */
   brain::arm926::JitBlock* b3 = nullptr;
   CHECK(brain::arm926::jit_cache_translate(jc, 0x8000, &b3) && b3 != nullptr);
   brain::arm926::jit_cache_invalidate(jc, 0x7FFC, 4); /* ends exactly at pc: keeps     */
   CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b3);
-  brain::arm926::jit_cache_invalidate(jc, 0x8008, 4); /* starts at end_pc: keeps       */
+  brain::arm926::jit_cache_invalidate(jc, 0x800C, 4); /* starts at code_end: keeps     */
   CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == b3);
   brain::arm926::jit_cache_invalidate(jc, 0x8004, 4); /* inside: drops                 */
   CHECK(brain::arm926::jit_cache_lookup(jc, 0x8000) == nullptr);
@@ -1240,15 +1300,17 @@ void test_self_modifying_code() {
     brain_emu_t* e = brain_emu_create(&cfg);
     CHECK(e != nullptr);
     if (e) {
+      /* `add r0, r0, #1 ; add r0, r0, #1 ; b .` - a three-instruction block,
+       * because the branch at the end is part of it. */
       const uint32_t kAdd[] = {0xE2800001u, 0xE2800001u, 0xEAFFFFFEu};
       CHECK(brain_load_raw(e, kAdd, sizeof kAdd, 0x8000, 0) == 0);
       brain_set_reg(e, 0, 0);
-      CHECK(brain_run_insns(e, 2) == 2);          /* the whole block         */
+      CHECK(brain_run_insns(e, 3) == 3);          /* the whole block         */
       CHECK(brain_get_reg(e, 0) == 2);
       brain_stats_t s;
       brain_get_stats(e, &s);
 #if BRAIN_JIT_BACKEND
-      CHECK(s.insns_jit == 2);                    /* both ran as host code   */
+      CHECK(s.insns_jit == 3);                    /* all three ran as host code */
 #endif
       const uint64_t drops = s.smc_flushes;
       brain_poke32(e, 0x8004, 0xE2800005u);       /* add r0, r0, #1 -> #5     */
@@ -1260,7 +1322,7 @@ void test_self_modifying_code() {
        * is what the guest executes. */
       brain_set_reg(e, 0, 0);
       brain_set_reg(e, 15, 0x8000);
-      CHECK(brain_run_insns(e, 2) == 2);
+      CHECK(brain_run_insns(e, 3) == 3);
       CHECK(brain_get_reg(e, 0) == 6);
       brain_emu_destroy(e);
     }

@@ -70,6 +70,13 @@ static inline u32 decode_extra_ldst(u32 insn, ArmDec* d, u32 p) {
   if (I) {
     d->imm12 = (BF(insn, 11, 8) << 4) | BF(insn, 3, 0);
   } else {
+    /* Register form: [Rn, Rm] with bits[11:8] SBZ (A5.3.1).  Not zero means
+     * the encoding is unallocated - and the field really is a *reserved* one,
+     * not an ignored one: Unicorn (and the ARM ARM) reject every shape of this
+     * space with bits[11:8] != 0, halfword and doubleword alike.  Accepting it
+     * silently turned `e1b911b5` into a load of [r9, r5], which the oracle
+     * calls an invalid instruction. */
+    if (BF(insn, 11, 8) != 0) return AOP_UNDEF;
     d->op2 = OP2_REG;                    /* [Rn, Rm] : unshifted index        */
   }
 
@@ -126,8 +133,13 @@ static inline u32 decode_misc(u32 insn, ArmDec* d) {
   /* MSR: cond 00 I 1 R 0 0 10 field_mask 1111 (rotate#imm8 | 0000 0000 Rm) */
   if ((pre == 0x12 || pre == 0x32 || pre == 0x16 || pre == 0x36) &&
       BF(insn, 15, 12) == 0xF) {
-    if (BF(insn, 19, 8) == 0xFFF) {
-      /* BX / BLX(register) / BXJ */
+    if (pre == 0x12 && BF(insn, 19, 8) == 0xFFF) {
+      /* BX / BLX(register) / BXJ.  The whole 19:8 field being ones is only the
+       * branch space when the *register* form of MSR is what this could
+       * otherwise be (bit 25 clear, bit 22 clear): the immediate form spells a
+       * legal MSR as mask 1111, Rd 1111, rotate 1111 - `msr cpsr_fsxc, #rot,
+       * #imm` - and treating that as a branch turns a system-register write
+       * into a jump to whatever Rm happened to hold. */
       if (b7_4 == 0b0001) { d->op = AOP_BX; d->kind = 0; return AOP_BX; }
       if (b7_4 == 0b0011) { d->op = AOP_BX; d->kind = 1; return AOP_BX; }
       if (b7_4 == 0b0010) { d->op = AOP_BX; d->kind = 2; return AOP_BX; }
@@ -316,9 +328,9 @@ u32 decode_arm(u32 insn, ArmDec* d) {
       d->am = !P ? AM_IMM_POST : (W ? AM_IMM_PRE_WB : AM_IMM_PRE);
       if (P && !W && d->rd != 15) d->unaligned_ok = 1;
     } else {
-      if (BIT(insn, 7) && !BIT(insn, 6) && !BIT(insn, 5) && !BIT(insn, 4)) {
-        /* bits[7:4]==1000 is not a valid shifted-register form */
-      }
+      /* `decode_op2_reg` sorts out which of the three register-offset shapes
+       * this is (shift by imm5, register-controlled shift, or a plain register
+       * when bits[6:4] read zero) - see decode_op2_reg. */
       decode_op2_reg(insn, d);
       d->am = !P ? AM_REG_POST : (W ? AM_REG_PRE_WB : AM_REG_PRE);
     }
@@ -343,12 +355,14 @@ u32 decode_arm(u32 insn, ArmDec* d) {
    * BLX imm: 1111 101 H imm23 1    (offset = SignExtend(imm24:H:0), imm24[0]=1) */
   if (BF(insn, 27, 25) == 0b101) {
     const u32 cond = BF(insn, 31, 28);
-    if (cond == 0xF && (insn & 1)) {
-      /* DDI0597 A2 decodes this as `imm32 = SignExtend(imm24 : H : 0, 32)`,
-       * where imm24 = insn[23:0] (its bit[0] is the encoding's fixed 1) and
-       * H = insn[24].  So the offset is *even*, not a multiple of 4 - which is
-       * what lets one encoding reach both 0x...0 and 0x...2 - and reading the
-       * immediate as insn[23:1] halves every displacement. */
+    if (cond == 0xF) {
+      /* A4.1.9: the whole cond=1111 half of this opcode space is BLX
+       * (immediate) - there is no "NV branch".  `imm32 = SignExtend(imm24:H:0,
+       * 32)` with imm24 = insn[23:0], so the offset is *even* but not
+       * necessarily a multiple of 4 (that is what lets one encoding reach both
+       * 0x...0 and 0x...2 through H), and reading the immediate as insn[23:1]
+       * would halve every displacement - `0xFA000002` (which an assembler
+       * emits for `blx` to pc+16) would land 4 bytes short. */
       s32 off = (s32)(((insn & 0x00FFFFFFu) << 2) | (BIT(insn, 24) << 1));
       if (off & 0x02000000) off |= (s32)0xFC000000u;      /* sign extend @26 */
       d->imm24 = (u32)off;

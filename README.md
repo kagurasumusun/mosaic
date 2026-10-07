@@ -81,8 +81,12 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
 * `tests/test_jit_x64.cpp` (x86-64 hosts; skips elsewhere) — the emitted host
   code, executed in-process: encoder byte pins, the shadow-buffer ABI (a
   sentinel-filled buffer, so a wrong offset shows up as a clobbered word), a
-  sweep over every data-processing opcode and operand shape, random multi-
-  instruction blocks, and a block that forces the register allocator to spill.
+  sweep over every data-processing opcode and operand shape, a load/store sweep
+  over the addresses that decide a bail, every branch condition against every
+  flag word, the two dispatcher rules that gate translated accesses, random
+  multi-instruction blocks, and a block that forces the register allocator to
+  spill.  Registers, R13/R14, CPSR, the resume pc, the cycle count and RAM are
+  all diffed against the interpreter.
 
 ## Layout
 
@@ -115,18 +119,23 @@ LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES
   coprocessor groups, with the exceptions, banked registers, CP15 c1 (Table
   2-11 bit map, reset value 0x00050078), FCSE, coarse/fine page tables, section
   and page permissions, XN, domains, and the ARM926EJ-S fault-status encoding.
-* JIT: two execution paths over one interpreter, covering ARM-state data
-  processing for now - all sixteen opcodes, RSC included (a block still ends at
-  a branch, a load or a store, which the interpreter then retires - see
-  `docs/ISA-COVERAGE.md`). The block layer (hash cache,
+* JIT: two execution paths over one interpreter.  A block is ARM-state data
+  processing (all sixteen opcodes, RSC included), the LDR/STR families - a block
+  performs its accesses inline, guarded so that anything outside what it can do
+  *bails* back to the interpreter, which owns the abort and self-modification
+  paths - and one terminating branch, conditional or not, with the condition
+  evaluated in the block and a `bx`/`blx` able to leave the machine in Thumb
+  state.  See `docs/ISA-COVERAGE.md` for the exact set and
+  `docs/ARCHITECTURE.md` for the exit protocol.  The block layer (hash cache,
   `trans_gen` invalidation, self-modification watch, negative cache for refused
   starts), the IR and the front end are shared; the host picks the code
-  generator. On x86-64 the x86-64 backend is compiled in and executes blocks
-  natively — `build/bench --jit` runs *faster* than `build/bench`, and
-  `tests/test_jit_x64.cpp` diffs emitted blocks against the interpreter
-  instruction by instruction. On AArch64 the AArch64 backend is selected and
-  checked against a model by `tests/test_jit_arm64.py`; on any other host
-  `use_jit` degrades to the interpreter (the counters show `interp N jit 0`).
+  generator.  On x86-64 the x86-64 backend is compiled in and executes blocks
+  natively: `build/bench --jit` runs the counted add/cmp/branch loop at
+  ~128 MInsn/s against ~67 for the interpreter, because the loop is now one
+  block instead of three instructions and an interpreted branch.  On AArch64 the
+  AArch64 backend is selected (data processing only) and checked against a model
+  by `tests/test_jit_arm64.py`; on any other host `use_jit` degrades to the
+  interpreter (the counters show `interp N jit 0`).
 * Not implemented on purpose: Jazelle, Vectored FIQ, TCM, cache-line semantics,
   32-bit Thumb encodings (ARMv6+), `MCR2/MRC2` (ARMv7), `IT`, `CBZ/CBB`,
   `MOVW/MOVT`, `REV/SXTH`. These decode as undefined instructions.

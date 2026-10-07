@@ -154,13 +154,28 @@ struct Rng {
   bool one_in(uint32_t n) { return below(n) == 0; }
 };
 
+/* How many instructions the sweeps actually retired on the host.  A sweep that
+ * fell back to the interpreter everywhere would compare two interpreters and
+ * pass, which is exactly the failure mode this guards against (test_instr does
+ * the same with its `--jit` self-check). */
+uint64_t g_native = 0;
+
 /* Translate `code` in machine `a`, run it through the cache, run the same words
  * through the interpreter in `b`, and report the first difference.  Returns
  * false when the block was not translatable (nothing to compare). */
 bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
-                   uint32_t cpsr, const char* tag) {
+                   uint32_t cpsr, const char* tag, int nregs = 13,
+                   uint32_t* npc_out = nullptr) {
   CpuConfig cfg;
   cfg.ram_size = kRamSize;
+  /* The Jazelle trap is a *policy* knob, not an ISA property: with it on (the
+   * default, and what the CLI runs with) the frontend refuses every `bx`,
+   * because the instruction can raise an undefined-instruction trap that only
+   * the interpreter reports.  From this file's point of view that just means
+   * nothing to compare, so the trap is off and the register branch is exercised
+   * for real - the state switch it performs (bit 0 of the target) and the exit
+   * path that writes it back are the interesting part. */
+  cfg.jazelle_trap = false;
   Cpu a, b;
   if (!a.init(cfg) || !b.init(cfg)) return false;
   a.reset();
@@ -169,7 +184,7 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
     a.phys_write(kCode + i * 4, code[i], 4);
     b.phys_write(kCode + i * 4, code[i], 4);
   }
-  for (int i = 0; i < 13; ++i) a.regs[i] = b.regs[i] = regs[i];
+  for (int i = 0; i < nregs; ++i) a.regs[i] = b.regs[i] = regs[i];
   a.cpsr = b.cpsr = cpsr;
   a.vflag = b.vflag = (cpsr >> 28) & 1u;
   for (Cpu* c : {&a, &b}) {
@@ -183,13 +198,24 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
   const bool ok = jit_cache_translate(jc, kCode, &blk) && blk && blk->insns;
   if (!ok) { jit_cache_destroy(jc); return false; }
   const uint32_t retired = blk->insns;
-  jit_cache_enter(jc, blk);
+  /* The dispatcher, not one raw `enter`: a block that bails on an access - the
+   * address left the identity RAM window, or a store landed on a page holding
+   * translated code - hands that instruction back to the interpreter and
+   * resumes after it.  Anything less would compare the JIT's *partial* work
+   * against the interpreter's whole run and call the difference a bug. */
+  jit_cache_run_insns(jc, retired);
+  g_native += a.stats.insns_jit;
   b.run_insns(retired);
   jit_cache_destroy(jc);
 
+  if (npc_out) *npc_out = b.npc;
   bool bad = false;
   std::string why;
-  for (int i = 0; i < 13 && !bad; ++i) {
+  /* R0-R14: a translated access may write the stack pointer (a shadow-base
+   * writeback) and a `bl` writes the link, so both are outputs a backend can
+   * get wrong.  R15 is left out for the same reason test_instr leaves it out -
+   * it is the *pipeline* value, refreshed by the next fetch. */
+  for (int i = 0; i < 15 && !bad; ++i) {
     if (a.regs[i] != b.regs[i]) {
       char t[128];
       std::snprintf(t, sizeof t, "R%d %08x != %08x", i, a.regs[i], b.regs[i]);
@@ -207,6 +233,31 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
     char t[128];
     std::snprintf(t, sizeof t, "npc %08x != %08x", a.npc, b.npc);
     why = t;
+    bad = true;
+  }
+  /* The cycle model is part of what both engines promise (`bench` reads it, and
+   * the dispatcher's budget is denominated in it), so a block whose cost is not
+   * what the interpreter would have charged is a bug even when the registers
+   * agree. */
+  if (!bad && a.cycles != b.cycles) {
+    char t[128];
+    std::snprintf(t, sizeof t, "cycles %llu != %llu", (unsigned long long)a.cycles,
+                  (unsigned long long)b.cycles);
+    why = t;
+    bad = true;
+  }
+  /* Memory too: a store that landed at the wrong address, or a load that
+   * clobbered what it read, is invisible in the register file. */
+  if (!bad && std::memcmp(a.ram, b.ram, kRamSize) != 0) {
+    for (uint32_t off = 0; off < kRamSize; off += 4) {
+      if (std::memcmp(a.ram + off, b.ram + off, 4) != 0) {
+        char t[128];
+        std::snprintf(t, sizeof t, "mem[%05x] %08x != %08x", off,
+                      *(const uint32_t*)(a.ram + off), *(const uint32_t*)(b.ram + off));
+        why = t;
+        break;
+      }
+    }
     bad = true;
   }
   if (bad) {
@@ -385,6 +436,206 @@ void test_random_blocks() {
   std::printf("  %u blocks compared\n", compared);
 }
 
+/* ---------------------------------------------------------- loads/stores -- */
+
+/* Every addressing form the frontend owns, one access per case, each of them
+ * checked the way every other case is: same code, same state, two engines, no
+ * visible difference.  The words are what an assembler emits (given here with
+ * the mnemonic), so a mis-encoded test word would fail rather than silently
+ * test something else - `compare_block` also insists the block translated, and
+ * it compares memory as well as registers, which is what makes the store forms
+ * meaningful.
+ *
+ * The addresses are the interesting ones: inside the window, at its very last
+ * bytes, crossing a page boundary, unaligned, and outside the window entirely
+ * (where the block must bail and let the interpreter own the access - the two
+ * engines still have to agree, which is the point of the bail). */
+void test_mem_sweep() {
+  std::printf("[x64 load/store sweep]\n");
+  struct MemCase {
+    const char* what;
+    uint32_t word;
+    uint32_t base, index, val;
+  } const cases[] = {
+      {"ldr r0,[r1,#8]",        0xE5910008u, 0x8100, 0x10, 0x11223344u},
+      {"ldr r0,[r1,#8]!",       0xE5B10008u, 0x8100, 0x10, 0x11223344u},
+      {"ldr r0,[r1],#8",        0xE4910008u, 0x8100, 0x10, 0x11223344u},
+      {"ldrb r0,[r1,#3]",       0xE5D10003u, 0x8100, 0x10, 0x11223344u},
+      {"ldrsb r0,[r1,#3]",      0xE1D100D3u, 0x8100, 0x10, 0x11223344u},
+      {"ldrh r0,[r1,#2]",       0xE1D100B2u, 0x8100, 0x10, 0x11223344u},
+      {"ldrsh r0,[r1,#2]",      0xE1D100F2u, 0x8100, 0x10, 0x11223344u},
+      {"ldr r0,[r1,r2]",        0xE7910002u, 0x8100, 0x24, 0x11223344u},
+      {"ldr r0,[r1,r2,lsl #2]", 0xE7910102u, 0x8100, 0x09, 0x11223344u},
+      {"ldr r0,[r4,-r5,asr #3]", 0xE71401C5u, 0x8180, 0x40, 0x11223344u},
+      {"ldr r0,[pc,#16]",       0xE59F0010u, 0x8100, 0x10, 0x11223344u},
+      {"ldr r0,[r1,#0xffc]",    0xE5910FFCu, 0x9004, 0x00, 0x11223344u},  /* page edge */
+      {"ldr r0,[r1,#4]",        0xE5910004u, 0x100000, 0, 0x11223344u},   /* outside RAM */
+      {"str r0,[r1,#4]",        0xE5810004u, 0x8100, 0x10, 0xDEADBEEFu},
+      {"str r0,[r1,#4]!",       0xE5A10004u, 0x8100, 0x10, 0xDEADBEEFu},
+      {"str r0,[r1],#-4",       0xE4010004u, 0x8108, 0x10, 0xDEADBEEFu},
+      {"strb r0,[r1,#1]",       0xE5C10001u, 0x8100, 0x10, 0xDEADBEEFu},
+      {"strh r0,[r1,#2]",       0xE1C100B2u, 0x8100, 0x10, 0xDEADBEEFu},
+      {"str r0,[r1,r2,lsl #3]", 0xE7810182u, 0x8100, 0x08, 0xDEADBEEFu},
+      {"str r0,[r13,#-4]!",     0xE52D0004u, 0x8F00, 0x10, 0xDEADBEEFu},
+      {"str r0,[r1,#4]",        0xE5810004u, 0x100000, 0, 0xDEADBEEFu},   /* outside RAM */
+  };
+  for (const MemCase& c : cases) {
+    uint32_t regs[15] = {0};
+    regs[0] = c.val;
+    regs[1] = c.base;
+    regs[2] = c.index;
+    regs[4] = c.base;                       /* the shifted-index case */
+    regs[5] = c.index;
+    regs[13] = 0x8F00;                      /* a stack the shadow owns */
+    const uint32_t cpsr = 0xF0000013u;      /* NZCV set, mode SVC */
+    check(compare_block(&c.word, 1, regs, cpsr, c.what, 15), c.what);
+  }
+  std::printf("  %zu accesses compared\n", sizeof(cases) / sizeof(cases[0]));
+}
+
+/* ------------------------------------------------------------- branches -- */
+
+/* Fourteen conditions times the sixteen flag combinations, then the branch
+ * shapes that are not a condition: BL, BX (to ARM and to Thumb - the dispatcher
+ * decodes the switch out of bit 0), BLX Rm, BLX #imm, and the 0xF encoding that
+ * is an undefined instruction rather than a branch.  Which way each one went is
+ * not asserted here; that the *two engines agree* on the address, the link, the
+ * flags and the cost is, and the sweep counts the outcomes so a run where
+ * nothing was ever taken cannot pass. */
+void test_branch_sweep() {
+  std::printf("[x64 branch sweep]\n");
+  uint32_t regs[15] = {0};
+  regs[3] = 0x8010;                        /* BX/BLX target: ARM state        */
+  int taken = 0, not_taken = 0, compared = 0;
+  char name[48];
+  for (uint32_t cond = 0; cond < 15; ++cond) {
+    const uint32_t word = 0x0A000002u | (cond << 28);     /* b<cond> 0x8010 */
+    for (uint32_t f = 0; f < 16; ++f) {
+      const uint32_t cpsr = ((f & 8u) ? 0x80000000u : 0u) | ((f & 4u) ? 0x40000000u : 0u) |
+                            ((f & 2u) ? 0x20000000u : 0u) | ((f & 1u) ? 0x10000000u : 0u) |
+                            0x00000013u;
+      std::snprintf(name, sizeof name, "b<cond %u>, flags %x", cond, f);
+      uint32_t npc = 0;
+      if (compare_block(&word, 1, regs, cpsr, name, 15, &npc)) {
+        ++compared;
+        if (npc == 0x8010) ++taken; else ++not_taken;
+      }
+    }
+  }
+  check(compared == 15 * 16, "every condition translated");
+  check(taken > 0 && not_taken > 0, "both outcomes were exercised");
+
+  struct BrCase {
+    const char* what;
+    uint32_t word;
+    uint32_t r3;
+    uint32_t cpsr;
+  } const brs[] = {
+      {"bl 0x8010",     0xEB000002u, 0x0000, 0x00000013u},
+      {"bl 0x8010, Z",  0x0B000002u, 0x0000, 0x40000013u},   /* taken           */
+      {"bl 0x8010, !Z", 0x0B000002u, 0x0000, 0x00000013u},   /* not taken       */
+      {"bx r3 (arm)",   0xE12FFF13u, 0x8010, 0x00000013u},
+      {"bx r3 (thumb)", 0xE12FFF13u, 0x8011, 0x00000013u},
+      {"blx r3 (arm)",  0xE12FFF33u, 0x8010, 0x00000013u},
+      {"blx r3 (thumb)",0xE12FFF33u, 0x8011, 0x00000013u},
+      {"blx #imm",      0xFA000002u, 0x0000, 0x00000013u},
+      {"blx #imm H",    0xFB000002u, 0x0000, 0x00000013u},   /* H=1: target+2  */
+      {"b . (loop)",    0xEAFFFFFEu, 0x0000, 0x00000013u},
+      {"beq backward",  0x0AFFFFFDu, 0x0000, 0x40000013u},
+  };
+  for (const BrCase& c : brs) {
+    uint32_t r[15] = {0};
+    r[0] = 1;
+    r[3] = c.r3;
+    check(compare_block(&c.word, 1, r, c.cpsr, c.what, 15), c.what);
+  }
+
+  /* A branch with something in front of it: the data-processing instruction has
+   * to retire before the branch decides, and its flags are what the branch
+   * tests. */
+  const uint32_t seq[] = {0xE2900001u, 0x0A000001u};      /* adds r0,r0,#1 ; beq +1 */
+  for (uint32_t f = 0; f < 16; ++f) {
+    const uint32_t cpsr = ((f & 8u) ? 0x80000000u : 0u) | ((f & 4u) ? 0x40000000u : 0u) |
+                          ((f & 2u) ? 0x20000000u : 0u) | ((f & 1u) ? 0x10000000u : 0u) |
+                          ((f & 4u) ? 0x10000000u : 0u) | 0x00000013u;
+    uint32_t r[15] = {0};
+    r[0] = 0xFFFFFFFEu;                      /* +1 sets Z and C, clears N and V */
+    check(compare_block(seq, 2, r, cpsr, "adds then beq", 15), "adds then beq");
+  }
+  std::printf("  %d branches compared (%d taken, %d not taken)\n", compared, taken, not_taken);
+}
+
+/* --------------------------------------------------------- memory guards -- */
+
+/* The two rules that let a block own a guest access at all.  Neither is about
+ * the emitted code: they are about when the *dispatcher* may enter a block that
+ * performs one, and both are checked behaviourally - the block must not run,
+ * and the interpreter must do the work instead.
+ *
+ *   - `jit_fast_mem_ok`: with SCTLR.A set an unaligned access has to fault, and
+ *     a block performs its accesses inline, so the whole block is out;
+ *   - the code-page guard: an inline store cannot call the bus, so a store that
+ *     lands in a page holding translated code bails out to the interpreter -
+ *     whose write path is the one that reports to the store observer. */
+void test_mem_guards() {
+  std::printf("[x64 memory guards]\n");
+  CpuConfig cfg;
+  cfg.ram_size = kRamSize;
+  Cpu cpu;
+  check(cpu.init(cfg), "cpu init");
+  cpu.reset();
+  /* Two loads, so that a dispatcher that refuses the *block* has nothing else
+   * to run natively - a single access followed by a data-processing instruction
+   * would let the second instruction's own block retire and blur the count. */
+  const uint32_t prog[] = {0xE5910004u, 0xE5912008u};     /* ldr r0,[r1,#4] ; ldr r2,[r1,#8] */
+  for (uint32_t i = 0; i < 2; ++i) cpu.phys_write(kCode + i * 4, prog[i], 4);
+  cpu.phys_write(kCode + 0x104, 0x5A5A5A5Au, 4);          /* the loaded word */
+  cpu.phys_write(kCode + 0x108, 0xA5A5A5A5u, 4);
+  cpu.regs[1] = kCode + 0x100;
+  cpu.npc = cpu.cur = kCode; cpu.regs[15] = kCode + 8;
+
+  JitCache* jc = jit_cache_create(&cpu, 1);
+  check(jc != nullptr, "cache create");
+  if (!jc) return;
+
+  /* 1. The plain case: both instructions run as host code. */
+  jit_cache_run_insns(jc, 2);
+  check(cpu.stats.insns_jit == 2, "the load block ran natively");
+  check(cpu.regs[0] == 0x5A5A5A5Au && cpu.regs[2] == 0xA5A5A5A5u, "and read the right words");
+
+  /* 2. With the alignment check on, the same block must not be entered.  The
+   *    address here is aligned, so the interpreter gets the same answer - which
+   *    is the point: the dispatcher refuses on the *rule*, not on the address. */
+  const uint64_t j1 = cpu.stats.insns_jit, i1 = cpu.insns;
+  cpu.npc = cpu.cur = kCode; cpu.regs[15] = kCode + 8;
+  cpu.regs[0] = cpu.regs[2] = 0;
+  cpu.align_chk = 1;
+  jit_cache_run_insns(jc, 2);
+  check(cpu.stats.insns_jit == j1, "with the A bit set the block is not entered");
+  check(cpu.insns == i1 + 2, "the interpreter covers it instead");
+  check(cpu.regs[0] == 0x5A5A5A5Au && cpu.regs[2] == 0xA5A5A5A5u,
+        "and the interpreter reads the same words");
+  cpu.align_chk = 0;
+
+  /* 3. A store into a page that holds translated code bails: the block for it
+   *    translates, the guard fires, and the interpreter performs the store. */
+  const uint32_t st = 0xE5810004u;                        /* str r0,[r1,#4] */
+  cpu.phys_write(kCode + 0x40, st, 4);
+  cpu.regs[0] = 0x1234ABCDu;
+  cpu.regs[1] = kCode;                                    /* the code page   */
+  cpu.npc = cpu.cur = kCode + 0x40; cpu.regs[15] = kCode + 0x48;
+  const uint64_t j2 = cpu.stats.insns_jit, i2 = cpu.insns;
+  JitBlock* b = nullptr;
+  check(jit_cache_translate(jc, kCode + 0x40, &b) && b && b->uses_mem,
+        "the store block translates with uses_mem");
+  jit_cache_run_insns(jc, 1);
+  check(cpu.stats.insns_jit == j2, "the guarded store did not run inline");
+  check(cpu.insns == i2 + 1, "the interpreter retired it");
+  check(cpu.phys_read(kCode + 4, 4) == 0x1234ABCDu, "and the store landed");
+
+  jit_cache_destroy(jc);
+}
+
 /* Thirteen values that all stay live to the end of the block: the pool of host
  * registers is smaller than that, so the allocator has to spill and evict in
  * the middle of the block and the comparison has to come out identical. */
@@ -417,8 +668,14 @@ int main() {
   test_encoder();
   test_shadow_layout();
   test_dp_sweep();
+  test_mem_sweep();
+  test_branch_sweep();
+  test_mem_guards();
   test_random_blocks();
   test_register_pressure();
+  /* The sweeps above are only worth anything if the host really executed the
+   * blocks: two interpreters would agree with each other perfectly. */
+  check(g_native > 1000, "the sweeps retired instructions on the host");
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);
   return g_failed ? 1 : 0;

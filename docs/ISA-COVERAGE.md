@@ -269,12 +269,14 @@ corpus case that only proves the core does not crash.
   of the saved registers (that is `seq_arm_0` and `seq_thumb_0`), but the state the
   popped value selects is pinned in `test_unit.cpp`, in `test_push_pop_return()`,
   where LR is seeded odd and even.
-* `BLX` with an immediate, beyond the interworking itself.  Keystone *does* use
-  the ARMv5 A2 layout (`cond 1111 101 H imm23 1`) for `BLX <label>`, so the
+* `BLX` with an immediate, beyond the interworking itself.  Keystone *does* emit
+  the ARMv5 A2 layout (`cond 1111 101 H imm24`) for `BLX <label>`, so the
   `arm_blxi` case is a genuine A2 instruction on this core - but the corpus can
   only say that the branch happened: the target has to be a zero word, because an
   ARM-mode line list cannot express a Thumb callee, and R14 is not compared.  A
-  target that is wrong by a factor of two therefore passes.  The A2 offset
+  target that is wrong by a factor of two therefore passes; the scaling itself is
+  pinned by the hand-assembled words named above and by the branch sweep in
+  `tests/test_jit_x64.cpp` (which also covers the H bit).  The A2 offset
   scaling (`imm32 = SignExtend(imm24 : H : 0)`, an *even* offset, not a multiple
   of 4) and the H bit are pinned by hand-assembled words in
   `tests/test_unit.cpp::test_load_pc_and_l4`, whose two BLX phases differ only in
@@ -295,19 +297,51 @@ Both are fed by the same `jit/frontend.cpp` and see only the IR of `jit/ir.h`,
 so the accepted *instruction* set below is a property of the front end and is
 the same for both - what differs is how each machine spells the result.
 
-The accepted set is unconditional ARM-state data processing with every operand in
-R0-R12 - all sixteen opcodes, RSC included - with the four barrel shifts by an
-immediate (including RRX, which the emitters spell out because `ROR #0` in an AArch64
-shift field means "rotate by zero" to a model), rotated immediates, and the S forms.
-A block ends at a branch, a load or a store (they need the MMU and the abort path, and
-a compiled block must not grow a second copy of them), at MRS/MSR, at the multiply
-space, at anything naming R13-R15, at a shift amount taken from a register, at a
-32-bit shift (which is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's
-shift field only reaches 31), and at the three shapes whose flags the host cannot
-produce for free: a flag-setting rotated immediate (ARM takes C from the rotator,
-where `ADDS #imm` takes it from the sum), ADCS/SBCS (whose carry-in has to be the C
-of *before* the operation - a snapshot per instruction, which is exactly what RSC
-does *not* need, because RSC is the platform's own reversed form), and a multiply.
+A block is a straight-line run of translated instructions - ARM state, since the
+dispatcher leaves Thumb to the interpreter - ended by the first instruction the front
+end will not own.  What it will own, as of the round that closed the memory/branch
+gap:
+
+* **data processing**, unconditional, every operand in R0-R12 - all sixteen opcodes,
+  RSC included - with the four barrel shifts by an immediate (including RRX, which
+  the emitters spell out because `ROR #0` in an AArch64 shift field means "rotate by
+  zero" to a model), rotated immediates, and the S forms;
+* **loads and stores**: the LDR/STR family and the whole extra-transfer family
+  (LDRB/STRB, LDRH/STRH, LDRSB/LDRSH), with an immediate or register-shifted offset,
+  all four pre/post and writeback shapes, and pc-relative addresses as constants of
+  the translation.  A block performs its accesses *inline*, so the front end only
+  accepts the ones the interpreter's own fast path would do (identity RAM, MMU off,
+  no alignment check, no BE8), bakes that window into the block and re-tests it at
+  run time - an address that has left the window, an access that crosses a page, a
+  store into a page holding translated code, or a machine whose SCTLR has changed
+  since translation all make the block *bail*: it reports what it retired and where
+  to resume, and the interpreter performs that one access.  That is also how a store
+  keeps the "every writer reports" invariant (see `docs/MODULES.md`) without
+  generated code ever calling into the bus;
+* **branches**: `B`/`BL`, `BX`/`BLX Rm` and `BLX #imm`, conditional or not, with the
+  condition evaluated on the guest's flags at run time and both outcomes chosen in
+  the block.  A branch always ends the block, and a taken one restarts the prefetch
+  stage (one extra cycle, `kBranch`); a conditional branch that falls through costs
+  the issue slot alone.  R15 is never an operand, so a `BL` writes LR and the block
+  reports the address it branched to; a `BX` target is handed back with its bit 0
+  intact, because that bit is the *state* the dispatcher switches to before the next
+  instruction - a translated block can leave the machine in Thumb state, it just
+  cannot run any Thumb instruction itself.
+
+A block therefore ends at MRS/MSR, at the multiply space, at a *conditional* data
+processing, load or store (predication belongs to the dispatcher, which is also
+where the branch counters see it), at a load or store naming R13-R15 or an operand
+outside R0-R12, at a shift amount taken from a register, at a 32-bit shift (which is
+what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift field only reaches
+31), and at the two shapes whose flags the host cannot produce for free: a
+flag-setting *logical* with a rotated immediate (ARM takes C from the rotator, where
+`ANDS #imm` takes it from the host's own rule), and ADCS/SBCS (whose carry-in has to
+be the C of *before* the operation - a snapshot per instruction, which is exactly
+what RSC does *not* need, because RSC is the platform's own reversed form).
+Flag-setting *arithmetic* with an immediate **is** accepted, including `ADDS #imm`
+and `CMP Rn, #imm`: ARM takes C from the adder wherever the second operand came from,
+and so does every host (the 0.5 s in the benchmark below is mostly `add`, `cmp`,
+`bne` running as one block).
 
 The flags are the interesting part.  AArch64 has no flag-setting `ORR`/`EOR`, so
 those become a value plus `TST Wd, Wd`; the 64-bit shift inside a shifted logical
@@ -356,6 +390,21 @@ Four x86 rules do not match ARM's, and each costs at most one instruction:
   to the exit can be the one a *previous* arithmetic instruction computed - the
   emitter keeps a second liveness variable (`v_live_out`) and emits `seto` for
   the arithmetic instruction whenever either variable wants it.
+* **Two conditions are not one x86 test.**  HI is "C and not Z" and LS its
+  complement, so each is spelled as two jumps - and because falling out of the test
+  sequence lands on the jump *over* the taken block, a condition written with
+  "not-taken" jumps alone can never take the branch.  HI used to be exactly that
+  (which made it the negation of LS), and the corpus case for LS is what caught it;
+  the branch sweep in `test_jit_x64` now runs all fifteen conditions against all
+  sixteen flag words, in both directions.
+* **A bail is not the end of the block.**  Every guard around a translated access
+  jumps to a cold path that reads the flags back out of a `pushfq` (when the guest
+  flags are live there), writes the registers the block had modified, stores the
+  resume address into `SH_ABORT_PC`, `SH_R15`, `SH_RETIRED` and `SH_CYCLES`, and
+  rejoins the tail *after* the instruction that clears `SH_ABORT_PC` - so the
+  dispatcher can tell "the block ran to its end" from "the block stopped at an
+  address I have to interpret".  Without that word the dispatcher would hand the
+  block's partial retirement to the *next* boundary and skip an instruction.
 
 `tests/test_jit_x64.cpp` is the check, and it is the strongest one available:
 the machine the blocks run on is the machine they were translated for, so there
@@ -363,13 +412,21 @@ is no model in the loop.  It pins the encoder byte by byte, hands a block a
 sentinel-filled shadow buffer and looks at what it wrote (an offset the emitter
 and `jit/abi.h` disagree about shows up as a clobbered word), sweeps every
 data-processing opcode with both S settings, immediates (rotated and not), plain
-registers, all four shifts and RRX across three entry flag words, then compares
-thousands of random multi-instruction blocks and a register-pressure block
-against the interpreter instruction by instruction.  A disagreement prints the
-guest words, the entry state and the differing register, which is how the bugs
-this section describes were found - the sweep found the rotate/MVN-immediate
-rules, and the random blocks found the operand-swap and carry-fixup hazards the
-sequential tests never reach.
+registers, all four shifts and RRX across three entry flag words, sweeps every
+load/store form over the addresses that matter (the window's edge, a page
+boundary, an unaligned address, and one outside RAM, where the block has to bail),
+compares all fifteen branch conditions against all sixteen flag words plus the
+branch shapes that are not a condition (`BL`, `BX`/`BLX Rm` to both states,
+`BLX #imm`, a backwards branch), pins the two dispatcher rules that let a block
+own an access at all (no entry with SCTLR.A set; a store into a code page leaves
+through the interpreter), then compares thousands of random multi-instruction
+blocks and a register-pressure block against the interpreter instruction by
+instruction - registers, R13/R14, CPSR, the resume pc, the *cycle count* and the
+whole 1 MiB of RAM.  A disagreement prints the guest words, the entry state and
+the differing register, which is how the bugs this section describes were found -
+the sweep found the rotate/MVN-immediate rules and the HI/LS condition, and the
+random blocks found the operand-swap and carry-fixup hazards the sequential tests
+never reach.
 
 `tests/test_jit_arm64.py` checks the other backend, and runs as part of `make check`:
 every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
@@ -378,7 +435,9 @@ contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, C
 and the next PC against the interpreter (132 blocks agree, 107 are refused by design);
 and `jit_emit --sweep` enumerates 16 opcodes x 4 shift types x 32 shift amounts x S x
 immediate-or-register - 4224 shapes, most of which the corpus cannot express - and
-runs each accepted one on the model (2805 agree, 1419 refused, 0 disagreements).  The
+runs each accepted one on the model (3060 agree, 1164 refused, 0 disagreements; the
+AArch64 emitter has no memory or branch translation, so the corpus blocks it can
+verify are the ones that end before one - 87 of 248, with 161 refused by design).  The
 sweep is what found the four real bugs in the carry rule, `ROR #0`, and MVN's
 immediate and RRX forms: the encoding checks had passed throughout, because a
 disassembler only proves what the *text* of an instruction says.  Capstone and Unicorn

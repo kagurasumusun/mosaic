@@ -2,11 +2,15 @@
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * A block is a straight-line run of guest instructions translated into ops over
- * a *host* register file that shadows guest R0-R12 while the block runs.  The
- * shape is deliberately small: the frontend bails (and the block ends) at any
- * branch, any access to R13-R15, anything that reads or writes CPSR beyond the
- * NZCV flags, and any instruction that touches memory - a guest load or store
- * needs the MMU and the abort path, which a block must not duplicate.
+ * a *host* register file that shadows guest R0-R12 while the block runs, ended
+ * either by the translation budget or by a branch.  The shape is deliberately
+ * small: the frontend bails (and the block ends) at anything that reads or
+ * writes CPSR beyond the NZCV flags, at a guest access the machine cannot let a
+ * block perform, and at every instruction whose semantics would need a second
+ * copy of the exception model.  A guest load or store is translated only when
+ * the machine says the access is plain RAM (MMU off, no alignment checking),
+ * and a block that turns out to be wrong about the *address* leaves the block
+ * again instead of guessing (see IR_LD/IR_ST below).
  *
  * What is left is the bulk of a real loop body: ARM data-processing, including
  * the barrel shifter and the S forms.  Flags are carried in the *host* NZCV for
@@ -48,6 +52,13 @@ enum IrOp : uint8_t {
    * operand is the *minuend* (`dst = Op2 - Rn - NOT(C)`), i.e. SBC with the two
    * register operands exchanged - which is exactly how both backends spell it. */
   IR_RSC,
+  /* Memory and control flow.  A block may contain these only while the module
+   * says it may (the frontend checks the machine state that makes them safe);
+   * both ends of the block are then still a clean handoff, because an access a
+   * block must not perform and a branch both *exit* rather than guess. */
+  IR_LD,                /* load:  dst = memory at the address below          */
+  IR_ST,                /* store: memory at the address below = dst          */
+  IR_BR,                /* the block ends here: a branch, taken or not       */
   IR_COUNT
 };
 
@@ -70,6 +81,78 @@ struct IrInsn {
    * this is non-zero (and the bit is bit 31 of `imm`), and C is left alone when
    * it is zero. */
   uint8_t imm_rot;
+
+  /* ---- IR_LD / IR_ST: what a guest access means ---------------------------
+   *
+   * `dst` is the guest register loaded (IR_LD) or stored (IR_ST), `a` the base
+   * register and `b` the index register.  The address is
+   *
+   *   mem_reg == MEM_ABS   : `imm`                    (pc-relative, folded)
+   *   mem_reg == MEM_IMM   : R(a) +- `imm`
+   *   mem_reg == MEM_REG   : R(a) +- (R(b) <shift_type> #shift_amt)
+   *
+   * `mem_sub` says the offset is subtracted, `mem_size` is 1, 2 or 4 bytes, and
+   * `mem_signed` sign-extends a load (LDRSB/LDRSH).  `mem_post` is what the
+   * *access* reads: 0 = the effective address (the base with the offset
+   * applied), 1 = the base itself, with the offset left for the writeback.
+   * `mem_wb` is whether the base is updated afterwards - to the effective
+   * address for a pre-indexed form, to base +- offset for a post-indexed one.
+   * The two are separate because the frontend drops the writeback (not the
+   * addressing form) for a load whose destination is its own base, which is the
+   * one case where the interpreter's rule and the encoding's differ.
+   * `mem_shadow` means R(a) is R13/R14: those live in the shadow register file
+   * rather than in the allocator's window, so the backend reads them from there
+   * (and a writeback writes them back there).  The frontend refuses every
+   * UNPREDICTABLE combination (a load whose destination is also its written-back
+   * base, R15 as an operand) rather than giving them a meaning.
+   *
+   * A backend may only perform one of these when the machine has told it the
+   * access cannot fault and cannot reach a device - which is a *translation*
+   * decision, carried by IrBlock::uses_mem plus the window in
+   * IrBlock::mem_gbase/mem_mask - and it must be able to leave the block before
+   * an access that falls outside what it can do (see the exit protocol in
+   * jit/emit_x64.cpp): the dispatcher then runs that one instruction itself.
+   */
+  uint8_t mem_size;
+  uint8_t mem_wb;
+  uint8_t mem_post;
+  uint8_t mem_sub;
+  uint8_t mem_reg;
+  uint8_t mem_signed;
+  uint8_t mem_shadow;
+
+  /* ---- IR_BR: the last instruction of a branch-terminated block ----------
+   *
+   * `cond` is the ARM condition code (0xE = always).  A direct branch puts its
+   * *absolute* target in `imm`; `br_reg` instead names the target register in
+   * `b`.  `br_link` writes `link` - the address after the branch word - to the
+   * architectural R14, which lives in the shadow: only on the taken path, so a
+   * conditional BL that does not execute really does write nothing.
+   * `blk.next_pc` is the fall-through - the address after the branch word - and
+   * the emitter picks between the fall-through and the target at run time by
+   * evaluating `cond` on the guest's flags. */
+  uint8_t cond;
+  uint8_t br_link;
+  uint8_t br_reg;
+  uint32_t link;         /* IR_BR: the value a BL/BLX leaves in R14 */
+
+  /* ---------------------------------------------------------- cycle cost --
+   * What the interpreter charges for this instruction (kIssue plus whatever
+   * the instruction adds), accumulated over the block by the frontend: `cyc` is
+   * the running total *through* this instruction.  It rides in the IR because
+   * the cycle model belongs to the guest module and the backends live below it;
+   * a block that leaves early reports the total it reached. */
+  uint16_t cyc;
+  /* The cumulative cost when a *conditional branch* is not taken (an issue slot
+   * and nothing else: the interpreter charges a taken branch and only the issue
+   * slot for one that falls through).  Unused for every other op. */
+  uint16_t cyc_nt;
+};
+
+/* `mem_reg` / `mem_wb` values (see the field comments above). */
+enum : uint8_t {
+  MEM_ABS = 0, MEM_IMM = 1, MEM_REG = 2,      /* IR_LD / IR_ST addressing    */
+  MEM_WB_NONE = 0, MEM_WB_YES = 1,            /* ...and the writeback        */
 };
 
 enum { IR_NO_DST = 255, IR_MAX_INSNS = 64 };
@@ -80,9 +163,21 @@ struct IrBlock {
   IrInsn in[IR_MAX_INSNS];
   uint32_t n = 0;
   uint32_t start_pc = 0;      /* address of the first translated insn      */
-  uint32_t next_pc = 0;       /* where execution resumes                   */
+  uint32_t next_pc = 0;       /* where a straight-line exit resumes        */
+  /* The address after the last translated word: the block's *source* range,
+   * which is what an invalidation and the code-page marking care about.  For
+   * everything but an unconditional branch this equals `next_pc`. */
+  uint32_t code_end = 0;
   uint32_t guest_insns = 0;   /* how many retired, for the block counter   */
   uint32_t dirty = 0;         /* bitmask of guest regs written             */
+  uint32_t cycles = 0;        /* the whole block's cycle cost              */
+  /* Memory: `uses_mem` is set when the block contains a guest access, and the
+   * window below is what the backend bakes into it.  It is the identity RAM
+   * window as of translation (`Cpu::ram_gbase`/`ram_mask`): the dispatcher
+   * refuses to enter a memory block whose window no longer matches, which is
+   * what makes the baked constants safe (see jit_cache_enter). */
+  bool uses_mem = false;
+  uint32_t mem_gbase = 0, mem_mask = 0;
   bool truncated = false;     /* stopped by IR_MAX_INSNS, not by a boundary */
   const char* stop = nullptr;  /* why the block ended, for --jit tracing   */
 
@@ -115,6 +210,9 @@ inline const char* ir_op_name(IrOp op) {
     case IR_ASR: return "asr";
     case IR_ROR: return "ror";
     case IR_RRX: return "rrx";
+    case IR_LD: return "ld";
+    case IR_ST: return "st";
+    case IR_BR: return "br";
     default: return "?";
   }
 }

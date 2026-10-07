@@ -194,6 +194,51 @@ class Buf {
     u8(0xB6);
     modrm_mem(dst, m);
   }
+  /* movzx r32, word [base + disp] */
+  void movzx_u16_m(int dst, const Mem& m) {
+    rex(0, dst, m.index, m.base);
+    u8(0x0F);
+    u8(0xB7);
+    modrm_mem(dst, m);
+  }
+  /* movsx r32, byte|word [base + disp] - the LDRSB/LDRSH half of the load
+   * space, where the value the guest register receives is sign-extended. */
+  void movsx_u8_m(int dst, const Mem& m) {
+    rex(0, dst, m.index, m.base);
+    u8(0x0F);
+    u8(0xBE);
+    modrm_mem(dst, m);
+  }
+  void movsx_u16_m(int dst, const Mem& m) {
+    rex(0, dst, m.index, m.base);
+    u8(0x0F);
+    u8(0xBF);
+    modrm_mem(dst, m);
+  }
+  /* mov r/m8, r8 - the low byte of the named register, which for RSP/RBP/RSI/
+   * RDI exists only behind a REX prefix (without one those encodings mean
+   * AH/CH/DH/BH), so the byte forms always carry it. */
+  void mov_mem8_r(const Mem& m, int src) {
+    rex(0, src, m.index, m.base, /*force=*/true);
+    u8(0x88);
+    modrm_mem(src, m);
+  }
+  /* mov r/m16, r16 */
+  void mov_mem16_r(const Mem& m, int src) {
+    u8(0x66);
+    rex(0, src, m.index, m.base);
+    u8(0x89);
+    modrm_mem(src, m);
+  }
+  /* cmp byte [base + disp], imm8 - the smallest flag-writing test of a byte in
+   * memory, used to ask the JIT's own code-page map whether a store has to go
+   * back through the interpreter (see jit/abi.h). */
+  void cmp_m8_ri(const Mem& m, uint32_t imm) {
+    rex(0, 0, m.index, m.base, /*force=*/true);
+    u8(0x80);
+    modrm_mem(7, m);
+    u8(imm & 0xFF);
+  }
   /* mov r64, imm64 (only for constants; used by tests) */
   void movabs_r64(int dst, uint64_t imm) {
     rex(1, 0, 0, dst);

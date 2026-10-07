@@ -12,7 +12,9 @@
 #include <cstring>
 
 #include "arm926/decode.h"
+#include "arm926/ops.h"          /* CycleModel: the cycle charge rides in the IR */
 #include "arm926/jit/emit_arm64.h"
+#include "arm926/jit/jit.h"      /* jit_fast_mem_ok: may a block access memory?  */
 
 namespace brain::arm926 {
 
@@ -55,14 +57,28 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
    * Register operands with S, by contrast, are an exact match: AArch64 copies the
    * shifter carry the same way ARM does.  Anything else stops here and runs in the
    * dispatcher, which is correct - just not fast. */
-  /* A flag-setting operation with a *rotated immediate* is refused: ARM takes C
-   * from the rotator (and leaves it alone when the rotation is zero), which is not
-   * what `ADDS #imm` computes, and no amount of shifting the materialised value
-   * recovers the difference.  `MOV`/`MVN` with a shifted *register* and S is fine -
-   * the value, `TST Wd, Wd`, and the snapshot repair below give exactly ARM's rules
-   * for it - but a shift by a *register* also copies C into V, so that stays with
-   * the dispatcher. */
-  if (d.s && d.op2 == OP2_IMM) return false;
+  /* A *logical* operation with an immediate and S is refused: its C comes from
+   * the rotator (the last bit rotated out, or "unchanged" when the rotation is
+   * zero), which is neither the arithmetic carry nor anything the host's own
+   * `and`/`orr` produces - and no amount of shifting the materialised value
+   * recovers it, because the bit is gone by then.  The *arithmetic* operations
+   * are a different rule and are accepted: ADD/SUB/RSB/RSC take their C from the
+   * adder wherever the second operand came from, which is exactly what the host
+   * computes (see flag_patches above and the x86 emitter's `cmc`).  This matters
+   * for throughput and not for elegance - `adds r0, r0, #1` is the single most
+   * common flag-setting ARM word there is.  `MOV`/`MVN` with a shifted *register*
+   * and S is fine - the value, `TST Wd, Wd`, and the snapshot repair give exactly
+   * ARM's rules for it - but a shift by a *register* also copies C into V, so
+   * that stays with the dispatcher. */
+  if (d.s && d.op2 == OP2_IMM) {
+    switch (d.dp) {
+      case DP_ADD: case DP_SUB: case DP_RSB: case DP_RSC:
+      case DP_CMN: case DP_CMP:
+        break;                                    /* C comes from the adder  */
+      default:
+        return false;                             /* the rotator's carry     */
+    }
+  }
 
   IrInsn in{};
   in.dst = uint8_t(d.rd);
@@ -169,6 +185,187 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
   return true;
 }
 
+/* The addressing mode of a load/store as the IR spells it: `post` is what the
+ * access reads, `wb` whether the base is written afterwards. */
+bool wb_of(const ArmDec& d, uint8_t* post, uint8_t* wb) {
+  switch (d.am) {
+    case AM_IMM_PRE: case AM_REG_PRE:
+      *post = 0; *wb = MEM_WB_NONE; return true;
+    case AM_IMM_PRE_WB: case AM_REG_PRE_WB:
+      *post = 0; *wb = MEM_WB_YES; return true;
+    case AM_IMM_POST: case AM_REG_POST:
+      *post = 1; *wb = MEM_WB_YES; return true;
+    default: return false;                 /* AM_NONE / AM_NONE_ADDR: not here */
+  }
+}
+
+/* One guest access -> IR, or false if a block may not perform it.  The verdict
+ * is taken once per *block*, not once per access: `jit_fast_mem_ok` is the same
+ * test the dispatcher puts in the shadow for the interpreter's fast path (MMU
+ * off, identity RAM window, no alignment check, no BE8 lane swap), so a
+ * translated access does exactly what that path does - and the emitter guards
+ * every access with the window anyway, leaving the block if the *address* turns
+ * out not to be RAM.
+ *
+ * Refused, each because a block cannot reproduce it:
+ *   - R13/R14/R15 as the loaded or stored register (the dispatcher owns the
+ *     pipeline and the banked registers);
+ *   - a load whose written-back base is also its destination (ARM keeps the
+ *     loaded value in it, which one register cannot hold both of);
+ *   - a shift amount supplied by a register, LDRD/STRD, LDM/STM, SWP;
+ *   - a writeback to R15.
+ * A pc-relative address *is* translated: the pipeline value is a constant of
+ * the translation, so the address is one too (MEM_ABS).
+ */
+bool translate_ldst(const Cpu& cpu, uint32_t pc, const ArmDec& d, bool extra, IrInsn* out) {
+  if (!jit_fast_mem_ok(&cpu)) return false;
+  /* A conditional instruction executes or does not, and a *block* has no way
+   * to skip one: predication belongs to the dispatcher (which is also where
+   * the branch counters see it).  translate_dp() makes the same test. */
+  if (((d.insn >> 28) & 0xFu) != 0xEu) return false;
+  if (d.rd > 12) return false;
+  const bool load = d.l != 0;
+  if (load && d.w && d.rd == d.rn) return false;
+
+  IrInsn in{};
+  in.op = load ? IR_LD : IR_ST;
+  in.dst = uint8_t(d.rd);
+  in.mem_signed = 0;
+  if (extra) {
+    /* LDRH/STRH/LDRSB/LDRSH: H selects 16 bits, S sign-extends, and a store in
+     * this space is the halfword form whatever H says (A5.3.3). */
+    if (!load) {
+      in.mem_size = 2;
+    } else {
+      /* bit5 (H) is the width, bit6 (S) the sign: LDRH 10x1, LDRSB 1x01 and
+       * LDRSH 11x1 - so a *signed* halfword load is 16 bits that sign-extend,
+       * which is the one shape the width alone gets wrong. */
+      in.mem_size = d.h ? 2 : 1;
+      in.mem_signed = d.signed_ ? 1 : 0;
+    }
+  } else {
+    in.mem_size = d.b ? 1 : 4;
+  }
+  in.mem_sub = d.u ? 0 : 1;
+
+  /* ---- the base ---- */
+  if (d.rn == 15) {
+    /* pc-relative: the instruction reads pc + 8, and in the plain offset form
+     * the whole address is a constant of the translation.  Anything that would
+     * write back to R15 is refused: the interpreter writes the *pipeline*
+     * register there (the next fetch still comes from npc), while a block's
+     * R15 output is the address execution resumes at - the two cannot be told
+     * apart from inside the block.  Note P=0 writes back even with W=0 (the
+     * ARM926EJ-S keeps the base result; Unicorn agrees), so `am` is the test. */
+    if (d.am != AM_IMM_PRE) return false;
+    in.mem_reg = MEM_ABS;
+    in.mem_shadow = 0;
+    in.a = 0;
+    in.imm = (pc + 8u) + (d.u ? d.imm12 : (uint32_t)(-(int32_t)d.imm12));
+    *out = in;
+    return true;
+  }
+  if (d.rn > 14) return false;
+  in.a = uint8_t(d.rn);
+  in.mem_shadow = d.rn >= 13 ? 1 : 0;      /* R13/R14 live in the shadow */
+  if (!wb_of(d, &in.mem_post, &in.mem_wb)) return false;
+  /* A load whose written-back base is also its destination: the interpreter
+   * skips the writeback when `rd == rn` (interp_arm.cpp), and that is what
+   * makes `ldr r0, [r0, #4]!` leave the loaded value in r0.  A block gets the
+   * same result for free by dropping the writeback - the load already targets
+   * the base - while keeping the addressing form. */
+  if (load && d.rd == d.rn) in.mem_wb = MEM_WB_NONE;
+
+  if (d.op2 == OP2_REG_RS) return false;   /* shift amount in a register  */
+  if (d.op2 == OP2_REG || d.op2 == OP2_REG_SHIFT) {
+    /* [Rn, +-Rm] or [Rn, +-Rm, <shift> #imm].  The shift rules are the same as
+     * for a data-processing operand: LSL #0 is no shift at all, and the
+     * encodings that mean a 32-bit shift have no host instruction behind them
+     * in a five-bit field. */
+    if (d.rm > 12) return false;
+    in.mem_reg = MEM_REG;
+    in.b = uint8_t(d.rm);
+    if (d.op2 == OP2_REG_SHIFT) {
+      if (d.sh == SH_RRX) return false;
+      if (d.sh == SH_LSL) {
+        if (d.amt > 31) return false;
+      } else if (d.amt == 0 || d.amt > 31) {
+        return false;
+      }
+      in.shift_type = uint8_t(d.sh);
+      in.shift_amt = uint8_t(d.amt);
+    }
+  } else {
+    in.mem_reg = MEM_IMM;
+    in.imm = d.imm12;
+  }
+  *out = in;
+  return true;
+}
+
+/* One branch -> IR.  A branch ends a block (see ir.h): the emitter evaluates
+ * the condition at run time and chooses between the target and the
+ * fall-through, so a conditional branch is translated as well as an
+ * unconditional one and the block containing it performs the branch instead of
+ * handing it back to the interpreter.
+ *
+ * `imm` is the taken target (a direct branch) and `link` the value of a BL/BLX
+ * link - written by the taken path only, because a branch whose condition is
+ * false writes neither the PC nor LR.  Where a *straight-line* exit goes is the
+ * block's `next_pc`: the target for an unconditional branch, the fall-through
+ * for a conditional one.
+ */
+bool translate_branch(const Cpu* cpu, uint32_t pc, const ArmDec& d, uint32_t op,
+                      IrBlock* out, IrInsn* ir) {
+  IrInsn in{};
+  in.op = IR_BR;
+  in.dst = IR_NO_DST;
+  in.cond = 0xEu;
+  in.br_link = 0;
+  in.br_reg = 0;
+  if (op == AOP_B) {
+    if (d.kind >= 4) return false;             /* Thumb long-branch halves  */
+    const uint32_t cond = (d.insn >> 28) & 0xFu;
+    if (d.kind == 2) {
+      /* BLX #imm: unconditional (its condition field is the fixed 1111), links
+       * to pc + 4, and switches to Thumb.  The dispatcher reads the state out
+       * of bit 0 of the exit address, so the target carries it. */
+      in.imm = (((pc + 8u) + d.imm24) & ~1u) | 1u;
+      in.br_link = 1;
+      in.link = pc + 4u;
+      out->next_pc = in.imm;
+      *ir = in;
+      return true;
+    }
+    if (cond == 0xFu) return false;            /* NV: not a branch we run   */
+    in.cond = uint8_t(cond);
+    in.imm = (pc + 8u) + d.imm24;
+    if (d.kind == 1) { in.br_link = 1; in.link = pc + 4u; }
+    /* The interpreter applies `& ~3` to an ARM-state branch target; the
+     * dispatcher does the same to whatever the block leaves in the exit word,
+     * so the raw target is the right thing to put there. */
+    out->next_pc = cond == 0xEu ? in.imm : pc + 4u;
+    *ir = in;
+    return true;
+  }
+  /* AOP_BX: BX / BLX Rm in ARM state.  The target is whatever the register
+   * holds - including the ARM/Thumb bit the dispatcher decodes - and BLX also
+   * links.  BXJ is an undefined instruction and stays with the dispatcher, as
+   * does the Jazelle trap a `bx` can take. */
+  if (d.kind == 2) return false;
+  if (d.rm > 14) return false;
+  if (d.kind == 0 && cpu && cpu->cfg.jazelle_trap) return false;
+  const uint32_t cond = (d.insn >> 28) & 0xFu;
+  if (cond == 0xFu) return false;
+  in.cond = uint8_t(cond);
+  in.br_reg = 1;
+  in.b = uint8_t(d.rm);
+  if (d.kind == 1) { in.br_link = 1; in.link = pc + 4u; }
+  out->next_pc = pc + 4u;
+  *ir = in;
+  return true;
+}
+
 /* One instruction word as the *fetch* would see it: identity-mapped RAM is read
  * straight out of the array, anything else has to walk the TLB the way
  * `Cpu::prepare_fetch()` does, and a translation that does not resolve simply
@@ -187,16 +384,24 @@ bool fetch_word(Cpu& cpu, uint32_t va, uint32_t* out) {
   return true;
 }
 
-/* `words != nullptr` translates a caller-supplied array (a test's); otherwise
- * the words are fetched from `cpu` one at a time, so a block that ends at its
- * first instruction costs one fetch and not a whole window of them. */
+/* `words != nullptr` translates a caller-supplied array (a test's, or the
+ * `jit_emit` tool's); otherwise the words are fetched from `cpu` one at a time,
+ * so a block that ends at its first instruction costs one fetch and not a whole
+ * window of them.  Without a machine there is no verdict about memory (see
+ * `translate_ldst`), so a caller-supplied array translates the register and
+ * control-flow subset only; branches do not need a machine. */
 uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
                    IrBlock* out) {
   out->n = 0;
   out->start_pc = pc;
   out->next_pc = pc;
+  out->code_end = pc;
   out->guest_insns = 0;
   out->dirty = 0;
+  out->cycles = 0;
+  out->uses_mem = false;
+  out->mem_gbase = 0;
+  out->mem_mask = 0;
   out->truncated = false;
   out->stop = "empty";
   uint32_t i = 0;
@@ -210,17 +415,63 @@ uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
     }
     ArmDec d{};
     const u32 op = decode_arm(word, &d);
-    if (op != AOP_DP) { out->stop = i ? "not data-processing" : "unsupported"; break; }
     IrInsn in{};
-    if (!translate_dp(d, &in)) {
-      out->stop = i ? "outside the translated subset" : "unsupported";
+    uint32_t cyc = CycleModel::kIssue;
+    bool ok = false;
+    bool branch = false;
+    switch (op) {
+      case AOP_DP:
+        ok = translate_dp(d, &in);
+        break;
+      case AOP_LDRST:
+      case AOP_LDRSTH:
+        if (!cpu) break;                     /* no machine, no memory verdict */
+        ok = translate_ldst(*cpu, pc + i * 4u, d, op == AOP_LDRSTH, &in);
+        if (ok) cyc += CycleModel::kAccess;
+        break;
+      case AOP_B:
+      case AOP_BX:
+        ok = translate_branch(cpu, pc + i * 4u, d, op, out, &in);
+        if (ok) {
+          branch = true;
+          /* A taken branch restarts the prefetch stage; a conditional one that
+           * is not taken is just an issue slot, which `cyc_nt` carries so the
+           * two exits of the block charge what the interpreter would. */
+          cyc += CycleModel::kBranch;
+          if (op == AOP_B && d.kind == 2) cyc += CycleModel::kPcLoad;
+          in.cyc_nt = (uint16_t)(out->cycles + CycleModel::kIssue);
+        }
+        break;
+      default:
+        out->stop = i ? "not translated" : "unsupported";
+        break;
+    }
+    if (op == AOP_DP || op == AOP_LDRST || op == AOP_LDRSTH) {
+      if (!ok) {
+        out->stop = i ? "outside the translated subset" : "unsupported";
+        break;
+      }
+    } else if (!ok) {
+      break;                                 /* the switch set the reason */
+    }
+    if (in.dst != IR_NO_DST && in.op != IR_ST) out->dirty |= 1u << in.dst;
+    if (in.op == IR_LD || in.op == IR_ST) {
+      out->uses_mem = true;
+      out->mem_gbase = cpu->ram_gbase;
+      out->mem_mask = cpu->ram_mask;
+    }
+    out->cycles += cyc;
+    in.cyc = (uint16_t)out->cycles;
+    if (!out->push(in)) {
+      out->stop = "block too long";
+      ++i;
       break;
     }
-    if (in.dst != IR_NO_DST) out->dirty |= 1u << in.dst;
-    if (!out->push(in)) { out->stop = "block too long"; ++i; break; }
     out->guest_insns++;
-    out->next_pc = pc + (i + 1) * 4u;
-    out->stop = "budget";
+    out->code_end = pc + (i + 1) * 4u;
+    if (!branch) out->next_pc = out->code_end;
+    out->stop = branch ? "branch" : "budget";
+    if (branch) { ++i; break; }              /* a branch is the way out */
   }
   return i;
 }

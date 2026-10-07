@@ -69,6 +69,15 @@ namespace brain::arm926 {
 struct JitCache;
 struct JitBlock;
 
+/* May a translated block access memory itself?  True only for the
+ * identity-mapped RAM the fast path exists for: RAM enabled as a window, byte
+ * order unchanged, and no alignment check to perform.  Both halves of the JIT
+ * ask - the emitter, while translating, and the dispatcher, once per entry into
+ * a block (as the `SH_MEM_FAST` word the emitted guard reads) - because a block
+ * baked the window it saw at translation time into the guard and the window can
+ * move. */
+bool jit_fast_mem_ok(const Cpu* c);
+
 /* Reasons for leaving generated code; reported in Cpu::jit_slow. */
 enum : u32 {
   JITSLOW_NONE = 0,

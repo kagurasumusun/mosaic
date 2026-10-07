@@ -175,7 +175,23 @@ and a backend sit three things that are backend-independent:
 * the *front end* (`frontend.cpp`) — decides how far a block may run, fetching
   each word as it goes (identity-mapped RAM straight out of the array, otherwise
   the TLB exactly as `prepare_fetch` does), and gives up *before* the first
-  instruction it cannot translate.
+  instruction it cannot translate.  What a block may contain is data processing,
+  the LDR/STR families, and one terminating branch; what it deliberately leaves to
+  the interpreter is listed in `docs/ISA-COVERAGE.md`, and the short version is
+  "anything predicated, anything whose flags the host cannot reproduce, and any
+  access whose verdict depends on the machine it was translated for".
+
+A block owns its accesses, so it needs a way to change its mind.  `JitBlock::meta`
+and the shadow buffer carry the entry handoff (the EFLAGS image, the RAM window, the
+code-page map, the fast-memory verdict); the *exit* is a three-way protocol that
+`cache.cpp` and the emitters share: a block that ran to its end, a block that
+*bailed* at a guarded access (it writes `SH_ABORT_PC`, the count and cost it reached,
+and the address to resume at - the interpreter then performs that one instruction,
+which is what keeps the SMC and abort paths in one place), and a branch, whose taken
+or not-taken outcome feeds `stats.branch_taken`/`branch_not`.  Bit 0 of the address a
+block leaves in `SH_R15` is the instruction-set bit for a `bx`/`blx`, so the
+dispatcher switches state on the way out - a translated block may *enter Thumb*, it
+just never runs a Thumb instruction itself.
 
 A backend only ever sees the IR. Two exist, and the host picks one
 (`BRAIN_JIT_BACKEND` in `jit.h`): AArch64 (`emit_arm64.h`), and x86-64
@@ -192,7 +208,9 @@ Correctness is checked by running both engines on identical machines and
 comparing: `test_instr --jit` replays the whole ISA corpus through the cache, and
 `tests/test_jit_x64.cpp` executes emitted blocks in-process against the
 interpreter (every data-processing opcode over a spread of operands, entry flag
-sets and rotated immediates, plus thousands of random blocks and a
+sets and rotated immediates; every load/store form over the addresses that matter;
+all fifteen branch conditions against all sixteen flag words; the two dispatcher
+rules that gate translated accesses; thousands of random blocks and a
 register-pressure block) — plus a shadow-buffer sentinel test, because the
 offsets the generated code hard-codes cannot be checked by the compiler.
 
@@ -210,9 +228,11 @@ Thumb long-branch pair, `BLX` with an immediate, and a load into R15.
 Branch target masking follows the state, not the encoding: a Thumb target is masked
 to 2 bytes, an ARM target to 4.  `BLX` with an immediate takes its offset from the
 A32 A2 layout, `imm32 = SignExtend(imm24 : H : 0)` over insn[23:0] with H =
-insn[24]: the offset is an *even* number rather than a multiple of 4, which is why
-that target is masked to 2 bytes and why reading the immediate from insn[23:1] (to
-skip the encoding's fixed bit[0]) halves every displacement.  For `BLX` with an immediate the low half of the
+insn[24]: the offset is an *even* number rather than a multiple of 4, so insn[0] is
+part of the displacement (it contributes 4, not a fixed 1) and every `cond = 1111`
+word in that opcode space is a BLX, which is what the model this project checks
+against does too.  That is why the target is masked to 2 bytes, and why reading the
+immediate from insn[23:1] halves every displacement.  For `BLX` with an immediate the low half of the
 offset *is* bit 1 of the target, so masking that to a word boundary discards a real
 address bit; masking a Thumb branch target to a word boundary drags every target
 that is 2 mod 4 back onto the preceding halfword, which is how a `b .` loop came to

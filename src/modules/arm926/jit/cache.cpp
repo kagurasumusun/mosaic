@@ -3,6 +3,7 @@
  */
 #include "arm926/jit/cache.h"
 
+#include <algorithm>
 #include <cstring>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -18,7 +19,7 @@ namespace brain::arm926 {
 /* When set, `jit_cache_enter` calls this instead of the arena code.  It lets the
  * dispatcher and the copy-in/copy-back run on hosts with no AArch64 execution;
  * tests/test_unit.cpp drives every block boundary through it. */
-void (*jit_cache_exec_hook)(u32* shadow) = nullptr;
+void (*jit_cache_exec_hook)(u32* shadow, const JitBlock* b) = nullptr;
 
 namespace {
 
@@ -42,6 +43,7 @@ JitCache* jit_cache_create(Cpu* cpu, u32 megabytes) {
   jc->table.assign(kTableSize, 0);
   jc->tmask = kTableSize - 1;
   jc->blocks.reserve(kBlockCap);
+  jc->codemap.assign(1u << 20, 0);        /* one byte per guest page          */
   u64 cap = (u64)megabytes << 20;
   int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
   void* p = mmap(nullptr, cap, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -80,11 +82,19 @@ void jit_cache_destroy(JitCache* jc) {
  * the flag until the next flush. */
 static void jit_mark_block_pages(JitCache* jc, u32 pc, u32 end_pc, bool code) {
   Bus* bus = jc->cpu->bus;
-  if (!bus) return;
   if (end_pc <= pc) end_pc = pc + 4;
   for (u64 p = pc & ~(u64)0xFFF; p < end_pc; p += 0x1000) {
-    if (code) bus->mark_code_page((u32)p, true);
-    else if (bus->page_has_code((u32)p)) bus->mark_code_page((u32)p, false);
+    if (code) {
+      /* The bus flag is what the interpreter's store path tests before it
+       * reports; the JIT's own map is what generated code tests before it
+       * stores.  Both say "this page holds translated code", so they are set
+       * and cleared together, here. */
+      if (bus) bus->mark_code_page((u32)p, true);
+      jc->codemap[(u32)p >> 12] = 1;
+    } else if (!bus || bus->page_has_code((u32)p)) {
+      if (bus) bus->mark_code_page((u32)p, false);
+      jc->codemap[(u32)p >> 12] = 0;
+    }
   }
 }
 
@@ -100,8 +110,11 @@ void jit_cache_flush(JitCache* jc) {
   /* Every page any of these blocks came from loses its flag, live or already
    * unlinked: after a flush the cache is empty, so no page may keep the flag. */
   for (size_t i = 0; i < jc->blocks.size(); ++i)
-    jit_mark_block_pages(jc, jc->blocks[i].pc, jc->blocks[i].end_pc, false);
+    jit_mark_block_pages(jc, jc->blocks[i].pc, jc->blocks[i].code_end, false);
   jc->blocks.clear();
+  /* Nothing is left to have come from any page, so the whole map goes - cheaper
+   * than walking it, and it cannot disagree with the empty block list. */
+  std::fill(jc->codemap.begin(), jc->codemap.end(), (u8)0);
   std::memset(jc->table.data(), 0, jc->table.size() * sizeof(u32));
   jc->used = 0;
   jit_cache_set_watch(jc, false);
@@ -159,19 +172,28 @@ bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   std::memcpy(jc->arena + jc->used, code.data(), bytes);
   JitBlock b;
   b.pc = pc & ~3u;
+  b.code_end = blk.code_end ? blk.code_end : blk.start_pc + 4u;
   b.end_pc = blk.next_pc;
   b.entry = (u32)jc->used;
-  /* Straight-line DP only, and the interpreter charges every retired insn one
-   * kIssue at entry to exec_arm_dec; extra cost (barrel shifts by register,
-   * memory) can only appear on shapes the frontend refuses.  So the block's
-   * cycle cost is exactly its instruction count under any model setting. */
+  /* The front end summed the per-instruction cost under the interpreter's own
+   * model (kIssue everywhere, plus kAccess for an access and kBranch for a
+   * taken branch), so a block's cycles are exactly what the interpreter would
+   * have charged for the same instructions - which is what lets the cycle
+   * budget in the dispatcher treat the two engines interchangeably. */
   b.insns = blk.guest_insns;
-  b.cycles = blk.guest_insns * (u32)CycleModel::kIssue;
+  b.cycles = blk.cycles;
   b.gen = c->trans_gen;
   b.meta = meta;
+  b.uses_mem = blk.uses_mem ? 1 : 0;
+  b.mem_gbase = blk.mem_gbase;
+  b.mem_mask = blk.mem_mask;
+  b.br = 0;
+  if (blk.n && blk.in[blk.n - 1].op == IR_BR)
+    b.br = blk.in[blk.n - 1].cond == 0xEu ? 1 : 2;
+  b.dead = 0;
   jc->used += bytes;
   jc->blocks.push_back(b);
-  jit_mark_block_pages(jc, b.pc, b.end_pc, true);
+  jit_mark_block_pages(jc, b.pc, b.code_end, true);
   jit_cache_set_watch(jc, true);
   JitBlock& installed = jc->blocks.back();
   const u32 idx = (u32)jc->blocks.size();            /* slot = idx - 1 */
@@ -192,7 +214,7 @@ void jit_cache_invalidate(JitCache* jc, u32 gaddr, u32 size) {
     for (u32 i = jc->table[slot]; i;) {
       JitBlock& b = jc->blocks[i - 1];
       const u32 next = b.next;
-      if ((u64)b.pc < end && (u64)b.end_pc > lo) {
+      if ((u64)b.pc < end && (u64)b.code_end > lo) {
         b.next = 0;                     /* unlink; entry stays until flush */
       } else {
         b.next = head;
@@ -213,18 +235,20 @@ void jit_cache_invalidate(JitCache* jc, u32 gaddr, u32 size) {
  * word.  Building the image here rather than in the block's prologue is worth
  * five instructions per entry, and it keeps the layout knowledge in one file. */
 /* True while a guest access may be done inline: RAM straight through, no
- * alignment check to perform, no halfword lane swap.  When this is false the
- * block calls the interpreter's helper instead - which is also what happens
- * whenever the MMU is on, so a translated block is only fast on the
- * identity-mapped RAM the fast path exists for.
+ * alignment check to perform, no halfword lane swap.  When this is false a
+ * block translates no access at all and the interpreter runs those
+ * instructions - which is also what happens whenever the MMU is on, so a
+ * translated block is only fast on the identity-mapped RAM the fast path
+ * exists for.
  *
- * The store watch (`Cpu::smc_watch`) is deliberately *not* part of this: a
- * block ends at the first memory access, so no translated code ever performs
- * the store that would need invalidating.  The guard sits on the interpreter's
- * store path, which is what a block's fallback goes through.  A frontend that
- * ever translates a guest store has to add the check back here - an inline
- * store cannot call the observer. */
-static bool jit_fast_mem_ok(const Cpu* c) {
+ * The store watch (`Cpu::smc_watch`) is deliberately *not* part of this.  A
+ * block *does* perform guest stores, but an inline store cannot call the
+ * observer, so the emitter guards every store with the code-page map the watch
+ * maintains and leaves the block (bailing to the interpreter, whose write path
+ * does the invalidating) the moment the address is code.  Adding the watch here
+ * would only turn the fast path off wholesale; the guard is what keeps the
+ * "every writer reports" invariant at a cost of one load. */
+bool jit_fast_mem_ok(const Cpu* c) {
   return c->cfg.jit_fast_mem && c->ram_fast && !c->align_chk && !c->be_data;
 }
 
@@ -246,6 +270,12 @@ static void jit_cache_prepare(JitCache* jc, u32* s) {
    * a helper or a guest access, instead of re-deriving the world per access. */
   u64 cpu_ptr = (u64)(uintptr_t)c;
   std::memcpy(&s[SH_CPU / 4], &cpu_ptr, sizeof cpu_ptr);
+  /* The two pointers generated code needs to do an access itself: the host base
+   * of the identity RAM window, and the code-page map a store tests. */
+  u64 ram_ptr = (u64)(uintptr_t)c->ram;
+  std::memcpy(&s[SH_RAM / 4], &ram_ptr, sizeof ram_ptr);
+  u64 map_ptr = (u64)(uintptr_t)jc->codemap.data();
+  std::memcpy(&s[SH_CODEMAP / 4], &map_ptr, sizeof map_ptr);
   s[SH_MEM_FAST / 4] = jit_fast_mem_ok(c) ? 1u : 0u;
 }
 
@@ -264,23 +294,34 @@ static void jit_cache_finish(JitCache* jc, u32* s) {
 }
 #endif
 
-void jit_cache_enter(JitCache* jc, JitBlock* b) {
+u32 jit_cache_enter(JitCache* jc, JitBlock* b) {
   Cpu* c = jc->cpu;
   u32* s = jc->shadow;
-  for (u32 i = 0; i < 13; ++i) s[i] = c->regs[i];
+  /* SH_REGS_IN words, not thirteen: R13 and R14 are part of the block's window
+   * for the same reason they are on the way back out (see below). */
+  for (u32 i = 0; i < SH_REGS_IN; ++i) s[i] = c->regs[i];
   s[16] = c->cpsr;                       /* CPSR_OFF: the shadow's 17th word   */
 #if BRAIN_JIT_BACKEND == 2
   /* meta&1: the block reads the entry flags; meta&2: it writes the flag halves
-   * at exit (and so needs the entry V even if it never reads a flag). */
-  if (b->meta & 3) jit_cache_prepare(jc, s);
+   * at exit (and so needs the entry V even if it never reads a flag).  A block
+   * that performs accesses needs the handoff words under any meta: it loads
+   * the RAM window pointer and the fast-memory verdict from them. */
+  if ((b->meta & 3) || b->uses_mem) jit_cache_prepare(jc, s);
 #endif
   if (jit_cache_exec_hook) {
-    jit_cache_exec_hook(s);
+    jit_cache_exec_hook(s, b);
   } else if (BRAIN_JIT_BACKEND && jc->arena_exec) {
     void (*fn)(u32*) = (void (*)(u32*))(jc->arena + b->entry);
     fn(s);
   }
-  for (u32 i = 0; i < 13; ++i) c->regs[i] = s[i];
+  /* R0-R12 plus R13/R14: a block may use the stack pointer as a base (with a
+   * writeback that lands in the shadow) and it *does* write the link register
+   * for a `bl`/`blx`, so both words are outputs as well as inputs - and the
+   * copy *in* has to cover them too, or the block would read whatever the
+   * previous entry left there.  A register the block never touched still holds
+   * the entry value, so the copy back is a no-op for it.  R15 is the address to
+   * resume at, not a register, and is handled below. */
+  for (u32 i = 0; i < SH_REGS_IN; ++i) c->regs[i] = s[i];
 #if BRAIN_JIT_BACKEND == 2
   /* Same merge the epilogue documents: NZCV from the host flags, everything
    * else already in the word the prologue loaded, and vflag kept in step with
@@ -289,13 +330,63 @@ void jit_cache_enter(JitCache* jc, JitBlock* b) {
 #endif
   c->cpsr = s[16];
   c->vflag = (s[16] >> 28) & 1;
-  c->cur = b->end_pc - 4;
-  c->regs[15] = c->cur + 8;              /* the pipeline view ARM state reads  */
-  c->npc = b->end_pc;
-  c->insns += b->insns;
-  c->cycles += b->cycles;
-  c->stats.insns_jit += b->insns;
-  c->stats.cycles_jit += b->cycles;
+
+  /* What the block did, and where it left the machine.  A block that ran to its
+   * exit wrote the address to resume at (the target of the branch it took, or
+   * the fall-through) and its own cost; one that bailed wrote the address of the
+   * instruction it would not perform and the count/cost of the part it did. */
+  u32 retired = b->insns, cycles = b->cycles, resume = b->end_pc;
+  bool bailed = false;
+  u32 branch = 0;                        /* 0 none, 1 taken, 2 not taken */
+#if BRAIN_JIT_BACKEND == 2
+  retired = s[SH_RETIRED / 4];
+  cycles = s[SH_CYCLES / 4];
+  resume = s[SH_R15 / 4];
+  bailed = s[SH_ABORT_PC / 4] != 0;
+  if (!bailed) {
+    if (b->br == 1) branch = 1;
+    else if (b->br == 2) branch = s[SH_BRANCH / 4] ? 1 : 2;
+  }
+#else
+  /* The AArch64 backend does not translate branches (see jit_emit_arm64), so a
+   * block always retires whole and leaves the fall-through. */
+  (void)branch;
+#endif
+  /* The pipeline view the interpreter's own fetch would leave: `cur` is the
+   * instruction that has just retired and R15 the value it read, while `npc` is
+   * where the next fetch starts (`Cpu::fetch_and_execute` does the same three
+   * assignments at the top of a step).  For everything but a bail "just retired"
+   * is the block's last word; a bail never ran that word, so there the last one
+   * is its predecessor and `npc` is the word the interpreter must now run. */
+  /* A block hands back whatever address its branch logic computed, and for a
+   * `bx`/`blx` that address carries the instruction-set bit - the frontend
+   * keeps bit 0 for exactly this reason.  Turning it into the machine's state
+   * is the dispatcher's job, because `thumb` and CPSR.T belong to the
+   * interpreter: a block only ever runs in ARM state (jit_block_boundary
+   * refuses Thumb), so the one switch it can perform is into Thumb, done the
+   * way interp_arm.cpp does it for a BX to a Thumb target. */
+  if (resume & 1u) {
+    c->set_thumb(1);
+    c->cpsr &= ~(CPSR_T | CPSR_J);
+    c->cpsr |= CPSR_T;
+    resume &= ~1u;
+  }
+  const u32 last = bailed ? resume - 4u : b->code_end - 4u;
+  c->cur = last;
+  c->regs[15] = last + 8u;               /* the pipeline value, ARM state      */
+  c->npc = resume;
+  c->insns += retired;
+  c->cycles += cycles;
+  c->stats.insns_jit += retired;
+  c->stats.cycles_jit += cycles;
+  /* `stats.branch_taken/branch_not` are part of what a run reports and the
+   * interpreter counts them per branch instruction; a block performs one branch
+   * (its last instruction) and is the only thing that knows the outcome.  A
+   * bail never reached the branch, so nothing is counted - its instruction
+   * count says so and the interpreter will count it when it gets there. */
+  if (branch == 1) c->stats.branch_taken++;
+  else if (branch == 2) c->stats.branch_not++;
+  return retired;
 }
 
 /* ------------------------------------------------------------------ loop -- */
@@ -320,6 +411,19 @@ u32 jit_block_boundary(JitCache* jc, u64 max_insns, u64 until_cycles) {
   const u32 pc = c->npc & ~3u;
   if (BRAIN_LIKELY(pc == jc->bad_pc && jc->bad_gen == c->trans_gen)) return 0;
   JitBlock* b = jit_cache_lookup(jc, pc);
+  if (b && b->dead) return 0;
+  /* A block that performs accesses baked the RAM window it saw into its
+   * guards, so it may only be entered while that window is still the machine's
+   * - and while a translated access is still something the interpreter's own
+   * fast path would do (MMU off, alignment check off, byte order unchanged).
+   * Those last three live in SCTLR, and a write to SCTLR flushes every block
+   * (see Cpu::on_translation_env_changed), so only the bus window can actually
+   * move under a live block - the rest of the test is what the front end asked
+   * at translation time, asked again because it costs three compares. */
+  if (b && b->uses_mem &&
+      (!jit_fast_mem_ok(c) || b->mem_gbase != c->ram_gbase ||
+       b->mem_mask != c->ram_mask))
+    return 0;
   if (b && b->gen != c->trans_gen) {
     jit_cache_flush(jc);
     c->jit_slow = JITSLOW_STALE;
@@ -340,8 +444,14 @@ u32 jit_block_boundary(JitCache* jc, u64 max_insns, u64 until_cycles) {
   if (c->insns + b->insns > max_insns ||
       (until_cycles != ~0ull && c->cycles + b->cycles > until_cycles))
     return 0;                            /* would over-run the budget          */
-  const u32 retired = b->insns;
-  jit_cache_enter(jc, b);
+  const u32 retired = jit_cache_enter(jc, b);
+  if (retired == 0) {
+    /* The block bailed at its first instruction: the machine cannot get
+     * anywhere by entering it again, and the instruction it refused must run in
+     * the interpreter.  Remember that, so the next boundary does not spin. */
+    b->dead = 1;
+    return 0;
+  }
   return retired;
 }
 

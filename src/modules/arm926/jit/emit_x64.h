@@ -8,7 +8,18 @@
  * the dispatcher (jit/cache.cpp) is what turns the shadow buffer back into the
  * machine state the interpreter would have had.
  *
- * Register plan (System V, chosen so the whole block is one leaf function):
+ * A block that contains guest accesses additionally carries the access rules
+ * with it: an inline load or store is guarded by the identity RAM window the
+ * front end baked into the IR, and a store is further guarded by the JIT's own
+ * code-page map - a store into a page that holds translated code leaves the
+ * block and goes back through the interpreter, which is the path that tells the
+ * cache to drop the stale blocks (see jit/abi.h).  Leaving a block in the
+ * middle is the third exit the epilogue knows: it writes how many instructions
+ * really retired and where execution resumes, and the dispatcher continues
+ * there - exactly as if the block had ended one instruction earlier.
+ *
+ * Register plan (System V, chosen so the whole block is one leaf function,
+ * memory accesses included - no helper is ever called):
  *
  *   RBP  the shadow pointer.  Callee-saved, so it survives a helper call, and
  *        every guest load/store is one [rbp+disp] away from it.
@@ -35,6 +46,12 @@
  *   AArch64 could keep V inside NZCV because MSR/MRS move all four bits at
  *   once; on x86-64 that would cost a pushfq/popfq per flag-setting logical
  *   operation, which is the common case in real ARM code.
+ *
+ * A branch ends a block: an unconditional one only changes the address the
+ * block exits to, and a conditional one evaluates its ARM condition on the very
+ * same flags (N, Z and C out of SF/ZF/CF, V out of r15d) and picks between the
+ * target and the fall-through.  Nothing is chained inside generated code, so a
+ * loop is one block that exits to its own entry address.
  *
  * The other half of the design is that flags are only materialised when they
  * are live.  `jit_emit_x64` runs a backward liveness pass over the block (the
@@ -66,6 +83,13 @@ struct JitBlockMeta {
                               *    left in the shadow for the dispatcher to
                               *    merge; 2: the CPSR word was written by the
                               *    block itself (AArch64) */
+  uint8_t br = 0;            /* 0: no branch; 1: an unconditional one (always
+                              *    taken); 2: a conditional one, whose outcome
+                              *    the block puts in shadow[SH_BRANCH] */
+  uint8_t uses_mem = 0;      /* 1: the block performs guest accesses inline,
+                              *    against the RAM window in the IR block; the
+                              *    dispatcher must refuse to enter it after the
+                              *    window (or the fast-memory verdict) moved */
 };
 
 /* Translates `blk` into x86-64.  With `with_entry_exit` the block gets the

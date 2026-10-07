@@ -59,6 +59,32 @@ bool jit_x64_accepts(const IrInsn& in) {
        * this is the second line of defence. */
       if (in.shift_amt == 0 || in.shift_amt > 31) return false;
       break;
+    case IR_LD: case IR_ST:
+      /* Memory: the register window, the addressing form and the shift of a
+       * register offset.  The *machine* conditions that make an inlined access
+       * legal (RAM, no alignment check, no big-endian data) are the front end's
+       * decision, because they are about the guest, not about x86-64. */
+      if (in.mem_size != 1 && in.mem_size != 2 && in.mem_size != 4) return false;
+      if (in.mem_reg > MEM_REG || in.mem_post > 1 || in.mem_wb > MEM_WB_YES) return false;
+      if (in.dst >= 13) return false;                       /* value register */
+      if (in.mem_shadow ? (in.a < 13 || in.a > 14) : in.a >= 13) return false;
+      if (in.mem_wb != MEM_WB_NONE && in.mem_reg == MEM_ABS) return false;
+      if (in.mem_reg == MEM_REG) {
+        if (in.b >= 13) return false;                       /* never R13/R14 */
+        if (in.shift_type == SH_RRX) return false;          /* no RRX index    */
+        if (in.shift_type != SH_LSL && in.shift_amt == 0) return false;  /* #32 */
+        if (in.shift_amt > 31) return false;
+      } else if (in.shift_amt != 0) {
+        return false;
+      }
+      break;
+    case IR_BR:
+      /* Control flow: only the four ARM condition codes the host cannot test
+       * directly need care, and those are handled in the exit path below. */
+      if (in.cond > 0xEu) return false;
+      if (in.br_link && in.br_reg && in.b >= 13) return false;
+      if (in.br_reg && in.b >= 15) return false;
+      break;
     default:
       return false;
   }
@@ -120,6 +146,17 @@ Shape shape_of(const IrInsn& in) {
     case IR_RSC:
       s.reads_a = true; s.reads_b = true; s.arith = true;
       break;
+    case IR_LD: case IR_ST:
+      /* The address is an operand; a store also reads the register it stores.
+       * Both are emitted by mem_op(), which never reaches the data path below -
+       * `mem` exists so the allocator's next-use table sees the right operands. */
+      s.mem = true;
+      s.reads_a = !in.mem_shadow;
+      s.reads_b = in.mem_reg == MEM_REG;
+      break;
+    case IR_BR:
+      /* The branch is the exit path; nothing of it is emitted in the body. */
+      break;
     default:
       break;
   }
@@ -146,6 +183,22 @@ bool operand_unshifted(const IrInsn& in) {
   if (in.b_is_imm) return in.imm_rot == 0;
   if (in.shift_type == SH_RRX) return false;
   return in.shift_amt == 0;
+}
+
+/* A conditional branch *reads* the flags without producing a value: its ARM
+ * condition is evaluated on N, Z, C and V, so the flags are live into it and V
+ * has to be real there.  This is what keeps the host flags correct up to the
+ * exit path (see the note in Emitter::exit_path). */
+bool reads_flags(const IrInsn& in) {
+  return in.op == IR_BR && in.cond != 0xEu;
+}
+
+/* ARM conditions whose test involves V: VS, VC, GE, LT, GT, LE.  V is the one
+ * flag that does not live in the host flag register (see the header), so a
+ * block that tests one of these has to have the V word loaded at entry. */
+bool cond_uses_v(uint32_t cond) {
+  return cond == 0x6 || cond == 0x7 || cond == 0xA || cond == 0xB ||
+         cond == 0xC || cond == 0xD;
 }
 
 /* The bit of the *unmodified* source operand ARM's shifter carry comes from:
@@ -203,17 +256,29 @@ void compute_liveness(const IrBlock& b, Liveness* lv) {
   for (int i = (int)b.n - 1; i >= 0; --i) {
     const IrInsn& in = b.in[i];
     const bool def = in.setflags != 0;
+    /* A memory access can *end the block*: every guard around it is a bail
+     * site, and the guest flags the interpreter would observe after the retired
+     * prefix are the ones live at the access.  So an access observes the flags
+     * exactly like the block exit does, and the propagation below then keeps
+     * them in a host register all the way back to their writer - without this,
+     * an access between a flag writer and the exit could clobber the host flags
+     * inside a guard and the bail would hand the dispatcher the guard's
+     * comparison instead of the guest's flags (which the guard's own pushfq
+     * preserves, but only when this says the value is wanted). */
+    if (in.op == IR_LD || in.op == IR_ST) { live = true; v = true; }
     /* Live going in: something after needs the flags (if this instruction does
      * not write them, or writes them as a copy of the old ones), or this
      * instruction needs the carry for its own result. */
     lv[i].live_out = live;
-    live = (live && (!def || copies_carry_through(in))) || reads_carry_for_value(in);
+    live = (live && (!def || copies_carry_through(in))) || reads_carry_for_value(in) ||
+           reads_flags(in);
     lv[i].live_in = live;
     /* V again, from the same point of view: an arithmetic op defines V (one
      * `seto`, which the emitter will emit whenever either variable says the
      * value is wanted), and every other op - including a flag-setting logical,
      * which ARM leaves V alone for - passes the register through. */
     lv[i].v_live_out = v;
+    if (reads_flags(in)) v = true;      /* the branch observes the incoming V */
     const Shape sh = shape_of(in);
     if (def && sh.arith) v = false;
   }
@@ -238,10 +303,34 @@ class Emitter {
                 const int* pins, int npins, int carry_reg, bool& ok);
 
   bool op(int idx, const Liveness& lv, const Shape& sh);
+  bool mem_op(int idx, const Liveness& lv, const Shape& sh);
+  void add_bail(int cc, int idx, bool flags_pushed);
   void prologue();
-  void epilogue();
+  bool exit_path();
+  void exit_tail();
+  void emit_bails();
+  void store_flags();
+  bool emit_cond(uint32_t cond, std::vector<size_t>* taken,
+                 std::vector<size_t>* not_taken);
+  int nv_xor(int at);
 
   const IrInsn& in(int i) const { return blk_.in[i]; }
+
+  /* A guest access the block must not perform - the address left the identity
+   * RAM window, the access would cross into the next page, or a store's page
+   * holds translated code - leaves through one of these.  The site records what
+   * the block had modified at that point, so the cold path can hand the
+   * dispatcher a machine state that is exactly the one the interpreter would
+   * have after `retired` instructions. */
+  struct Bail {
+    size_t patch_at = 0;       /* the guard jump that lands here            */
+    uint32_t resume_pc = 0;    /* where the interpreter picks the guest up  */
+    uint32_t retired = 0;
+    uint32_t cycles = 0;
+    bool flags_pushed = false; /* a pushfq of the preserve window is open   */
+    int host_of[kGuestRegs];
+    bool dirty[kGuestRegs];
+  };
 
   const IrBlock& blk_;
   Buf body_;
@@ -252,7 +341,14 @@ class Emitter {
   bool ever_[16];
   bool entry_flags_ = false;
   bool exit_flags_ = false;
+  bool v_read_ = false;      /* a branch tests V: it has to be loaded      */
+  bool v_loaded_ = false;    /* ...and so saved/restored around the block  */
   uint32_t end_pc_ = 0;
+    size_t tail_at_ = 0;
+    size_t pop_at_ = 0;        /* the tail *after* the ABORT_PC clear, where
+                                * a bail site with its own resume address
+                                * joins (see exit_tail/emit_bails)          */
+    std::vector<Bail> bails_;
 };
 
 void Emitter::reset() {
@@ -338,9 +434,318 @@ void Emitter::release_temp(int r) {
   if (r >= 0 && r != kScratch) taken_[r] = false;
 }
 
+/* ------------------------------------------------ the way out of a block -- */
+
+/* Remember a bail: the guard jump is emitted here, the cold path later (see
+ * emit_bails).  `cc` is the host condition that fails. */
+void Emitter::add_bail(int cc, int idx, bool flags_pushed) {
+  Bail b;
+  b.patch_at = body_.jcc32(cc);
+  b.resume_pc = blk_.start_pc + 4u * (uint32_t)idx;
+  b.retired = (uint32_t)idx;
+  b.cycles = idx > 0 ? in(idx - 1).cyc : 0u;
+  b.flags_pushed = flags_pushed;
+  for (int g = 0; g < kGuestRegs; ++g) {
+    b.host_of[g] = host_of_[g];
+    b.dirty[g] = dirty_[g];
+  }
+  bails_.push_back(b);
+}
+
+/* N xor V in a register, with ZF = (N == V) on return: the test GE/LT/GT/LE
+ * need, and the reason they cost a few instructions rather than one.  `setcc`
+ * and `movzx` are flag-free, but the `xor`/`test` are not - which is why the
+ * exit stores the guest's flag image *before* calling this. */
+int Emitter::nv_xor(int at) {
+  const int t = take(nullptr, 0, at);
+  if (t < 0) return -1;
+  const int u = take(nullptr, 0, at);
+  if (u < 0) { release_temp(t); return -1; }
+  body_.setcc(C_S, t);                  /* N */
+  body_.movzx_u8(t, t);
+  body_.movzx_u8(u, kVreg);             /* V, as a 0/1 word */
+  body_.alu_rr(A_XOR, t, u);
+  body_.test_rr(t, t);                  /* ZF = (N == V) */
+  release_temp(u);
+  return t;
+}
+
+/* The host flags hold N, Z and C and r15d holds V, so all fourteen ARM
+ * conditions are testable: the six that also involve V (VS, VC and the four
+ * signed comparisons) are built from `nv_xor`, the rest map onto one `jcc`
+ * directly - and the two that would need *two* flag tests taken together (HI,
+ * LS) are emitted as jumps to the *not-taken* side, which is one jump each
+ * because falling through to the taken side is the default. */
+bool Emitter::emit_cond(uint32_t cond, std::vector<size_t>* taken,
+                        std::vector<size_t>* not_taken) {
+  const int at = (int)blk_.n - 1;
+  switch (cond) {
+    case 0x0: taken->push_back(body_.jcc32(C_E)); return true;         /* EQ */
+    case 0x1: taken->push_back(body_.jcc32(C_NE)); return true;        /* NE */
+    case 0x2: taken->push_back(body_.jcc32(C_B)); return true;         /* CS */
+    case 0x3: taken->push_back(body_.jcc32(C_AE)); return true;        /* CC */
+    case 0x4: taken->push_back(body_.jcc32(C_S)); return true;         /* MI */
+    case 0x5: taken->push_back(body_.jcc32(C_NS)); return true;        /* PL */
+    case 0x6: case 0x7: {                                              /* VS/VC */
+      const int t = take(nullptr, 0, at);
+      if (t < 0) return false;
+      body_.movzx_u8(t, kVreg);
+      body_.test_rr(t, t);
+      taken->push_back(body_.jcc32(cond == 0x6 ? C_NE : C_E));
+      release_temp(t);
+      return true;
+    }
+    /* HI and LS are the only two conditions that are not a single x86 flag
+     * test: one is "C and not Z" and the other its complement.  CF here *is*
+     * ARM's C - the entry image (`eflags_image`) maps bit 29 onto CF directly,
+     * and the flag-setting arithmetic keeps that true with its `cmc` - so
+     *   HI = C and not Z  ->  out if C is clear, else in if Z is clear;
+     *   LS = not C or Z   ->  in if C is clear, else in if Z is set.
+     * Only a `taken` jump reaches the taken block: falling out of the test
+     * sequence lands on the jump over it, so a condition built out of
+     * `not_taken` jumps alone could never take the branch (which is how HI
+     * used to be spelled - it read as the negation of LS). */
+    case 0x8:                                                          /* HI */
+      not_taken->push_back(body_.jcc32(C_AE));   /* C clear: out             */
+      taken->push_back(body_.jcc32(C_NE));       /* Z clear: in              */
+      return true;                               /* C set, Z set: out        */
+    case 0x9:                                                          /* LS */
+      taken->push_back(body_.jcc32(C_AE));       /* C clear: in              */
+      taken->push_back(body_.jcc32(C_E));        /* or Z set: in             */
+      return true;                               /* else out                 */
+    case 0xA: case 0xB: {                                              /* GE/LT */
+      const int t = nv_xor(at);
+      if (t < 0) return false;
+      taken->push_back(body_.jcc32(cond == 0xA ? C_E : C_NE));
+      release_temp(t);
+      return true;
+    }
+    case 0xC: {                                                        /* GT */
+      not_taken->push_back(body_.jcc32(C_E));
+      const int t = nv_xor(at);
+      if (t < 0) return false;
+      taken->push_back(body_.jcc32(C_E));
+      release_temp(t);
+      return true;
+    }
+    default: {                                                         /* LE */
+      taken->push_back(body_.jcc32(C_E));
+      const int t = nv_xor(at);
+      if (t < 0) return false;
+      taken->push_back(body_.jcc32(C_NE));
+      release_temp(t);
+      return true;
+    }
+  }
+}
+
+/* The guest's flag image for the dispatcher: exactly the handoff the original
+ * straight-line backend used, now run on every path out of the block. */
+void Emitter::store_flags() {
+  body_.pushfq();
+  body_.pop64(RAX);
+  body_.mov_mem_r(Mem::bx(kShadow, SH_EFLAGS), RAX);
+  body_.mov_mem_r(Mem::bx(kShadow, SH_VFLAG), kVreg);
+}
+
+/* --------------------------------------------------------------- memory -- */
+
+/* A guest load or store, done inline against the identity RAM window the front
+ * end baked into the IR.  Three guards stand between the address and the
+ * access, and each one *ends the block* instead of guessing:
+ *
+ *   - the access must not cross a page boundary (so one page test covers it);
+ *   - the address must be inside the RAM window (MMU off, no device, no ROM -
+ *     the same test the interpreter's own fast path makes);
+ *   - a store must not land in a page that holds translated code: that store
+ *     goes back to the interpreter, whose write path is the one that tells the
+ *     cache to drop stale blocks (`docs/MODULES.md`: every writer reports).
+ *
+ * What is left is a plain unaligned host load/store, matching the interpreter's
+ * identity path bit for bit - including the unaligned word access, where both
+ * read the four bytes at the address.
+ */
+bool Emitter::mem_op(int idx, const Liveness& lv, const Shape& sh) {
+  (void)sh;
+  const IrInsn& ins = in(idx);
+  const bool is_load = ins.op == IR_LD;
+  const bool reg_off = ins.mem_reg == MEM_REG;
+  const bool pres = lv.live_in;       /* an access never writes the flags...
+                                       * but its address arithmetic does     */
+  const int npins_max = 3;
+  int pins[npins_max];
+  int npins = 0;
+  if (!ins.mem_shadow) pins[npins++] = (int)ins.a;
+  if (reg_off) pins[npins++] = (int)ins.b;
+  if (!is_load) pins[npins++] = (int)ins.dst;
+
+  const int gb = ins.mem_shadow ? -1 : need((int)ins.a, pins, npins, idx, false);
+  if (!ins.mem_shadow && gb < 0) return false;
+  const int gv = is_load ? -1 : need((int)ins.dst, pins, npins, idx, false);
+  if (!is_load && gv < 0) return false;
+  const int gi = reg_off ? need((int)ins.b, pins, npins, idx, false) : -1;
+  if (reg_off && gi < 0) return false;
+
+  const int ea = take(pins, npins, idx);          /* the effective address  */
+  const int t2 = ea >= 0 ? take(pins, npins, idx) : -1;
+  const int rp = t2 >= 0 ? take(pins, npins, idx) : -1;   /* the RAM base    */
+  if (rp < 0) {
+    if (ea >= 0) release_temp(ea);
+    if (t2 >= 0) release_temp(t2);
+    return false;
+  }
+  /* `gp` is the register the block's *base* ends up in for a writeback: the
+   * allocator's slot for R(a), or (for R13/R14) a scratch that is then stored
+   * into the shadow. */
+  const int shadow_base = SH_R0 + 4 * (int)ins.a;
+  const bool writeback = ins.mem_wb != MEM_WB_NONE;
+  const bool post = ins.mem_post != 0;
+
+  /* Materialise the shifted index register into `d`: LSL #1..#3 is one
+   * flag-free `lea`, anything else is a host shift (the address arithmetic is
+   * inside the preserve window, so clobbering the flags is allowed there). */
+  auto materialise_index = [&](int d) {
+    if (ins.shift_amt == 0) {
+      body_.mov_rr(d, gi);
+    } else if (ins.shift_type == SH_LSL && ins.shift_amt <= 3) {
+      body_.lea(d, Mem::x(gi, 1 << ins.shift_amt, 0));
+    } else {
+      body_.mov_rr(d, gi);
+      switch (ins.shift_type) {
+        case SH_LSL: body_.shift_ri(S_SHL, d, ins.shift_amt); break;
+        case SH_LSR: body_.shift_ri(S_SHR, d, ins.shift_amt); break;
+        case SH_ASR: body_.shift_ri(S_SAR, d, ins.shift_amt); break;
+        default: body_.shift_ri(S_ROR, d, ins.shift_amt); break;
+      }
+    }
+  };
+
+  /* One pushfq covers every clobbering instruction below, including the
+   * writeback - the load or store itself is flag-free.  A bail path pops it
+   * before it reads anything (see emit_bails). */
+  /* `d += / -= offset`, the one expression both the pre-indexed effective
+   * address and the post-indexed writeback value are made of. */
+  auto apply_offset = [&](int d, int tmp) {
+    if (reg_off) {
+      materialise_index(tmp);
+      body_.alu_rr(ins.mem_sub ? A_SUB : A_ADD, d, tmp);
+    } else if (ins.imm != 0) {
+      body_.alu_ri(ins.mem_sub ? A_SUB : A_ADD, d, ins.imm);
+    }
+  };
+
+  if (pres) body_.pushfq();
+
+  /* The address the access uses.  A *pre*-indexed form applies the offset to
+   * the base - that is the effective address, and what a writeback stores.  A
+   * post-indexed one accesses the base itself and only then applies the offset,
+   * so the offset is left to the writeback step below; computing it here would
+   * access the wrong address and write the base back twice over. */
+  if (ins.mem_reg == MEM_ABS) {
+    body_.mov_ri(ea, ins.imm);
+  } else {
+    if (ins.mem_shadow) body_.mov_rm(ea, Mem::bx(kShadow, shadow_base));
+    else body_.mov_rr(ea, gb);
+    if (!post) apply_offset(ea, t2);
+  }
+
+  /* Guard 0: accesses are allowed at all right now.  This is the verdict the
+   * front end asked once per block (`jit_fast_mem_ok`), written by the
+   * dispatcher at every entry and re-tested here, so a block that is entered
+   * with a machine that no longer matches the translation (a test driving the
+   * cache by hand, a bus window that moved between the entry check and the
+   * access) leaves through the interpreter instead of touching memory. */
+  if (blk_.uses_mem) {
+    body_.mov_rm(t2, Mem::bx(kShadow, SH_MEM_FAST));
+    body_.test_rr(t2, t2);
+    add_bail(C_E, idx, pres);
+  }
+
+  /* Guard 1: the access must stay inside one page (the RAM window test below
+   * only looks at the first address, and the code-page test below only at one
+   * page, so a straddling access - rare, and legal - goes to the interpreter).
+   * A byte access cannot straddle. */
+  if (ins.mem_size > 1) {
+    body_.mov_rr(t2, ea);
+    body_.alu_ri(A_AND, t2, 0xFFFu);
+    body_.alu_ri(A_CMP, t2, 0x1000u - ins.mem_size);
+    add_bail(C_A, idx, pres);
+  }
+  /* Guard 2: the identity RAM window, tested exactly as `Cpu::mem_read` does. */
+  body_.mov_rr(t2, ea);
+  body_.alu_ri(A_SUB, t2, blk_.mem_gbase);
+  body_.alu_ri(A_CMP, t2, blk_.mem_mask);
+  add_bail(C_A, idx, pres);
+  /* Guard 3: a store into a page that might hold translated code. */
+  if (!is_load) {
+    body_.mov_rr(t2, ea);
+    body_.shift_ri(S_SHR, t2, 12);
+    body_.mov_rm64(rp, Mem::bx(kShadow, SH_CODEMAP));
+    body_.cmp_m8_ri(Mem::bxi(rp, t2, 1, 0), 0);
+    add_bail(C_NE, idx, pres);
+  }
+
+  /* The access: the address becomes an offset into the RAM window (`addr &
+   * mask`, the same expression the interpreter's fast path uses), and the RAM
+   * base pointer arrives in a register of its own. */
+  body_.mov_rr(t2, ea);
+  body_.alu_ri(A_AND, t2, blk_.mem_mask);
+  body_.mov_rm64(rp, Mem::bx(kShadow, SH_RAM));
+  if (is_load) {
+    const int dv = host_of_[ins.dst] >= 0 ? host_of_[ins.dst]
+                                         : take(pins, npins, idx);
+    if (dv < 0) return false;
+    host_of_[ins.dst] = dv;
+    dirty_[ins.dst] = true;
+    const Mem m = Mem::bxi(rp, t2, 1, 0);
+    if (ins.mem_signed && ins.mem_size == 1) body_.movsx_u8_m(dv, m);
+    else if (ins.mem_signed) body_.movsx_u16_m(dv, m);
+    else if (ins.mem_size == 4) body_.mov_rm(dv, m);
+    else if (ins.mem_size == 2) body_.movzx_u16_m(dv, m);
+    else body_.movzx_u8_m(dv, m);
+  } else {
+    const Mem m = Mem::bxi(rp, t2, 1, 0);
+    if (ins.mem_size == 4) body_.mov_mem_r(m, gv);
+    else if (ins.mem_size == 2) body_.mov_mem16_r(m, gv);
+    else body_.mov_mem8_r(m, gv);
+  }
+
+  /* Writeback, last - the interpreter stores before it updates the base, which
+   * is what makes `str r0, [r0], #4` write the *old* r0.  A pre-indexed access
+   * writes the effective address, a post-indexed one the offset applied to the
+   * base; either way the value is in `ea` or one add away from it, and the
+   * pool register is the allocator's slot for R(a). */
+  if (writeback) {
+    const int wv = ins.mem_shadow ? t2 : gb;
+    if (post) {
+      /* base ± offset, computed from the base the access just used.  The
+       * scratch is `rp` when the writeback slot *is* the other scratch (`t2`),
+       * which is what a shadow base - R13/R14 - gets. */
+      body_.mov_rr(wv, ea);
+      apply_offset(wv, wv == t2 ? rp : t2);
+    } else if (wv != ea) {
+      body_.mov_rr(wv, ea);
+    }
+    if (ins.mem_shadow) body_.mov_mem_r(Mem::bx(kShadow, shadow_base), wv);
+    else dirty_[ins.a] = true;
+  }
+
+  if (pres) body_.popfq();
+  release_temp(ea);
+  release_temp(t2);
+  release_temp(rp);
+  return true;
+}
+
 /* --------------------------------------------------------------- one op -- */
 
 bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
+  if (in(idx).op == IR_LD || in(idx).op == IR_ST) return mem_op(idx, lv, sh);
+  if (in(idx).op == IR_BR) {
+    /* A branch is entirely the exit path's business (the address it selects,
+     * the link it writes, the condition it tests): nothing is emitted here. */
+    return true;
+  }
   const IrInsn& ins = in(idx);
   const bool def = ins.setflags != 0;
   const bool want = def && lv.live_out;   /* materialise the flags after  */
@@ -751,10 +1156,12 @@ void Emitter::prologue() {
   body_.push64(kShadow);
   body_.mov_rr64(kShadow, RDI);
   /* The host flags are loaded only when the *guest's* flags at entry are read
-   * by the block (an ADC/SBC/RRX, or a form that has to preserve them); V is
-   * different: the block writes it back at exit even when it never reads it,
-   * so it enters the block from the shadow whenever the exit writes flags. */
-  if (exit_flags_) {
+   * by the block (an ADC/SBC/RRX, a form that has to preserve them, or a
+   * conditional branch).  V is loaded whenever the block stores it back *or*
+   * tests it - a VS/VC/GE/LT/GT/LE branch - and the pair is saved and restored
+   * whenever it was loaded at all, so a block that never touches r15d leaves
+   * the caller's copy alone. */
+  if (v_loaded_) {
     body_.push64(kVreg);
     body_.mov_rm(kVreg, Mem::bx(kShadow, SH_VFLAG));
   }
@@ -767,20 +1174,134 @@ void Emitter::prologue() {
     if (ever_[kPool[i]] && is_callee_saved_pool(kPool[i])) body_.push64(kPool[i]);
 }
 
-void Emitter::epilogue() {
-  if (exit_flags_) {
-    body_.pushfq();
-    body_.pop64(RAX);
-    body_.mov_mem_r(Mem::bx(kShadow, SH_EFLAGS), RAX);
-    body_.mov_mem_r(Mem::bx(kShadow, SH_VFLAG), kVreg);
+/* Everything from the end of the body to the `ret`.  Three things can be at the
+ * end of a block, and the order in which they are emitted is what the whole
+ * handoff rests on:
+ *
+ *   - the address execution resumes at.  `blk.next_pc` is the fall-through
+ *     (after the last instruction, or the instruction after a conditional
+ *     branch), and an unconditional branch has already put its target there;
+ *     a conditional branch writes the fall-through first and rewrites it on the
+ *     taken path;
+ *   - how much of the block retired and what it cost.  A branch always retires
+ *     the whole block, so those are constants here; a bail site writes its own
+ *     (see add_bail);
+ *   - the flags, as the EFLAGS image and the V word the dispatcher merges.  On
+ *     a conditional branch this has to happen *before* the condition is
+ *     evaluated, because GE/LT/GT/LE use the host flags as scratch to compare N
+ *     with V.
+ *
+ * The tail is shared: the main paths fall into it, and the bail sites jump to
+ * it with the resume address already written. */
+bool Emitter::exit_path() {
+  const IrInsn* br = (blk_.n && blk_.in[blk_.n - 1].op == IR_BR)
+                         ? &blk_.in[blk_.n - 1] : nullptr;
+  const bool cond_br = br && br->cond != 0xEu;
+
+  if (!cond_br) {
+    /* One path out: a constant address, an unconditional link write (ARM only
+     * writes LR when the branch executes, and this one always does), and the
+     * flags in the shadow before the return. */
+    if (br && br->br_link)
+      body_.mov_mem_i(Mem::bx(kShadow, SH_R0 + 4 * 14), br->link);
+    if (br) body_.mov_mem_i(Mem::bx(kShadow, SH_BRANCH), 1);  /* taken: it ran */
+    if (br && br->br_reg) {
+      /* `bx`/`blx Rm` with no condition: the address is not a constant of the
+       * translation, so it comes out of the shadow - where the spill pass just
+       * put every guest register the block touched - exactly as on the taken
+       * side of a conditional branch. */
+      body_.mov_rm(RAX, Mem::bx(kShadow, SH_R0 + 4 * (int)br->b));
+      body_.mov_mem_r(Mem::bx(kShadow, SH_R15), RAX);
+    } else {
+      body_.mov_mem_i(Mem::bx(kShadow, SH_R15), end_pc_);
+    }
+    body_.mov_mem_i(Mem::bx(kShadow, SH_RETIRED), blk_.n);
+    body_.mov_mem_i(Mem::bx(kShadow, SH_CYCLES), blk_.cycles);
+    if (exit_flags_) store_flags();
+    exit_tail();
+  } else {
+    body_.mov_mem_i(Mem::bx(kShadow, SH_R15), end_pc_);      /* fall-through */
+    body_.mov_mem_i(Mem::bx(kShadow, SH_BRANCH), 0);         /* not taken...  */
+    body_.mov_mem_i(Mem::bx(kShadow, SH_RETIRED), blk_.n);
+    body_.mov_mem_i(Mem::bx(kShadow, SH_CYCLES), br->cyc_nt); /* ...for free  */
+    if (exit_flags_) store_flags();
+    std::vector<size_t> taken, not_taken;
+    if (!emit_cond(br->cond, &taken, &not_taken)) return false;
+    /* The not-taken side falls through to the jump over the taken block; the
+     * taken side is emitted after it and jumps to the tail itself.  Note which
+     * byte the `jmp` starts at as well as its operand: a not-taken jump has to
+     * *execute* that jmp, so it must land on the opcode, while the jmp's own
+     * operand is what patch_rel32 wants. */
+    const size_t jmp_start = body_.pos();
+    const size_t jmp_at = body_.jmp32();
+    const size_t taken_at = body_.pos();
+    for (size_t at : taken) body_.patch_rel32(at, taken_at);
+    for (size_t at : not_taken) body_.patch_rel32(at, jmp_start);
+    body_.mov_mem_i(Mem::bx(kShadow, SH_BRANCH), 1);         /* ...until here */
+    body_.mov_mem_i(Mem::bx(kShadow, SH_CYCLES), blk_.cycles);   /* the taken
+                                     * branch restarts the prefetch stage, and
+                                     * that extra cycle is the only difference
+                                     * between the two exits */
+    if (br->br_link) body_.mov_mem_i(Mem::bx(kShadow, SH_R0 + 4 * 14), br->link);
+    if (br->br_reg) {
+      /* A register branch (`bx`, `blx Rm`): the target is read out of the
+       * shadow, where the exit's spill pass has just put every guest register
+       * the block touched, and the *low bit is kept* - the dispatcher decodes
+       * it as the ARM/Thumb switch, exactly as the interpreter does. */
+      body_.mov_rm(RAX, Mem::bx(kShadow, SH_R0 + 4 * (int)br->b));
+      body_.mov_mem_r(Mem::bx(kShadow, SH_R15), RAX);
+    } else {
+      body_.mov_mem_i(Mem::bx(kShadow, SH_R15), br->imm);
+    }
+    body_.patch_rel32(jmp_at, body_.pos());
+    exit_tail();
   }
+  emit_bails();
+  return true;
+}
+
+void Emitter::exit_tail() {
+  tail_at_ = body_.pos();
   body_.mov_mem_i(Mem::bx(kShadow, SH_ABORT_PC), 0);
-  body_.mov_mem_i(Mem::bx(kShadow, SH_R15), end_pc_);
+  /* A bail jumps here instead: ABORT_PC has already been written with the
+   * address it hands back, so it must not fall through the clear above. */
+  pop_at_ = body_.pos();
   for (int i = kPoolCount - 1; i >= 0; --i)
     if (ever_[kPool[i]] && is_callee_saved_pool(kPool[i])) body_.pop64(kPool[i]);
-  if (exit_flags_) body_.pop64(kVreg);
+  if (v_loaded_) body_.pop64(kVreg);
   body_.pop64(kShadow);
   body_.ret();
+}
+
+/* The cold paths of the accesses the block could not perform.  A bail has to
+ * leave the machine in exactly the state the interpreter would have after
+ * `retired` instructions, so it writes the registers the block had modified
+ * (from the host registers, as they were when the guard failed), the flags, and
+ * then the resume address - and joins the shared tail. */
+void Emitter::emit_bails() {
+  for (const Bail& b : bails_) {
+    body_.patch_rel32(b.patch_at, body_.pos());
+    if (b.flags_pushed) body_.popfq();
+    for (int g = 0; g < kGuestRegs; ++g)
+      if (b.dirty[g] && b.host_of[g] >= 0)
+        body_.mov_mem_r(Mem::bx(kShadow, SH_R0 + 4 * g), b.host_of[g]);
+    /* The flags are written back only when the pushfq above captured the
+     * guest's own: without it the host flags at this point are the guard's
+     * comparison, and the shadow still holds the entry image, which *is* the
+     * guest's (liveness only lets an access sit between a flag writer and an
+     * observer when it pushed, so flags_pushed covers exactly the case where
+     * the last writer's value has to come from the host). */
+    if (b.flags_pushed) store_flags();
+    body_.mov_mem_i(Mem::bx(kShadow, SH_R15), b.resume_pc);
+    body_.mov_mem_i(Mem::bx(kShadow, SH_RETIRED), b.retired);
+    body_.mov_mem_i(Mem::bx(kShadow, SH_CYCLES), b.cycles);
+    /* A bail is not the end of the block: the dispatcher has to see it and run
+     * the refused instruction in the interpreter, which is what ABORT_PC (the
+     * address to resume at, still set) tells it. */
+    body_.mov_mem_i(Mem::bx(kShadow, SH_ABORT_PC), b.resume_pc);
+    const size_t at = body_.jmp32();
+    body_.patch_rel32(at, pop_at_);
+  }
 }
 
 /* ------------------------------------------------------------------ run -- */
@@ -811,13 +1332,26 @@ bool Emitter::run(std::vector<uint8_t>* out, JitBlockMeta* meta) {
   entry_flags_ = lv[0].live_in;
   exit_flags_ = lv[n - 1].live_out;
   end_pc_ = blk_.next_pc;
+  /* V enters the block when the exit stores the flag halves or when a branch
+   * tests it (VS/VC/GE/LT/GT/LE); nothing else can observe it. */
+  v_read_ = false;
+  for (uint32_t i = 0; i < n; ++i)
+    if (in((int)i).op == IR_BR && cond_uses_v(in((int)i).cond)) v_read_ = true;
+  v_loaded_ = exit_flags_ || v_read_ || blk_.uses_mem;
+  /* A branch is the block's way out, so it can only be the last instruction. */
+  for (uint32_t i = 0; i + 1 < n; ++i)
+    if (in((int)i).op == IR_BR) return false;
 
   for (uint32_t i = 0; i < n; ++i) {
     if (!jit_x64_accepts(in((int)i))) return false;
     if (!op((int)i, lv[i], shape_of(in((int)i)))) return false;
   }
+  /* Every guest register the body still holds in a host register has to reach
+   * the shadow before the exit paths read it (a register branch reads R(b)
+   * there, and so does the dispatcher). */
   for (int g = 0; g < kGuestRegs; ++g)
     if (host_of_[g] >= 0 && dirty_[g]) spill(g);
+  if (!exit_path()) return false;
 
   /* The prologue is emitted after the body: only then does it know which
    * callee-saved registers the allocator reached for, and the body can be
@@ -827,11 +1361,14 @@ bool Emitter::run(std::vector<uint8_t>* out, JitBlockMeta* meta) {
   body_.w.clear();
   prologue();
   body_.w.insert(body_.w.end(), code.w.begin(), code.w.end());
-  epilogue();
 
   out->assign(body_.w.begin(), body_.w.end());
   meta->entry_flags = entry_flags_ ? 1 : 0;
   meta->exit_flags = exit_flags_ ? 1 : 0;
+  meta->uses_mem = blk_.uses_mem ? 1 : 0;
+  meta->br = 0;
+  if (blk_.n && blk_.in[blk_.n - 1].op == IR_BR)
+    meta->br = blk_.in[blk_.n - 1].cond == 0xEu ? 1 : 2;
   return true;
 }
 
