@@ -70,6 +70,14 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
   (raw and ELF32), device mapping and one-hook-call-per-access behaviour,
   MMIO above 32 MB with the MMU off, register access with the PC aliases,
   and the counters.
+* `tests/test_module.cpp` — the core as a core: the module registry, the second
+  CPU module (toy8) driven by the machine and by the C API, a CPU module
+  declared inside the test file, the device adapters, and the option and error
+  paths. If this passes, no part of `src/core` needs an ARM to run.
+* `tests/test_loader.cpp` — the loaders as modules, over a bare `Bus` with no
+  CPU: raw placement, ELF32 acceptance and every refusal, a loader declared
+  inside the test, and the all-or-nothing promise (a refused image leaves memory
+  untouched).
 * `tests/test_jit_x64.cpp` (x86-64 hosts; skips elsewhere) — the emitted host
   code, executed in-process: encoder byte pins, the shadow-buffer ABI (a
   sentinel-filled buffer, so a wrong offset shows up as a clobbered word), a

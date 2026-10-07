@@ -30,7 +30,7 @@ add_executable(bench tools/bench.cpp)
 target_link_libraries(bench PRIVATE brainemu m)
 
 enable_testing()
-foreach(test test_instr test_unit test_jit_x64)
+foreach(test test_instr test_unit test_jit_x64 test_module test_loader)
   add_executable(${test} tests/${test}.cpp)
   target_link_libraries(${test} PRIVATE brainemu m)
   add_test(NAME ${test} COMMAND ${test})
