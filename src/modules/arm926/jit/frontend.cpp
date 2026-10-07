@@ -72,41 +72,42 @@ bool translate_dp(const ArmDec& d, uint32_t pc, bool thumb, IrInsn* out) {
   /* Only R0-R13 are addressable through the ABI's X1-X14 window; SP/LR/PC (and
    * banked registers in general) stay the interpreter's, and the dispatcher is what
    * handles them, so a block ends here instead. */
-  if (d.rd > 12u || d.rn > 12u || d.rm > 12u || d.ra > 12u) return false;
+  if (d.rd > 12u || d.rn > 12u || d.ra > 12u) return false;
+  /* `d.rm` is only *a register* for the two register forms: decode_arm() pre-seeds
+   * it with the instruction's low nibble, which for an immediate is part of the
+   * immediate itself (`and r2, r1, #0x0F` would read rm = 15 and every value whose
+   * low nibble is 0xD..0xF would be refused as if it named R13/R14/R15). */
+  if (d.op2 == OP2_REG && d.rm > 12u) return false;
+  if (d.op2 == OP2_REG_SHIFT && (d.rm > 12u || d.rs > 12u)) return false;
   if (d.op2 != OP2_NONE && d.op2 != OP2_IMM && d.op2 != OP2_REG &&
       d.op2 != OP2_REG_SHIFT)
     return false;
 
-  /* Immediates and shifts are fine while they do not set the flags: the ARM C bit
-   * for a rotated immediate comes from the rotator (and is left alone when the
-   * rotation is zero), which AArch64's `ADDS #imm` does not model - it produces the
-   * arithmetic carry instead.  A shift that sets flags has the same problem via the
-   * `ORR Rd, WZR, Rm, #n` form, whose C is 0 rather than the bit rotated out.
-   * Register operands with S, by contrast, are an exact match: AArch64 copies the
-   * shifter carry the same way ARM does.  Anything else stops here and runs in the
-   * dispatcher, which is correct - just not fast. */
-  /* A *logical* operation with an immediate and S is refused: its C comes from
-   * the rotator (the last bit rotated out, or "unchanged" when the rotation is
-   * zero), which is neither the arithmetic carry nor anything the host's own
-   * `and`/`orr` produces - and no amount of shifting the materialised value
-   * recovers it, because the bit is gone by then.  The *arithmetic* operations
-   * are a different rule and are accepted: ADD/SUB/RSB/RSC take their C from the
-   * adder wherever the second operand came from, which is exactly what the host
-   * computes (see flag_patches above and the x86 emitter's `cmc`).  This matters
-   * for throughput and not for elegance - `adds r0, r0, #1` is the single most
-   * common flag-setting ARM word there is.  `MOV`/`MVN` with a shifted *register*
-   * and S is fine - the value, `TST Wd, Wd`, and the snapshot repair give exactly
-   * ARM's rules for it - but a shift by a *register* also copies C into V, so
-   * that stays with the dispatcher. */
-  if (d.s && d.op2 == OP2_IMM) {
-    switch (d.dp) {
-      case DP_ADD: case DP_SUB: case DP_RSB: case DP_RSC:
-      case DP_CMN: case DP_CMP:
-        break;                                    /* C comes from the adder  */
-      default:
-        return false;                             /* the rotator's carry     */
-    }
-  }
+  /* Flag-setting forms with an immediate operand, and how the C they produce is
+   * recovered on each host.
+   *
+   * *Arithmetic* (ADD/SUB/RSB/RSC/CMN/CMP): the ARM C bit comes out of the adder
+   *   wherever the second operand came from, which is what the host computes too,
+   *   so there is nothing to recover.  This is the common case in real code -
+   *   `adds r0, r0, #1` is the single most frequent flag-setting ARM word there
+   *   is, and `cmp`/`adds` are the whole of a counted loop.
+   *
+   * *Logical* (AND/EOR/ORR/BIC/MOV/MVN/TST/TEQ): C is the last bit the rotator
+   *   shifted out, and *unchanged* when the rotate field is zero (which is every
+   *   Thumb immediate, since that encoding has no rotate field).  V is never
+   *   written at all.  Both hosts get this wrong on their own - every `and`/`orr`
+   *   clears the host's C, and AArch64's flag-setting forms write all four flags -
+   *   so both emitters repair it instead: the rotation is known here, so `imm_rot`
+   *   tells a backend whether to keep C (a snapshot of the live flags, taken
+   *   before the operation) or to substitute the rotator bit, which for an
+   *   immediate is a constant (bit 31 of the value materialised below).
+   *
+   * *Shifts by a register* are a different matter and still end the block: the
+   *   amount is a runtime value rather than part of the encoding, and the flags it
+   *   produces are the last bit shifted out in C with everything else - V included -
+   *   exactly as it was (the interpreter and the model agree on that, including the
+   *   entry where only V is set).  `MOVS Rd, Rm, LSL Rs` is the shape: rare enough
+   *   not to be worth an instruction each. */
 
   IrInsn in{};
   in.dst = uint8_t(d.rd);
@@ -634,6 +635,11 @@ uint32_t jit_translate_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
  * in both, so only V differs - see below); and ADC/SBC, which are refused.  */
 struct FlagPatch {
   uint32_t mask, src, lsb, width;
+  /* A patch whose value is a translation-time constant instead of a field of a
+   * register: bit 31 of a rotated immediate, which no register is guaranteed to
+   * hold once the operation has run. */
+  bool is_const = false;
+  uint32_t bits = 0;
 };
 
 uint32_t shifter_carry_bit(const IrInsn& in);
@@ -646,12 +652,24 @@ int flag_patches(const IrInsn& in, uint32_t saved, uint32_t shifted_src,
   int n = 0;
   switch (in.op) {
     case IR_AND: case IR_BIC: case IR_ORR: case IR_EOR: case IR_MVN:
-    case IR_MOV: case IR_LSL: case IR_LSR: case IR_ASR: case IR_ROR:
+    case IR_MOV: case IR_MOVI: case IR_LSL: case IR_LSR: case IR_ASR: case IR_ROR:
       /* C is taken from the barrel shifter, never from the host: AArch64 defines it
        * for a 64-bit shift (so `LSL #17` on a value that fits in 32 bits has
        * nothing to carry out), and an emulator is free to leave it at zero for
        * ANDS/BICS.  ARM's rule is one bit of the operand, which is cheap to state
        * and always right.  V is never written by an ARM logical operation at all. */
+      if (in.b_is_imm) {
+        /* An immediate operand: the rotate field decides.  Nothing rotated means
+         * C is left alone - and V always is, whatever the rotation. */
+        if (in.imm_rot == 0) { out[n++] = {0x30000000u, saved, 28, 2u}; return n; }
+        out[n++] = {0x10000000u, saved, 28, 1u};
+        FlagPatch c{};
+        c.mask = 0x20000000u;                  /* C, and only C             */
+        c.is_const = true;
+        c.bits = (in.imm >> 31) ? c.mask : 0u; /* already positioned        */
+        out[n++] = c;
+        return n;
+      }
       if (unshifted) { out[n++] = {0x30000000u, saved, 28, 2u}; return n; }
       out[n++] = {0x10000000u, saved, 28, 1u};
       out[n++] = {0x20000000u, shifted_src, shifter_carry_bit(in), 1u};
@@ -726,8 +744,10 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
     else if (fold_imm) { b.mov_imm(arm64::SCR1, in.imm); operand = arm64::SCR1; }
     switch (in.op) {
       case IR_MOVI:
-        if (in.setflags) return false;   /* MOVS #imm: C comes from the rotation */
+        /* `MOVS Rd, #imm` (and every Thumb `movs Rd, #imm8`): the value, then
+         * N and Z from it, and C and V repaired below like any other logical. */
         b.mov_imm(rd, in.imm);
+        if (in.setflags) b.set_nz_from(rd);
         break;
       case IR_MOV:
         b.mov_reg(vdst, ra);
@@ -843,8 +863,9 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
       default: return false;
     }
     for (int k = 0; k < np; ++k)
-      b.flags_patch(fp[k].mask, (uint32_t)__builtin_ctz(fp[k].mask), fp[k].src,
-                    fp[k].lsb, fp[k].width);
+      if (fp[k].is_const) b.flags_patch_imm(fp[k].mask, fp[k].bits);
+      else b.flags_patch(fp[k].mask, (uint32_t)__builtin_ctz(fp[k].mask),
+                         fp[k].src, fp[k].lsb, fp[k].width);
   }
   if (with_entry_exit) b.epilogue(blk.next_pc, blk.dirty);
   *out = b.w;

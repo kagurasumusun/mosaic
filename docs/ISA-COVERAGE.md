@@ -345,30 +345,34 @@ where the branch counters see it - Thumb has exactly one predicated instruction,
 or an operand outside R0-R12, at a shift amount taken from a register, at a 32-bit
 shift (which is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift
 field only reaches 31), at LDM/STM/SWP (a register list is a second addressing mode
-and a bank-switch hazard, and real code has few of them in a hot loop), and at the
-two shapes whose flags the host cannot produce for free: a flag-setting *logical*
-with an immediate (ARM takes C from the rotator - bit 31 of the rotated value when
-the rotation is non-zero, and *unchanged* when it is zero - which is neither the
-arithmetic carry nor anything a host's own `and`/`orr` produces), and ADCS/SBCS
-(whose carry-in has to be the C of *before* the operation - a snapshot per
-instruction, which is exactly what RSC does *not* need, because RSC is the
-platform's own reversed form).
+and a bank-switch hazard, and real code has few of them in a hot loop), at
+ADCS/SBCS (whose carry-in has to be the C of *before* the operation - a snapshot
+per instruction, which is exactly what RSC does *not* need, because RSC is the
+platform's own reversed form) and at a shift by a register - there the amount is a
+runtime value, and ARM wants its carry-out in C with V left exactly as it was,
+which no host shift implements.
 
-Flag-setting *arithmetic* with an immediate **is** accepted, including `ADDS #imm`
-and `CMP Rn, #imm`: ARM takes C from the adder wherever the second operand came from,
-and so does every host - which is what makes the counted loop below one block
-instead of three instructions and an interpreted branch (`adds`, `cmp`, `bne`).
+Flag-setting operations with an immediate operand are accepted, arithmetic and
+logical alike.  For `ADD/SUB/RSB/RSC/CMN/CMP` the C comes out of the adder wherever
+the second operand came from, and so does every host's - which is what makes the
+counted loop below one block instead of three instructions and an interpreted
+branch (`adds`, `cmp`, `bne`).  For the logicals (`AND/EOR/ORR/BIC/MOV/MVN/TST/TEQ`)
+the *rotate field the assembler left in the word* decides what the host has to do
+afterwards, so the front end carries it into the IR as `imm_rot` and each backend
+repairs the flags with what it has:
 
-The logical-immediate gate is the one piece of throughput that is still on the
-table, and it is not a backend limitation any more: both emitters already carry the
-machinery (x86-64 chooses between a `setcc`/`bt` pair for "unchanged" and a constant
-for the rotator's bit; AArch64 patches the same two cases with `UBFX`/`ORR`/`MSR`
-from the operand *and* the live flags).  What has not been done is the AArch64
-repair for the forms whose operand is materialised, which is why the gate is still
-shared and still closed - `MOVS Rd, #imm` is the common case in Thumb code, and it
-costs the block it ends.  Making it state- and backend-specific would break the
-invariant that both backends see the same instruction set, so it stays as it is
-until the AArch64 patch path takes an immediate operand.
+* a zero rotation means "C is left alone", so the bit has to come from a snapshot of
+  the live flags rather than from the operation - on x86-64 a `setcc`/`bt` pair that
+  restores the guest C after the host's own `and`/`orr` cleared it, on AArch64 the
+  `MRS`/`BIC`/`ORR`/`MSR` patch of C and V from the entry `NZCV` gate;
+* a non-zero rotation means C is the last bit the rotator shifted out, which for an
+  immediate is bit 31 of the value the block already materialises - a constant, on
+  x86-64 a `stc`/`clc` and on AArch64 the same patch with a literal `bits` instead of
+  a register field.
+
+V is never written by a logical operation, and neither host's flag-setting logical
+may be trusted for it.  That is what makes `MOVS Rd, #imm` - the commonest
+flag-setting word in Thumb code - translate like any other move.
 
 The flags are the interesting part.  AArch64 has no flag-setting `ORR`/`EOR`, so
 those become a value plus `TST Wd, Wd`; the 64-bit shift inside a shifted logical
@@ -451,7 +455,10 @@ data-processing opcode with both S settings, immediates (rotated and not), plain
 registers, all four shifts and RRX across three entry flag words, sweeps every
 load/store form over the addresses that matter (the window's edge, a page
 boundary, an unaligned address, and one outside RAM, where the block has to bail),
-compares all fifteen branch conditions against all sixteen flag words plus the
+compares every flag-setting logical immediate (with a zero rotation and with a
+non-zero one, three entry C/V words) *and requires each one to translate*, so a
+front end that refuses the shape fails the file instead of falling back to the
+dispatcher; and compares all fifteen branch conditions against all sixteen flag words plus the
 branch shapes that are not a condition (`BL`, `BX`/`BLX Rm` to both states,
 `BLX #imm`, a backwards branch), runs the same comparison over a Thumb program
 list (halfword addressing and pc bias, SP-relative and literal accesses, both
@@ -470,14 +477,15 @@ never reach.
 
 `tests/test_jit_arm64.py` checks the other backend, and runs as part of `make check`:
 every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
-is supposed to produce (42 forms, 81 words, 0 wrong); every ARM block the corpus
+is supposed to produce (44 forms, 83 words, 0 wrong); every ARM block the corpus
 contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, CPSR
-and the next PC against the interpreter (132 blocks agree, 107 are refused by design);
+and the next PC against the interpreter (148 blocks agree, 212 cases refused by
+design);
 and `jit_emit --sweep` enumerates 16 opcodes x 4 shift types x 32 shift amounts x S x
 immediate-or-register - 4224 shapes, most of which the corpus cannot express - and
-runs each accepted one on the model (3060 agree, 1164 refused, 0 disagreements; the
+runs each accepted one on the model (3108 agree, 1116 refused, 0 disagreements; the
 AArch64 emitter has no memory or branch translation, so the corpus blocks it can
-verify are the ones that end before one - 87 of 248, with 161 refused by design).  The
+verify are the ones that end before one).  The
 sweep is what found the four real bugs in the carry rule, `ROR #0`, and MVN's
 immediate and RRX forms: the encoding checks had passed throughout, because a
 disassembler only proves what the *text* of an instruction says.  Capstone and Unicorn

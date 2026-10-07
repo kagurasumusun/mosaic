@@ -231,6 +231,55 @@ def arith_cases(rnd, n_each=3):
     return out
 
 
+def logical_imm_cases():
+    """Flag-setting *logical* operations with an immediate operand.
+
+    This is the one family where ARM's carry does not come from the adder: for
+    AND/EOR/ORR/BIC/MOV/MVN/TST/TEQ the C bit is the last bit the rotator shifted
+    out, and "unchanged" when the rotate field is zero - while V is never written
+    at all.  Every choice a code generator can get wrong is a case here, and each
+    is run with C clear and with C set, because with no rotation (and in Thumb,
+    which has no rotate field at all) the entry C is the answer.  The arithmetic
+    immediate forms are the opposite rule and live in `arith_cases`.
+    """
+    out = []
+    # (mnemonic form, immediate) - the rotate field is whatever the assembler
+    # picks, so the values are chosen to land on both sides of "was anything
+    # rotated out": rot 0, rot != 0 with bit 31 clear, rot != 0 with bit 31 set.
+    arms = [
+        ("ANDS R0, R1, %s", ["0x0F", "0xFF", "0x01000000", "0x0000F000",
+                             "0x80000000", "0xC0000000", "0xF0000000"]),
+        ("EORS R0, R1, %s", ["0x0F", "0x01000000", "0x80000000"]),
+        ("ORRS R0, R1, %s", ["0x0F", "0x01000000", "0xF0000000"]),
+        ("BICS R0, R1, %s", ["0x0F", "0x80000000"]),
+        ("MVNS R0, %s", ["0x0F", "0x01000000"]),
+        ("MOVS R0, %s", ["0x00", "0x0F", "0x01000000", "0x80000000"]),
+        ("TST R1, %s", ["0x0F", "0x01000000"]),
+        ("TEQ R1, %s", ["0x0F", "0x80000000"]),
+        # Rd == Rn: the value is read before it is written
+        ("ANDS R0, R0, %s", ["0x0F", "0x80000000"]),
+        # no S: nothing is written, whatever the rotation
+        ("AND R0, R1, %s", ["0x01000000"]),
+    ]
+    thumbs = ["MOVS R0, %s", "MOVS R2, %s", "MOVS R4, %s", "MOVS R7, %s"]
+    # C clear (V set) and C set (V clear): a rule that "keeps C" and one that
+    # "computes a rotator bit" agree on exactly one of the two.
+    cpsrs = [0x10000000, 0x20000000, 0x30000000, 0x00000000]
+    for fmt, imms in arms:
+        for imm in imms:
+            line = fmt % imm
+            for cpsr in cpsrs:
+                name = "logimm_arm_%s_c%x" % (slug(line), cpsr >> 28)
+                out.append((name, "arm", [line], None, cpsr))
+    for fmt in thumbs:
+        for imm in ["0x00", "0x05", "0x80", "0xFF"]:
+            line = fmt % imm
+            for cpsr in cpsrs:
+                name = "logimm_thumb_%s_c%x" % (slug(line), cpsr >> 28)
+                out.append((name, "thumb", [line], None, cpsr))
+    return out
+
+
 def slug(line):
     s = line.lower()
     for ch in " ,#[]!{}.;:":
@@ -651,6 +700,7 @@ def main():
     rnd = random.Random(args.seed)
     cases = []
     cases += arith_cases(rnd)
+    cases += logical_imm_cases()
     cases += mem_cases()
     cases += misc_cases()
     cases += branch_cases(rnd)

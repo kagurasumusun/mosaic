@@ -211,6 +211,19 @@ class Buf {
     orr_shifted(SCR1, SCR1, SCR2, SH_LSL, pos);
     msr_nzcv(SCR1);
   }
+  /* The same repair when the value to patch in is a *constant* the translation
+   * already knows - the bit a rotated immediate's rotator shifted out, which is
+   * not in any register by the time the operation has run (the value operand is
+   * materialised, but the operation may overwrite that register, and the patch
+   * needs a third scratch the block does not have). */
+  void flags_patch_imm(uint32_t mask, uint32_t bits) {
+    mrs_nzcv(SCR1);
+    mov_imm(SCR2, ~mask);
+    and_shifted(SCR1, SCR1, SCR2);
+    mov_imm(SCR2, bits & mask);
+    orr_shifted(SCR1, SCR1, SCR2);
+    msr_nzcv(SCR1);
+  }
   /* `MOV Rd, Rm, RRX`: the bit entering the top of the result is the carry that is
    * current *right now*, which is what makes it different from `ROR #1` - so read it
    * out of the host flags rather than any saved copy. */

@@ -146,8 +146,11 @@ static int print_sweep(int argc, char** argv) {
               if (amt) continue;                     /* one immediate per amount slot */
               /* `rot` is bits[11:8]: use it as 1..4 so the value really is
                * rotated, which is the case the front end has to reproduce. */
+              /* imm8's low nibble cycles through 0xC..0xF: a front end that
+               * mistakes the low nibble for a register field refuses the ones
+               * next to 0xF, so the sweep has to contain them. */
               w = (0xEu << 28) | (1u << 25) | (dp << 21) | (sf << 20) | (rn << 16) |
-                  (rd << 12) | (((uint32_t)st + 1u) << 8) | 0x123u;
+                  (rd << 12) | (((uint32_t)st + 1u) << 8) | (0x0Cu + (st & 3u));
             } else {
               w = (0xEu << 28) | (dp << 21) | (sf << 20) | (rn << 16) | (rd << 12) |
                   (amt << 7) | (st << 5) | rm;

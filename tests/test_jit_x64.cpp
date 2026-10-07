@@ -433,7 +433,12 @@ void test_dp_sweep() {
         for (uint32_t v = 0; v < 8; ++v) {
           uint32_t w = 0xE0000000u | (op << 21) | (s << 20) | (1u << 16) | (2u << 12);
           if (kind == 0) {
-            w |= (1u << 25) | ((v % 16) << 8) | (1u << v);     /* imm, rotated */
+            /* The immediate is deliberately not always a power of two: decode_arm
+             * seeds `rm` with the instruction's low nibble, so a front end that
+             * range-checks the operand as if it were a register refuses every value
+             * ending in 0xD..0xF (and `and r0, r0, #0x0F` is a common word). */
+            const uint32_t imm8 = (v & 4u) ? 0x0Du + (v & 3u) : (1u << (v & 3u));
+            w |= (1u << 25) | ((v % 16) << 8) | imm8;          /* imm, rotated */
           } else if (kind == 1) {
             w |= 3u;                                           /* rm = r3 */
           } else {
@@ -445,6 +450,55 @@ void test_dp_sweep() {
       }
     }
   }
+  std::printf("  %u translations compared\n", compared);
+}
+
+/* ------------------------------------------------ logical immediates + C -- */
+
+/* Every flag-setting *logical* operation with an immediate operand, which is the
+ * one family whose C does not come out of the adder: ARM defines it as the last
+ * bit the rotator shifted out, or as the entry C when the rotate field is zero
+ * (and V is never written at all).  The corpus pins the interpreter against the
+ * oracle for these; this pins the JIT against the interpreter - and because
+ * `compare_block` *insists* on a translation, a front end that refuses the shape
+ * cannot hide by falling back to the dispatcher, which is exactly how a range
+ * check on a meaningless `rm` field used to swallow every immediate whose low
+ * nibble was 0xD..0xF. */
+void test_logical_imm() {
+  std::printf("[x64 logical-immediate flags]\n");
+  /* opcode, rd, rn, imm8, rotate - the dst-less forms need rd = 0 (Rd is SBZ
+   * for TST/TEQ/CMP/CMN, and a non-zero one is an invalid encoding). */
+  static const uint32_t kCases[][5] = {
+    {0, 2, 1, 0x01, 0},  {0, 2, 1, 0x0D, 0},  {0, 2, 1, 0x0F, 0},
+    {0, 2, 1, 0x01, 1},  {0, 2, 1, 0x01, 4},  {0, 2, 1, 0x01, 8},
+    {0, 2, 1, 0x01, 12}, {0, 2, 1, 0x80, 1},  {0, 2, 1, 0xFF, 15},
+    {1, 2, 1, 0x0F, 0},  {1, 2, 1, 0x01, 3},
+    {12, 2, 1, 0x0F, 0}, {12, 2, 1, 0x01, 5},
+    {13, 2, 0, 0x0F, 0}, {13, 2, 0, 0x01, 2}, {13, 2, 0, 0x80, 9},
+    {14, 2, 0, 0x0F, 0}, {14, 2, 0, 0x01, 6},
+    {8, 0, 1, 0x0F, 0},  {8, 0, 1, 0x01, 7},
+    {9, 0, 1, 0x0F, 0},  {9, 0, 1, 0x01, 9},
+    {10, 0, 1, 0x0F, 0}, {10, 0, 1, 0x01, 10},
+    {11, 0, 1, 0x0F, 0}, {11, 0, 1, 0x01, 11},
+  };
+  const uint32_t regs[13] = {0x9abcdef0u, 0xffffffffu, 0x00000001u, 0x80000000u,
+                             0x0000ffffu, 0x12345678u, 0x00000000u, 0x7fffffffu,
+                             0xdeadbeefu, 0x00010000u, 0xffff0000u, 0x00000080u,
+                             0xabcdef01u};
+  /* V alone, C alone, and (V,C) together: the "no rotation keeps C" rule and the
+   * "a rotation substitutes the rotator bit" rule agree on exactly one of the
+   * first two, so a backend that gets one of them wrong fails here. */
+  static const uint32_t kCpsr[3] = {0x10000013u, 0x20000013u, 0x30000013u};
+  uint32_t compared = 0, want = 0;
+  for (const auto& c : kCases) {
+    const uint32_t w = 0xE0000000u | (1u << 25) | (c[0] << 21) | (1u << 20) |
+                       (c[2] << 16) | (c[1] << 12) | (c[4] << 8) | c[3];
+    for (uint32_t ci = 0; ci < 3; ++ci) {
+      ++want;
+      if (compare_block(&w, 1, regs, kCpsr[ci], "logimm")) ++compared;
+    }
+  }
+  check(compared == want, "every logical immediate translated and agreed");
   std::printf("  %u translations compared\n", compared);
 }
 
@@ -850,6 +904,7 @@ int main() {
   test_encoder();
   test_shadow_layout();
   test_dp_sweep();
+  test_logical_imm();
   test_mem_sweep();
   test_branch_sweep();
   test_mem_guards();
