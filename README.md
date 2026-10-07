@@ -72,8 +72,8 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
   and the counters.
 * `tests/test_module.cpp` — the core as a core: the module registry, the second
   CPU module (toy8) driven by the machine and by the C API, a CPU module
-  declared inside the test file, the device adapters, and the option and error
-  paths. If this passes, no part of `src/core` needs an ARM to run.
+  declared inside the test file, monitors, the device adapters, and the option
+  and error paths. If this passes, no part of `src/core` needs an ARM to run.
 * `tests/test_loader.cpp` — the loaders as modules, over a bare `Bus` with no
   CPU: raw placement, ELF32 acceptance and every refusal, a loader declared
   inside the test, and the all-or-nothing promise (a refused image leaves memory

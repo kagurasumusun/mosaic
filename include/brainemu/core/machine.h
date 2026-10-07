@@ -35,6 +35,7 @@
 namespace brain {
 
 class Device;
+class Monitor;
 
 struct MachineConfig {
   /* Memory.  `ram_size` of 0 means "the caller maps its own memory" (a board
@@ -95,6 +96,13 @@ class Machine {
   u32 device_count() const { return (u32)devices_.size(); }
   Device* device(u32 i) { return i < devices_.size() ? devices_[i] : nullptr; }
 
+  /* Monitors: observers the run loop reports every slice and every reset to
+   * (see brainemu/core/monitor.h).  The machine keeps the pointer, so the
+   * monitor must outlive it - a member, or an object the caller owns. */
+  void add_monitor(Monitor& m);
+  u32 monitor_count() const { return (u32)monitors_.size(); }
+  Monitor* monitor(u32 i) { return i < monitors_.size() ? monitors_[i] : nullptr; }
+
   /* Images.  `load_image` picks a loader by content (and falls back to a raw
    * load at `addr`), then points the CPU at the entry: PC, instruction-set bit
    * from bit 0, and for an ELF image a stack at the top of RAM. */
@@ -111,10 +119,14 @@ class Machine {
  private:
   bool build_cpu(const char* id);
   void set_entry_from(const ImageInfo& img);
+  /* Tick the devices with the cycles the run charged and tell the monitors
+   * what happened - the one place a slice ends for everything but the CPU. */
+  void end_slice(u64 retired);
 
   Bus bus_;
   std::unique_ptr<CpuCore> cpu_{};
   std::vector<Device*> devices_{};
+  std::vector<Monitor*> monitors_{};
   MachineConfig cfg_{};
   u64 device_cycles_ = 0;
   std::string err_{};

@@ -11,6 +11,7 @@
 
 #include <cstring>
 
+#include "brainemu/core/monitor.h"
 #include "brainemu/device/device.h"
 
 namespace brain {
@@ -115,6 +116,7 @@ void Machine::reset() {
   for (Device* d : devices_) d->reset();
   if (cpu_) cpu_->reset();
   device_cycles_ = 0;
+  for (Monitor* m : monitors_) m->on_reset(*this);
 }
 
 bool Machine::add_device(Device& d) {
@@ -127,15 +129,22 @@ bool Machine::add_device(Device& d) {
   return true;
 }
 
+void Machine::end_slice(u64 retired) {
+  const u64 cyc = cpu_->cycles() - device_cycles_;
+  device_cycles_ = cpu_->cycles();
+  if (cyc) {
+    for (Device* d : devices_) d->tick(cyc);
+  }
+  for (Monitor* m : monitors_) m->on_slice(*this, retired);
+}
+
 u64 Machine::run_insns(u64 n) {
   if (!cpu_) return 0;
   cpu_->sync();
   const u64 before = cpu_->insns();
   cpu_->run_insns(n);
   const u64 retired = cpu_->insns() - before;
-  const u64 cyc = cpu_->cycles() - device_cycles_;
-  device_cycles_ = cpu_->cycles();
-  if (cyc) for (Device* d : devices_) d->tick(cyc);
+  end_slice(retired);
   return retired;
 }
 
@@ -145,24 +154,23 @@ u64 Machine::run_cycles(u64 max_cycles) {
   const u64 before = cpu_->insns();
   cpu_->run_cycles(max_cycles);
   const u64 retired = cpu_->insns() - before;
-  const u64 cyc = cpu_->cycles() - device_cycles_;
-  device_cycles_ = cpu_->cycles();
-  if (cyc) for (Device* d : devices_) d->tick(cyc);
+  end_slice(retired);
   return retired;
 }
 
 void Machine::step() {
   if (!cpu_) return;
   cpu_->sync();
+  const u64 before = cpu_->insns();
   cpu_->step();
-  const u64 cyc = cpu_->cycles() - device_cycles_;
-  device_cycles_ = cpu_->cycles();
-  if (cyc) for (Device* d : devices_) d->tick(cyc);
+  end_slice(cpu_->insns() - before);
 }
 
 void Machine::stop() {
   if (cpu_) cpu_->request_stop();
 }
+
+void Machine::add_monitor(Monitor& m) { monitors_.push_back(&m); }
 
 /* --------------------------------------------------------------- images -- */
 

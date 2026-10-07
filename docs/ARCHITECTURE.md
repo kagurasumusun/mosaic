@@ -133,6 +133,16 @@ second interpreter.
   checked on store, so self-modifying code invalidates the affected blocks
   instead of executing stale ones.
 
+## The run loop, devices and monitors
+
+`Machine::run_insns`/`run_cycles`/`step` are the only places a CPU module is
+asked to execute, and each of them ends the slice in one place: the devices are
+ticked with the cycles the slice charged, and the monitors
+(`brainemu/core/monitor.h`) are told how many instructions retired.  A monitor
+is how a tracer, a profiler or a watchpoint layer observes the machine without
+the core growing a feature for it; a hook may call `Machine::stop()`, which is a
+stop at the next slice boundary like any other.
+
 ## Bus and devices
 
 `Bus` keeps a two-level page table (1024 × 1024 × 4 KiB = the whole 32-bit

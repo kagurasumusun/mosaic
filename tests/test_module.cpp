@@ -13,6 +13,7 @@
 
 #include "brainemu/core/machine.h"
 #include "brainemu/core/module.h"
+#include "brainemu/core/monitor.h"
 #include "brainemu/cpu/cpu.h"
 #include "brainemu/device/device.h"
 #include "brainemu/loader/loader.h"
@@ -165,6 +166,39 @@ class RecorderDevice final : public Device {
  private:
   Recorder* r_;
   ModuleInfo info_;
+};
+
+/* A monitor: it observes, it never executes.  One instance does the counting a
+ * test can check, the other stops the machine the moment it sees a slice. */
+struct Watch {
+  u32 slices = 0;
+  u64 retired = 0;
+  u64 last = 0;
+  u32 resets = 0;
+};
+
+class CountingMonitor final : public Monitor {
+ public:
+  explicit CountingMonitor(Watch* w) : w_(w) {
+    info_.id = "counter";
+    info_.name = "slice counter";
+    info_.kind = ModuleKind::Monitor;
+    info_.description = "counts slices and retired instructions";
+  }
+  const ModuleInfo& info() const override { return info_; }
+  void on_slice(Machine& m, u64 retired) override {
+    ++w_->slices;
+    w_->retired += retired;
+    w_->last = retired;
+    if (stop_at_ && w_->slices >= stop_at_) m.stop();
+  }
+  void on_reset(Machine&) override { ++w_->resets; }
+  void stop_after(u32 slices) { stop_at_ = slices; }
+
+ private:
+  Watch* w_;
+  u32 stop_at_ = 0;
+  ModuleInfo info_{};
 };
 
 /* --------------------------------------------------------------- sections -- */
@@ -447,6 +481,63 @@ void test_fake_cpu_module() {
   CHECK(arm.cpu().insns() == 0);
 }
 
+void test_monitors() {
+  std::printf("[monitors]\n");
+  Machine m;
+  MachineConfig c;
+  c.ram_size = 1u << 16;
+  c.cpu_id = "toy8";
+  CHECK(m.init(c));
+  if (!m.has_cpu()) return;
+
+  Watch w;
+  CountingMonitor mon(&w);
+  m.add_monitor(mon);
+  CHECK(m.monitor_count() == 1);
+  CHECK(m.monitor(0) == &mon);
+  CHECK(m.monitor(1) == nullptr);
+  CHECK(std::strcmp(mon.info().kind == ModuleKind::Monitor
+                        ? module_kind_name(mon.info().kind) : "", "monitor") == 0);
+
+  /* Five instructions (LDA #7, ADD #7, INC A, NOP, HALT), one slice per call:
+   * the monitor sees the slice count and the retired count, and its view of the
+   * machine is readable - that is what a monitor is for. */
+  const u8 prog[] = {0x01, 0x07, 0x07, 0x07, 0x0D, 0x00, 0x1F};
+  CHECK(m.load_raw(prog, sizeof prog, 0x100) == 0);
+  CHECK(m.run_insns(3) == 3);
+  CHECK(w.slices == 1);
+  CHECK(w.retired == 3);
+  CHECK(w.last == 3);
+  CHECK(m.cpu().get_reg(toy8::kRegA) == 15);   /* 7 + 7 + 1, read back here   */
+
+  /* step() is a slice of one instruction, and a halted CPU is a slice of zero:
+   * the run loop reports what happened, it does not judge it. */
+  m.step();
+  CHECK(w.slices == 2 && w.last == 1);
+  CHECK(m.run_insns(100) == 1);                /* the HALT                   */
+  CHECK(w.slices == 3 && w.last == 1);
+  CHECK(m.run_insns(100) == 0);                /* halted: nothing to report  */
+  CHECK(w.slices == 4 && w.last == 0);
+
+  /* A monitor may stop the machine - a watchpoint, a breakpoint, a tracer's
+   * "that is enough".  The stop lands at the next slice boundary, so the slice
+   * that tripped it finishes and the next one retires nothing. */
+  m.reset();
+  CHECK(w.resets == 1);
+  CHECK(m.cpu().insns() == 0);
+  const u32 before = w.slices;
+  mon.stop_after(before + 1);
+  CHECK(m.run_insns(2) == 2);
+  CHECK(w.slices == before + 1);
+  CHECK(m.run_insns(1000) == 0);               /* the stop was honoured      */
+  CHECK(w.slices == before + 2);
+
+  /* Reset reaches the monitor last, after the CPU and the devices - and it is
+   * the machine's reset, not the module's, that calls it. */
+  m.reset();
+  CHECK(w.resets == 2);
+}
+
 void test_devices() {
   std::printf("[device adapters]\n");
   Bus bus;
@@ -521,6 +612,7 @@ int main() {
   test_toy8_on_the_core();
   test_toy8_through_the_c_api();
   test_fake_cpu_module();
+  test_monitors();
   test_devices();
   test_loader_registry();
   if (g_failed) {

@@ -10,6 +10,7 @@ second processor is a new directory, not a new emulator.
 include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
 include/brainemu/core/module.h     ModuleInfo, CpuModule, ModuleRegistry
 include/brainemu/core/machine.h    MachineConfig, Machine (bus + CPU + devices)
+include/brainemu/core/monitor.h    Monitor: an observer the run loop reports to
 include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
 include/brainemu/device/device.h   Device + FuncDevice/BufferDevice/ConsoleDevice
 include/brainemu/loader/loader.h   Loader (probe + load) and the image description
@@ -31,7 +32,7 @@ src/modules/toy8/                  a second CPU, in 300 lines, on purpose
 | `cpu` | a processor: registers, an instruction set, its own timing | the machine, at slice boundaries | `arm926`, `toy8` |
 | `loader` | an image format | `Machine::load_image`, by content | `elf32`, `raw` |
 | `device` | something mapped into the address space | the bus, per access | exit port, console, UART |
-| `monitor` | an observer of a running machine | the run loop | *(none yet: a tracer or a gdb stub)* |
+| `monitor` | an observer of a running machine | the run loop, per slice | `Monitor` (`brainemu/core/monitor.h`); the tests have a demo one |
 
 Only a CPU module is *driven*; the others are called. A CPU module is therefore
 the only one with an execution contract, and it is the one this document is
@@ -76,7 +77,9 @@ What the core guarantees a module:
   and the module is destroyed before the bus (see `Machine::~Machine`);
 * the run loop stops calling `run_*` when `request_stop` was honoured: a module
   that returns from `run_insns` early is normal, and the core will simply ask
-  again (which is why `request_stop` must be sticky until `reset`).
+  again (which is why `request_stop` must be sticky until `reset`);
+* the slice ends in exactly one place - the devices are ticked and the monitors
+  are told - so a module never has to know that either exists.
 
 What a module must guarantee the core:
 
@@ -145,6 +148,18 @@ build/brainemu --cpu mycpu --cpu-opt cache_bits=13 prog.bin
 The ARM module's keys are `jazelle_trap`, `strict_unpredictable`,
 `serror_on_busfault`, `tlb_bits`, `max_block_insns`, `jit_cache_mb`,
 `jit_fast_mem` and `big_endian_data` (`src/modules/arm926/arm926.cpp`).
+
+### Adding a monitor
+
+A monitor does not execute and is not mapped anywhere: `Machine::add_monitor`
+puts it in the run loop, which calls `on_slice(machine, retired)` after every
+slice (devices already ticked, CPU already returned) and `on_reset(machine)`
+after a reset.  This is where a tracer, a profiler, a coverage collector, a
+watchpoint layer or a gdb stub belongs - the core gains a *report*, not a
+feature.  A hook may read registers and memory freely, and may call
+`Machine::stop()`: the stop takes effect at the next slice boundary, which is
+exactly the semantics a watchpoint wants.  `tests/test_module.cpp` has a
+counting monitor and a stopping one.
 
 ### Adding a loader
 
