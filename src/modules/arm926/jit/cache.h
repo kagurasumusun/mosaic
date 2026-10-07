@@ -1,10 +1,11 @@
 /* brain-emu JIT: the block cache and dispatcher the control plane (jit.cpp) drives.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
 
- * One entry per guest ARM basic block as the frontend carves them: straight-line
- * data processing, ended by the first branch, or by the first access the
- * frontend refuses to own, or by anything else the IR refuses (R13-R15 as an
- * operand, MRS/MSR, the multiply space, a shift by register...).  The
+ * One entry per guest basic block as the frontend carves them: straight-line
+ * code (ARM words or Thumb halfwords - `JitBlock::thumb` says which) ended by the
+ * first branch, or by the first access the frontend refuses to own, or by
+ * anything else the IR refuses (R13-R15 as an operand, MRS/MSR, the multiply
+ * space, a shift by register...).  The
  * dispatcher loop below is the whole machine: at each block boundary it checks
  * interrupts and the budget exactly as `Cpu::step_one()` does, runs one block,
  * and returns to the interpreter for whatever the block did not cover.  There
@@ -28,6 +29,10 @@
  *   - a block stores the `trans_gen` it was built under; any flush, TLB change
  *     or exception bumps the generation, and the dispatcher drops stale blocks
  *     instead of running them;
+ *   - a block also stores the *state* it was built in (`JitBlock::thumb`), and
+ *     is only entered while the machine is still in it - the two states decode
+ *     the same bytes differently, so a block of one is not a block of the
+ *     other, and the hash lookup compares the bit;
  *   - guest writes inside a block's `[pc, end_pc)` range invalidate it
  *     (self-modifying code goes through `Cpu::invalidate_code`);
  *   - between blocks the visible machine state is exactly what the
@@ -87,6 +92,10 @@ struct JitBlock {
   u8 br;         /* 0: no branch; 1: an unconditional one; 2: conditional -
                   *    the block reports the outcome in SH_BRANCH and the
                   *    dispatcher feeds stats.branch_taken/branch_not from it */
+  u8 thumb;      /* 1: the block is a run of Thumb halfwords (the state it was
+                  *    translated in, which is also the state it must be
+                  *    entered in: the lookup compares it, so a Thumb address
+                  *    and an ARM address at the same pc are two blocks) */
   u8 dead;       /* 1: this block bailed at its *first* instruction, so
                   *    entering it again cannot make progress.  The dispatcher
                   *    interprets instead; dropped as usual on a flush.       */
@@ -115,6 +124,7 @@ struct JitCache {
    * interpreted (which is every small loop, since a block ends at the branch)
    * re-runs the whole translation attempt on every iteration. */
   u32 bad_pc = 0, bad_gen = 0;
+  u8 bad_thumb = 0;
 };
 
 /* ---- created/owned by Jit (jit.cpp) -------------------------------------- */

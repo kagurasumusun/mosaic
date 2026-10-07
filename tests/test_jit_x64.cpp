@@ -37,6 +37,7 @@
 
 #include "arm926/cpu.h"
 #include "arm926/jit/cache.h"
+#include "arm926/jit/frontend.h"
 #include "arm926/jit/jit.h"
 #include "arm926/jit/x64_asm.h"
 
@@ -163,9 +164,16 @@ uint64_t g_native = 0;
 /* Translate `code` in machine `a`, run it through the cache, run the same words
  * through the interpreter in `b`, and report the first difference.  Returns
  * false when the block was not translatable (nothing to compare). */
-bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
-                   uint32_t cpsr, const char* tag, int nregs = 13,
-                   uint32_t* npc_out = nullptr) {
+/* `thumb` selects the state the program is written in (2-byte instructions,
+ * `cur + 4` pc bias, CPSR.T set); `require_block` says whether the *first*
+ * instruction has to be the start of a translated block, which is what
+ * `compare_block` means - a program whose first instruction is refused on
+ * purpose (a Thumb long branch's setup half, say) is worth running through the
+ * dispatcher too, and then the check is the whole `n`-instruction program. */
+bool compare_run(const uint32_t* code, uint32_t n, const uint32_t* regs,
+                 uint32_t cpsr, const char* tag, int nregs = 13,
+                 uint32_t* npc_out = nullptr, bool thumb = false,
+                 bool require_block = true) {
   CpuConfig cfg;
   cfg.ram_size = kRamSize;
   /* The Jazelle trap is a *policy* knob, not an ISA property: with it on (the
@@ -180,24 +188,32 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
   if (!a.init(cfg) || !b.init(cfg)) return false;
   a.reset();
   b.reset();
+  const uint32_t step = thumb ? 2u : 4u;
   for (uint32_t i = 0; i < n; ++i) {
-    a.phys_write(kCode + i * 4, code[i], 4);
-    b.phys_write(kCode + i * 4, code[i], 4);
+    const uint32_t w = thumb ? (code[i] & 0xFFFFu) : code[i];
+    a.phys_write(kCode + i * step, w, step);
+    b.phys_write(kCode + i * step, w, step);
   }
   for (int i = 0; i < nregs; ++i) a.regs[i] = b.regs[i] = regs[i];
+  if (thumb) cpsr |= 0x20u;                       /* CPSR.T */
   a.cpsr = b.cpsr = cpsr;
   a.vflag = b.vflag = (cpsr >> 28) & 1u;
   for (Cpu* c : {&a, &b}) {
-    c->npc = kCode; c->cur = kCode; c->regs[15] = kCode + 8;
-    c->bank[3].r[15] = kCode + 8;
+    c->thumb = thumb ? 1u : 0u;
+    /* The pipeline value the instruction about to run reads: `cur + 8` in ARM
+     * state, `cur + 4` in Thumb (A2.4.3). */
+    c->npc = kCode; c->cur = kCode; c->regs[15] = kCode + (thumb ? 4u : 8u);
+    c->bank[3].r[15] = c->regs[15];
   }
 
   JitCache* jc = jit_cache_create(&a, 1);
   if (!jc) return false;
   JitBlock* blk = nullptr;
-  const bool ok = jit_cache_translate(jc, kCode, &blk) && blk && blk->insns;
-  if (!ok) { jit_cache_destroy(jc); return false; }
-  const uint32_t retired = blk->insns;
+  if (require_block) {
+    const bool ok = jit_cache_translate(jc, kCode, &blk) && blk && blk->insns;
+    if (!ok) { jit_cache_destroy(jc); return false; }
+  }
+  const uint32_t retired = require_block ? blk->insns : n;
   /* The dispatcher, not one raw `enter`: a block that bails on an access - the
    * address left the identity RAM window, or a store landed on a page holding
    * translated code - hands that instruction back to the interpreter and
@@ -222,6 +238,12 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
       why = t;
       bad = true;
     }
+  }
+  if (!bad && (a.thumb != b.thumb)) {
+    char t[128];
+    std::snprintf(t, sizeof t, "thumb %u != %u", a.thumb, b.thumb);
+    why = t;
+    bad = true;
   }
   if (!bad && a.cpsr != b.cpsr) {
     char t[128];
@@ -304,6 +326,14 @@ uint32_t random_dp(Rng* r) {
     if (r->one_in(8)) w |= 1u << 4;                         /* Rs: refused  */
   }
   return w;
+}
+
+/* The block-shaped entry the rest of this file uses: the first instruction has
+ * to translate, and the run is exactly what the block claims to retire. */
+bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
+                   uint32_t cpsr, const char* tag, int nregs = 13,
+                   uint32_t* npc_out = nullptr, bool thumb = false) {
+  return compare_run(code, n, regs, cpsr, tag, nregs, npc_out, thumb, true);
 }
 
 /* -------------------------------------------------------- the shadow ABI --- */
@@ -639,6 +669,158 @@ void test_mem_guards() {
 /* Thirteen values that all stay live to the end of the block: the pool of host
  * registers is smaller than that, so the allocator has to spill and evict in
  * the middle of the block and the comparison has to come out identical. */
+/* ------------------------------------------------------------ Thumb state --- */
+
+/* The same comparison, over Thumb halfwords.  Thumb is not a second machine:
+ * `decode_thumb` maps every format onto the record `decode_arm` produces, and
+ * both engines then run the same code - so what is tested here is the part that
+ * *is* different, and there are four such parts:
+ *
+ *   - the address step (2 bytes) and the pc bias (`cur + 4`, word aligned for a
+ *     literal load or an ADR);
+ *   - the exit convention: every address a block hands back carries the state
+ *     of the machine that continues, so a Thumb block's fall-through *and* its
+ *     branch targets have bit 0 set, and the one instruction that leaves for
+ *     ARM (a BLX) has it clear;
+ *   - the long branch, whose target comes from LR rather than from the pc, and
+ *     whose setup half is refused (it writes R14 as a data value, which is not
+ *     something the register window a block works in can hold) - so the pair
+ *     runs half in a block and half in the interpreter, and the test checks that
+ *     the handoff leaves exactly the interpreter's state;
+ *   - `bx`/`blx Rm`, where the target register carries the state in its *low
+ *     bit* and the dispatcher switches on it.
+ */
+void test_thumb_sweep() {
+  std::printf("[x64 thumb state]\n");
+  uint32_t regs[15] = {3u, 5u, 2u, kCode + 0x200u,
+                       0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u,
+                       0x55555555u, 0x66666666u, 0x77777777u, 0x88888888u,
+                       0x99999999u, kCode + 0x400u, kCode + 8 + 1};
+
+  struct Case { const char* what; uint32_t hw[4]; uint32_t n; uint32_t cpsr; };
+  /* Hand-assembled halfwords; the encodings are the ones A6.4 gives. */
+  const Case cases[] = {
+    {"adds r0,#1",          {0x3001u}, 1, 0x00000013u},
+    {"subs r1,#2",          {0x3902u}, 1, 0x00000013u},
+    {"adds r0,r1,r2",       {0x1888u}, 1, 0x00000013u},
+    {"movs r3,r2",          {0x0013u}, 1, 0x00000013u},
+    {"lsls r0,r2,#3",       {0x00D0u}, 1, 0x00000013u},
+    {"asrs r1,r2,#1",       {0x1051u}, 1, 0x60000013u},
+    {"cmp r1,#5",           {0x2D05u}, 1, 0x00000013u},
+    {"cmp r1,r2 (equal)",   {0x4291u}, 1, 0x00000013u},
+    {"cmp r1,r2 (carry)",   {0x4291u}, 1, 0xA0000013u},
+    {"ands r0,r2",          {0x4010u}, 1, 0x00000013u},
+    {"str r0,[r1,#4]",      {0x6048u}, 1, 0x00000013u},
+    {"ldr r2,[r1,#4]",      {0x684Au}, 1, 0x00000013u},
+    {"ldrb r2,[r1,#1]",     {0x784Au}, 1, 0x00000013u},
+    {"ldrh r2,[r1,#2]",     {0x884Au}, 1, 0x00000013u},
+    {"ldrsb r2,[r1,#1]",    {0x564Au}, 1, 0x00000013u},
+    {"ldrsh r2,[r1,#2]",    {0x5E4Au}, 1, 0x00000013u},
+    {"str r3,[sp,#4]",      {0x9301u}, 1, 0x00000013u},
+    {"ldr r4,[sp,#4]",      {0x9C01u}, 1, 0x00000013u},
+    {"add r3,pc,#8 (adr)",  {0xA302u}, 1, 0x00000013u},
+    {"ldr r3,[pc,#8]",      {0x4B02u}, 1, 0x00000013u},
+    {"ldr r0,[r1,r2]",      {0x5888u}, 1, 0x00000013u},
+    {"str r0,[r1,r2]",      {0x5088u}, 1, 0x00000013u},
+    {"adds then cmp",       {0x3001u, 0x4281u}, 2, 0x00000013u},
+    {"adds then bne",       {0x3001u, 0xD1FCu}, 2, 0x00000013u},
+    {"b #imm11 (forward)",  {0xE002u}, 1, 0x00000013u},
+    {"b #imm11 (backward)", {0xE7FEu}, 1, 0x00000013u},
+  };
+  uint32_t compared = 0;
+  for (const Case& c : cases) {
+    if (compare_block(c.hw, c.n, regs, c.cpsr, c.what, 15, nullptr, true))
+      ++compared;
+    else
+      check(false, std::string(c.what) + ": did not translate");
+  }
+  std::printf("  %u Thumb instruction cases compared\n", compared);
+
+  /* ...and the shapes the front end refuses *on purpose*, which is part of the
+   * contract this file is pinning: a multiply (the block would need the
+   * interpreter's multiplier and its own cycle accounting), SP-relative ADD
+   * (R13 lives in the shadow, not in the allocator's window), and the
+   * long-branch setup half (it writes R14 as a data value).  Each of them ends
+   * the block *before* the instruction, so nothing is lost - the interpreter
+   * runs it - but a backend that started accepting them silently would be
+   * changing the contract. */
+  {
+    const uint32_t refused[] = {0x4350u, 0xAB02u, 0xF000u};
+    const char* why[] = {"muls (multiply)", "add sp-relative", "long-branch setup"};
+    for (int i = 0; i < 3; ++i) {
+      CpuConfig cfg;
+      cfg.ram_size = kRamSize;
+      Cpu c;
+      if (!c.init(cfg)) { check(false, "init"); continue; }
+      c.reset();
+      c.phys_write(kCode, refused[i], 2);
+      c.thumb = 1;
+      c.cpsr = 0x00000033u;
+      c.npc = c.cur = kCode;
+      c.regs[15] = kCode + 4;
+      JitCache* jc = jit_cache_create(&c, 1);
+      IrBlock ir{};
+      jit_translate_thumb_block(c, kCode, 4, &ir);
+      check(ir.n == 0, std::string("Thumb ") + why[i] + " ends the block");
+      jit_cache_destroy(jc);
+    }
+  }
+
+  /* Every condition, against every flag word, in both directions - the same
+   * sweep the ARM side runs, because the condition is evaluated by the *block*
+   * either way (and the two conditions that are not one x86 test are the ones
+   * this caught). */
+  uint32_t branches = 0, taken = 0;
+  for (uint32_t cond = 0; cond < 15; ++cond) {
+    for (uint32_t f = 0; f < 16; ++f) {
+      const uint32_t cpsr = (f << 28) | 0x13u;
+      const uint32_t fwd = 0xD000u | (cond << 8);
+      const uint32_t back = 0xD000u | (cond << 8) | 0xFCu;
+      uint32_t npc = 0;
+      char name[64];
+      std::snprintf(name, sizeof name, "thumb b<cond %u> f=%u", cond, f);
+      if (compare_block(&fwd, 1, regs, cpsr, name, 15, &npc, true)) {
+        ++branches;
+        if (npc == kCode + 4) ++taken;            /* the target, not the fall-through */
+      }
+      std::snprintf(name, sizeof name, "thumb b<cond %u> back f=%u", cond, f);
+      compare_block(&back, 1, regs, cpsr, name, 15, nullptr, true);
+    }
+  }
+  std::printf("  %u Thumb branches compared (%u taken)\n", branches * 2, taken);
+
+  /* BX / BLX Rm: the target register's low bit is the state, and the run has to
+   * leave both engines in it.  The callee is a `nop` (0x46C0 = `mov r8, r8`), so
+   * the run retires the same two instructions either way. */
+  for (uint32_t target : {kCode + 0x200u, kCode + 0x200u + 1u}) {
+    uint32_t r[15];
+    std::memcpy(r, regs, sizeof r);
+    r[3] = target;
+    const uint32_t bx[] = {0x4718u, 0x46C0u};         /* bx r3 ; nop */
+    compare_run(bx, 2, r, 0x00000013u, "thumb bx r3", 15, nullptr, true, false);
+    const uint32_t blx[] = {0x4798u, 0x46C0u};        /* blx r3 ; nop */
+    compare_run(blx, 2, r, 0x00000013u, "thumb blx r3", 15, nullptr, true, false);
+  }
+  /* The long branch: the setup half is refused, the second half is the block, and
+   * the machine has to be in exactly the interpreter's state after both. */
+  {
+    uint32_t r[15];
+    std::memcpy(r, regs, sizeof r);
+    r[14] = kCode;                                    /* `bl` off the code start */
+    const uint32_t bl[] = {0xF000u, 0xF800u};
+    compare_run(bl, 2, r, 0x00000013u, "thumb bl pair", 15, nullptr, true, false);
+  }
+  /* ARM -> Thumb -> ARM: a `bx` into Thumb state out of an ARM block, and the
+   * Thumb block's own `bx` back out again. */
+  {
+    uint32_t r[15];
+    std::memcpy(r, regs, sizeof r);
+    r[3] = kCode + 8 + 1;
+    const uint32_t prog[] = {0xE12FFF13u, 0, 0, 0x4718u, 0x46C0u};
+    compare_run(prog, 3, r, 0x00000013u, "arm->thumb->arm", 15, nullptr, false, false);
+  }
+}
+
 void test_register_pressure() {
   std::printf("[x64 register pressure]\n");
   uint32_t code[26];
@@ -672,6 +854,7 @@ int main() {
   test_branch_sweep();
   test_mem_guards();
   test_random_blocks();
+  test_thumb_sweep();
   test_register_pressure();
   /* The sweeps above are only worth anything if the host really executed the
    * blocks: two interpreters would agree with each other perfectly. */

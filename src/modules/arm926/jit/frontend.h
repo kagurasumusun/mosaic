@@ -16,11 +16,18 @@
  * of the rotator).  The carry and overflow bits ARM leaves alone are repaired
  * around the operation; see the comments at flag_patches().
  *
- * Everything else ends the block: a branch, a load or store (they need the MMU and
- * the abort path, and a compiled block must not grow a second copy of them), MRS or
- * MSR, the multiply space, anything touching R13-R15 (banked, or the PC itself), a
- * shift amount taken from a register, and a 32-bit shift - what ARM state spells
- * `LSR #0` and `ASR #0`, and which AArch64's five-bit shift field cannot say.
+ * Since then a block also owns its loads, stores and its terminating branch
+ * (see `translate_ldst`/`translate_branch` below), and there are two front ends'
+ * worth of decoding in one file: `decode_arm` words or `decode_thumb` halfwords,
+ * the same IR either way.  What stays out in *both* states: a branch that is not
+ * the block's last instruction (so also the LR-setting first half of a Thumb
+ * long branch), MRS or MSR, the multiply space, LDM/STM/SWP, anything touching
+ * R13-R15 (banked, or the PC itself - Thumb's ADR is the exception, because it
+ * folds to a constant), a shift amount taken from a register, a 32-bit shift
+ * (what ARM state spells `LSR #0` and `ASR #0`, and which AArch64's five-bit
+ * shift field cannot say), an access or a predicated instruction where the
+ * block could not reproduce the interpreter's answer, and the shapes whose
+ * flags the host cannot produce for free.
  * ADCS and SBCS are refused as a matter of policy: chaining a carry correctly needs
  * the flags as of *before* the operation, which costs a snapshot per instruction and
  * is not worth it while the interpreter is close behind.  RSC is not: it is the
@@ -45,11 +52,20 @@ namespace brain::arm926 {
 
 class Cpu;
 
-/* Translates at most `max_words` guest words starting at `pc`.  Returns the
- * number consumed (0 if the first word is not translatable) and fills `out`.
- * `stop` in the block says why it ended. */
+/* Translates at most `max_words` guest *instructions* starting at `pc` (2 bytes
+ * wide in Thumb state, 4 in ARM).  Returns the number consumed (0 if the first
+ * one is not translatable) and fills `out`.  `stop` in the block says why it
+ * ended, and the block's `thumb` says which state it is a block of.
+ *
+ * `jit_translate_block` picks the state from the machine (`cpu.thumb`), which is
+ * what the dispatcher and the cache use - the two entry points below exist so a
+ * test can name the state it means. */
 uint32_t jit_translate_arm_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
                                  IrBlock* out);
+uint32_t jit_translate_thumb_block(Cpu& cpu, uint32_t pc, uint32_t max_insns,
+                                   IrBlock* out);
+uint32_t jit_translate_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
+                             IrBlock* out);
 
 /* The same, over a caller-supplied word array, so a test can translate code that
  * is not in a machine. */

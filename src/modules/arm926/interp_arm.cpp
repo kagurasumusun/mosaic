@@ -676,10 +676,16 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
       return;
     }
     if (d.kind == 1 && thumb) {
-      /* BLX Rm from Thumb state: partial link (A4.1.9/A6.1) */
+      /* BLX Rm from Thumb state (T1, `0100 0111 1 Rm 000`): the link is the
+       * address of the *next* instruction with the T bit set, exactly as for
+       * every other Thumb call - the caller is in Thumb state, so bit 0 of the
+       * value R14 gets is what sends `bx lr` back into Thumb (A6.6.3).  The
+       * ARMv4T "partial link" rule this used to implement - LR = PC+4 plus a
+       * slice of the target's high bits - belongs to the old BLX(1) sequence
+       * and corrupts R14 here (the oracle's own answer for the case in the
+       * corpus is `(pc+2)|1`). */
       const u32 newpc = t & ~1u;
-      const u32 rot1 = (t >> 1) | (t << 31);
-      regs[14] = regs[15] + (rot1 & 0xFF800000u);
+      regs[14] = (cur + 2u) | 1u;
       npc = newpc;
     } else {
       if (d.kind == 1) regs[14] = cur + 4;             /* BLX from ARM     */

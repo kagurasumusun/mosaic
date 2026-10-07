@@ -84,6 +84,9 @@ bool jit_x64_accepts(const IrInsn& in) {
       if (in.cond > 0xEu) return false;
       if (in.br_link && in.br_reg && in.b >= 13) return false;
       if (in.br_reg && in.b >= 15) return false;
+      if (in.br_mask != BR_MASK_STATE && in.br_mask != BR_MASK_HALF &&
+          in.br_mask != BR_MASK_WORD)
+        return false;
       break;
     default:
       return false;
@@ -305,6 +308,7 @@ class Emitter {
   bool op(int idx, const Liveness& lv, const Shape& sh);
   bool mem_op(int idx, const Liveness& lv, const Shape& sh);
   void add_bail(int cc, int idx, bool flags_pushed);
+  void branch_target(int reg, uint8_t mask);
   void prologue();
   bool exit_path();
   void exit_tail();
@@ -438,10 +442,35 @@ void Emitter::release_temp(int r) {
 
 /* Remember a bail: the guard jump is emitted here, the cold path later (see
  * emit_bails).  `cc` is the host condition that fails. */
+/* The address a block hands back for a *branch target held in a register*.  The
+ * low bit of what it writes is the state the machine continues in - which is
+ * also what bit 0 of the guest's own `bx`/`blx` target means, so the two rules
+ * are one:
+ *
+ *   BR_MASK_STATE: the value goes out *untouched*.  The dispatcher reads bit 0
+ *                  as the state and then drops the address bits that state
+ *                  requires (bit 0 for a Thumb target, bits[1:0] for an ARM one)
+ *                  - which is exactly ARM's masking rule, in one place instead
+ *                  of two;
+ *   BR_MASK_HALF : a Thumb target the encoding already decided: force bit 0 to
+ *                  one, so the dispatcher strips it and switches to Thumb;
+ *   BR_MASK_WORD : a BLX leaving Thumb for ARM: drop bits[1:0], so bit 0 reads
+ *                  zero and the dispatcher switches (and stays) in ARM state.
+ *
+ * Masking here rather than in the dispatcher would break the first case: the
+ * bit that says which mask to use is the bit a mask removes. */
+void Emitter::branch_target(int reg, uint8_t mask) {
+  body_.mov_rm(RAX, Mem::bx(kShadow, SH_R0 + 4 * reg));
+  if (mask == BR_MASK_HALF) body_.alu_ri32(A_OR, RAX, 1u);
+  else if (mask == BR_MASK_WORD) body_.alu_ri32(A_AND, RAX, 0xFFFFFFFCu);
+  body_.mov_mem_r(Mem::bx(kShadow, SH_R15), RAX);
+}
+
 void Emitter::add_bail(int cc, int idx, bool flags_pushed) {
   Bail b;
   b.patch_at = body_.jcc32(cc);
-  b.resume_pc = blk_.start_pc + 4u * (uint32_t)idx;
+  b.resume_pc = blk_.start_pc + (blk_.thumb ? 2u : 4u) * (uint32_t)idx;
+  if (blk_.thumb) b.resume_pc |= 1u;    /* the interpreter resumes in Thumb */
   b.retired = (uint32_t)idx;
   b.cycles = idx > 0 ? in(idx - 1).cyc : 0u;
   b.flags_pushed = flags_pushed;
@@ -1210,8 +1239,7 @@ bool Emitter::exit_path() {
        * translation, so it comes out of the shadow - where the spill pass just
        * put every guest register the block touched - exactly as on the taken
        * side of a conditional branch. */
-      body_.mov_rm(RAX, Mem::bx(kShadow, SH_R0 + 4 * (int)br->b));
-      body_.mov_mem_r(Mem::bx(kShadow, SH_R15), RAX);
+      branch_target((int)br->b, br->br_mask);
     } else {
       body_.mov_mem_i(Mem::bx(kShadow, SH_R15), end_pc_);
     }
@@ -1248,8 +1276,7 @@ bool Emitter::exit_path() {
        * shadow, where the exit's spill pass has just put every guest register
        * the block touched, and the *low bit is kept* - the dispatcher decodes
        * it as the ARM/Thumb switch, exactly as the interpreter does. */
-      body_.mov_rm(RAX, Mem::bx(kShadow, SH_R0 + 4 * (int)br->b));
-      body_.mov_mem_r(Mem::bx(kShadow, SH_R15), RAX);
+      branch_target((int)br->b, br->br_mask);
     } else {
       body_.mov_mem_i(Mem::bx(kShadow, SH_R15), br->imm);
     }

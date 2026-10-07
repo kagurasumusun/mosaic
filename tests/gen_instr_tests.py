@@ -427,7 +427,28 @@ def branch_cases(rnd):
                                "ADD R0, R0, #4"], 3),
         ("thumb_bx_r3_into_slots", "thumb", ["BX R3", "ADDS R0, R0, #0x40", "ADDS R0, #2",
                                   "ADDS R0, #4"], 3),
+        # BLX Rm from Thumb state.  R3 is preset to DATA_BASE + 0x100 (an
+        # address holding a zero word) so the callee retires nothing; what the
+        # case pins is the *link*: ARMv5 writes the address of the next
+        # instruction with the T bit set (`(pc+2)|1`), not the ARMv4T
+        # "partial link", which mixes bits of the target into the high half of
+        # R14 - and R14 is one of the registers the corpus compares.
+        # The callee sits at CODE_BASE + 8, which is the fourth halfword, and
+        # reads R14 back into R2: the cases compare R0-R12, and R14 is one of
+        # the registers QEMU keeps in a temporary across a short block.
+        ("thumb_blx_r3_into_code", "thumb",
+         ["BLX R3", "ADDS R0, R0, #0x40", "MOVS R0, #1", "NOP", "MOV R2, R14"], 2),
     ]:
+        # The BLX case needs an *odd* target - bit 0 of the register is the
+        # state the branch switches to, so CODE_BASE + 8 would run the callee as
+        # ARM code - and its link is read back into R2 by the callee it lands on
+        # (the cases compare R0-R12, and R14 is one of the registers QEMU keeps
+        # in a temporary across a short block).
+        regs = list(r3)
+        regs[3] = CODE_BASE + 8 + 1
+        if name == "thumb_blx_r3_into_code":
+            out.append((name, mode, lrn, regs, None, cnt))
+            continue
         out.append((name, mode, lrn, list(r3), None, cnt))
     for i in range(24):
         flags = rnd.randrange(16) << 28

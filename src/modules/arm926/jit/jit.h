@@ -28,7 +28,13 @@
  * AArch64 one (jit/emit_arm64.h, checked against a model by
  * tests/test_jit_arm64.py) and the x86-64 one (jit/emit_x64.cpp, whose bytes
  * tests/test_jit_x64.cpp executes in-process against the interpreter).  Both are
- * fed by the same front end and see only the IR of jit/ir.h.  The block cache and
+ * fed by the same front end and see only the IR of jit/ir.h - which is also why
+ * the two *instruction sets* share all of this: the front end decodes ARM words
+ * or Thumb halfwords into the same ops, and what differs between a block of one
+ * state and a block of the other is the address step and the state bit in the
+ * address the block hands back.  The AArch64 backend has not been extended past
+ * data processing yet, so on an AArch64 host a memory or branch block is refused
+ * and interpreted (the x86-64 backend covers the whole set).  The block cache and
  * dispatcher live in jit/cache.h + jit/cache.cpp, driven by exactly the six entry
  * points below; tests/test_unit.cpp exercises them on any host, because its exec
  * hook stands in for the generated code.

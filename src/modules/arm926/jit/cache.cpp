@@ -121,9 +121,14 @@ void jit_cache_flush(JitCache* jc) {
 }
 
 JitBlock* jit_cache_lookup(JitCache* jc, u32 pc) {
+  /* The thumb bit is compared, not just hashed: the same pc decoded in the two
+   * states is two different blocks, and entering the wrong one would run ARM
+   * words as Thumb - or the other way round, which is worse because it looks
+   * like it works. */
+  const u32 want = jc->cpu ? jc->cpu->thumb : 0u;
   for (u32 i = jc->table[hash_pc(pc)]; i; i = jc->blocks[i - 1].next) {
     JitBlock& b = jc->blocks[i - 1];
-    if (b.pc == pc) return &b;
+    if (b.pc == pc && b.thumb == want) return &b;
   }
   return nullptr;
 }
@@ -157,9 +162,10 @@ bool backend_emit(const IrBlock& blk, std::vector<u8>* out, u8* meta) {
 bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   Cpu* c = jc->cpu;
   if (jc->blocks.size() >= kBlockCap) jit_cache_flush(jc);
+  const bool thumb = c->thumb != 0;
+  pc &= thumb ? ~1u : ~3u;            /* a pc is halfword or word aligned */
   IrBlock blk;
-  if (!jit_translate_arm_block(*c, pc & ~3u, c->cfg.max_block_insns, &blk))
-    return false;
+  if (!jit_translate_block(*c, pc, c->cfg.max_block_insns, &blk)) return false;
   std::vector<u8> code;
   u8 meta = 0;
   if (!backend_emit(blk, &code, &meta)) return false;
@@ -171,8 +177,8 @@ bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   }
   std::memcpy(jc->arena + jc->used, code.data(), bytes);
   JitBlock b;
-  b.pc = pc & ~3u;
-  b.code_end = blk.code_end ? blk.code_end : blk.start_pc + 4u;
+  b.pc = pc;
+  b.code_end = blk.code_end ? blk.code_end : blk.start_pc + (thumb ? 2u : 4u);
   b.end_pc = blk.next_pc;
   b.entry = (u32)jc->used;
   /* The front end summed the per-instruction cost under the interpreter's own
@@ -191,6 +197,7 @@ bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   if (blk.n && blk.in[blk.n - 1].op == IR_BR)
     b.br = blk.in[blk.n - 1].cond == 0xEu ? 1 : 2;
   b.dead = 0;
+  b.thumb = thumb ? 1 : 0;
   jc->used += bytes;
   jc->blocks.push_back(b);
   jit_mark_block_pages(jc, b.pc, b.code_end, true);
@@ -358,22 +365,29 @@ u32 jit_cache_enter(JitCache* jc, JitBlock* b) {
    * assignments at the top of a step).  For everything but a bail "just retired"
    * is the block's last word; a bail never ran that word, so there the last one
    * is its predecessor and `npc` is the word the interpreter must now run. */
-  /* A block hands back whatever address its branch logic computed, and for a
-   * `bx`/`blx` that address carries the instruction-set bit - the frontend
-   * keeps bit 0 for exactly this reason.  Turning it into the machine's state
-   * is the dispatcher's job, because `thumb` and CPSR.T belong to the
-   * interpreter: a block only ever runs in ARM state (jit_block_boundary
-   * refuses Thumb), so the one switch it can perform is into Thumb, done the
-   * way interp_arm.cpp does it for a BX to a Thumb target. */
-  if (resume & 1u) {
-    c->set_thumb(1);
-    c->cpsr &= ~(CPSR_T | CPSR_J);
-    c->cpsr |= CPSR_T;
-    resume &= ~1u;
+  /* A block hands back the address to resume at with the *next state* in bit 0,
+   * which is the same convention the instruction set itself uses for a
+   * `bx`/`blx` target: 1 = Thumb, 0 = ARM.  The frontend puts it there (every
+   * Thumb exit address is `| 1`, a BLX leaving Thumb is masked to a word, a
+   * register branch keeps the register's own bit), and turning it into the
+   * machine's state is the dispatcher's job, because `thumb` and CPSR.T belong
+   * to the interpreter.  A block that ends in ARM state only ever runs in ARM
+   * state, so for it the bit can only add a switch *into* Thumb - but a block
+   * built in Thumb state may legitimately leave for ARM, and then the same rule
+   * takes the state away. */
+  const bool thumb_out = (resume & 1u) != 0;
+  if (thumb_out != (c->thumb != 0)) {
+    c->set_thumb(thumb_out ? 1 : 0);
+    c->cpsr = (c->cpsr & ~(CPSR_T | CPSR_J)) | (thumb_out ? u32(CPSR_T) : 0u);
   }
-  const u32 last = bailed ? resume - 4u : b->code_end - 4u;
+  resume &= thumb_out ? ~1u : ~3u;
+  const u32 isize = b->thumb ? 2u : 4u;
+  const u32 last = bailed ? resume - isize : b->code_end - isize;
   c->cur = last;
-  c->regs[15] = last + 8u;               /* the pipeline value, ARM state      */
+  /* The pipeline value the interpreter's own fetch would have left: `cur + 8`
+   * in ARM state, `cur + 4` in Thumb (A2.4.3), and R15 is not a register a
+   * block can name, so this is the one place it is reconstructed. */
+  c->regs[15] = last + (b->thumb ? 4u : 8u);
   c->npc = resume;
   c->insns += retired;
   c->cycles += cycles;
@@ -402,14 +416,16 @@ namespace {
 
 u32 jit_block_boundary(JitCache* jc, u64 max_insns, u64 until_cycles) {
   Cpu* c = jc->cpu;
-  if (c->thumb || c->trace_en || c->cfg.trace || c->cfg.trace_jit) return 0;
+  if (c->trace_en || c->cfg.trace || c->cfg.trace_jit) return 0;
   /* An asserted line must reach the machine at the next *instruction*, and
    * test_instr's interrupt-timing cases count instructions - inside a block
    * nobody can observe one, so a pending line keeps the dispatcher honest. */
   if (BRAIN_UNLIKELY(c->irq_line || c->fiq_line)) return 0;
   if (c->insns >= max_insns) return 0;
-  const u32 pc = c->npc & ~3u;
-  if (BRAIN_LIKELY(pc == jc->bad_pc && jc->bad_gen == c->trans_gen)) return 0;
+  const u32 pc = c->npc & (c->thumb ? ~1u : ~3u);
+  if (BRAIN_LIKELY(pc == jc->bad_pc && jc->bad_gen == c->trans_gen &&
+                   jc->bad_thumb == (c->thumb ? 1u : 0u)))
+    return 0;
   JitBlock* b = jit_cache_lookup(jc, pc);
   if (b && b->dead) return 0;
   /* A block that performs accesses baked the RAM window it saw into its
@@ -435,6 +451,7 @@ u32 jit_block_boundary(JitCache* jc, u64 max_insns, u64 until_cycles) {
        * and the answer cannot change until the translation regime does. */
       jc->bad_pc = pc;
       jc->bad_gen = c->trans_gen;
+      jc->bad_thumb = c->thumb ? 1 : 0;
       c->jit_slow = JITSLOW_INTERPRET;
       return 0;
     }

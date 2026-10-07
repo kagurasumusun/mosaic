@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "arm926/decode.h"
+#include "arm926/decode_thumb.h"
 #include "arm926/ops.h"          /* CycleModel: the cycle charge rides in the IR */
 #include "arm926/jit/emit_arm64.h"
 #include "arm926/jit/jit.h"      /* jit_fast_mem_ok: may a block access memory?  */
@@ -33,13 +34,40 @@ enum {
 uint32_t reg_of(uint32_t r) { return r + 1u; }
 
 /* One DP instruction -> IR.  Returns false if it is out of the accepted set, in
- * which case the caller ends the block *before* this instruction. */
-bool translate_dp(const ArmDec& d, IrInsn* out) {
+ * which case the caller ends the block *before* this instruction.
+ *
+ * `thumb` is the state the word was decoded in: it selects the pc a Thumb
+ * pc-relative operand reads (+4, word aligned) and, more importantly, says
+ * whether the ARM condition field even exists.  decode_thumb() fills an ArmDec
+ * with `cond = 0xF` (its "unconditional" marker) and only ever sets a condition
+ * for `B<cond>`, so a Thumb instruction is never predicated and this check is
+ * the ARM one. */
+bool translate_dp(const ArmDec& d, uint32_t pc, bool thumb, IrInsn* out) {
   /* `ArmDec::cond` is the Thumb branch field; for ARM words the decoder reports a
    * failed condition as AOP_SATISFY and executes nothing, so the only thing left to
    * check here is that the block is not asked to run an instruction the dispatcher
    * would skip: a conditional one would have to be predicated instead. */
-  if (((d.insn >> 28) & 0xFu) != 0xEu) return false;              /* conditional: dispatcher's job */
+  if (!thumb && ((d.insn >> 28) & 0xFu) != 0xEu) return false;    /* conditional: dispatcher's job */
+
+  /* `ADR Rd, #label` (T1, and the SP-relative form of the same group): the
+   * Thumb decoder turns it into `ADD Rd, PC/SP, #imm8*4`, and with PC as the
+   * base the whole result is a constant of the translation - which is what
+   * ADR is for, so it is worth folding rather than ending the block.  The pc a
+   * Thumb instruction reads is `insn + 4`, *word aligned* (A6.5.2: bits[1:0]
+   * are treated as zero, so a halfword-aligned ADR still yields an aligned
+   * address).  The SP form (rn == 13) stays out: R13 lives in the shadow, not
+   * in the allocator's window, and ADR to SP is rare enough not to pay for. */
+  if (thumb && d.rn == 15 && d.op2 == OP2_IMM) {
+    if (d.dp != DP_ADD || d.s) return false;      /* only ADR is a constant */
+    IrInsn in{};
+    in.op = IR_MOVI;
+    in.dst = uint8_t(d.rd);
+    /* decode_thumb() leaves an immediate unrotated (the encoding has no rotate
+     * field at all), so `imm12` is already the value. */
+    in.imm = ((pc + 4u) & ~3u) + d.imm12;
+    *out = in;
+    return true;
+  }
   if (d.op2 == OP2_REG_RS) return false;         /* shift by a register          */
   /* Only R0-R13 are addressable through the ABI's X1-X14 window; SP/LR/PC (and
    * banked registers in general) stay the interpreter's, and the dispatcher is what
@@ -217,12 +245,14 @@ bool wb_of(const ArmDec& d, uint8_t* post, uint8_t* wb) {
  * A pc-relative address *is* translated: the pipeline value is a constant of
  * the translation, so the address is one too (MEM_ABS).
  */
-bool translate_ldst(const Cpu& cpu, uint32_t pc, const ArmDec& d, bool extra, IrInsn* out) {
+bool translate_ldst(const Cpu& cpu, uint32_t pc, const ArmDec& d, bool extra, bool thumb,
+                    IrInsn* out) {
   if (!jit_fast_mem_ok(&cpu)) return false;
   /* A conditional instruction executes or does not, and a *block* has no way
    * to skip one: predication belongs to the dispatcher (which is also where
-   * the branch counters see it).  translate_dp() makes the same test. */
-  if (((d.insn >> 28) & 0xFu) != 0xEu) return false;
+   * the branch counters see it).  translate_dp() makes the same test, and
+   * Thumb has no predicated loads or stores at all. */
+  if (!thumb && ((d.insn >> 28) & 0xFu) != 0xEu) return false;
   if (d.rd > 12) return false;
   const bool load = d.l != 0;
   if (load && d.w && d.rd == d.rn) return false;
@@ -261,7 +291,11 @@ bool translate_ldst(const Cpu& cpu, uint32_t pc, const ArmDec& d, bool extra, Ir
     in.mem_reg = MEM_ABS;
     in.mem_shadow = 0;
     in.a = 0;
-    in.imm = (pc + 8u) + (d.u ? d.imm12 : (uint32_t)(-(int32_t)d.imm12));
+    /* The pc an instruction reads depends on the state (ARM: +8 and word
+     * aligned by construction; Thumb: +4 with bits[1:0] treated as zero, which
+     * is what makes a halfword-aligned literal load reach its word). */
+    const uint32_t base = thumb ? ((pc + 4u) & ~3u) : (pc + 8u);
+    in.imm = base + (d.u ? d.imm12 : (uint32_t)(-(int32_t)d.imm12));
     *out = in;
     return true;
   }
@@ -316,13 +350,76 @@ bool translate_ldst(const Cpu& cpu, uint32_t pc, const ArmDec& d, bool extra, Ir
  * for a conditional one.
  */
 bool translate_branch(const Cpu* cpu, uint32_t pc, const ArmDec& d, uint32_t op,
-                      IrBlock* out, IrInsn* ir) {
+                      bool thumb, IrBlock* out, IrInsn* ir) {
   IrInsn in{};
   in.op = IR_BR;
   in.dst = IR_NO_DST;
   in.cond = 0xEu;
   in.br_link = 0;
   in.br_reg = 0;
+  in.br_mask = BR_MASK_STATE;
+
+  if (thumb) {
+    /* ---- Thumb state.  The pc an instruction reads is +4, a branch target is
+     * only halfword aligned, and the *exit address carries the state*: bit 0 of
+     * whatever a block leaves in R15 is what the dispatcher switches on, and
+     * every branch here either stays in Thumb (bit 0 set) or is a BLX that
+     * leaves for ARM (masked to a word).  The one predicated instruction in the
+     * whole state is `B<cond>`, whose condition comes from the encoding's own
+     * field rather than from insn[31:28]. */
+    const uint32_t next = (pc + 2u) | 1u;              /* stay in Thumb */
+    if (op == AOP_B && d.kind == 3) {                  /* B<cond> #imm8 */
+      in.cond = uint8_t(d.cond);
+      in.imm = ((pc + 4u) + d.imm24) | 1u;
+      in.br_mask = BR_MASK_HALF;
+      out->next_pc = next;                             /* fall-through: pc+2 */
+      *ir = in;
+      return true;
+    }
+    if (op == AOP_B && d.kind == 0) {                  /* B #imm11 */
+      in.imm = ((pc + 4u) + d.imm24) | 1u;
+      out->next_pc = in.imm;                           /* unconditional */
+      *ir = in;
+      return true;
+    }
+    if (op == AOP_B && (d.kind == 5 || d.kind == 6)) {
+      /* The second half of the long-branch pair (A7.1.17): the branch target is
+       * *LR + imm24*, not pc-relative - that is what lets an assembler place the
+       * pair anywhere in a ±4MB window - and the link replaces LR with the
+       * address of the next halfword, T bit set.  kind 6 is the `BLX` half,
+       * which leaves for ARM state, so its target drops bits[1:0]; kind 5 stays
+       * in Thumb and drops bit 0 only.  (The *first* half, kind 4, only computes
+       * LR and is refused: it writes R14 as a data value, which is not something
+       * the register window a block works in can hold - see jit/ir.h.) */
+      in.br_reg = 1;
+      in.b = 14;
+      in.imm = d.imm24;
+      in.br_mask = (d.kind == 6) ? BR_MASK_WORD : BR_MASK_HALF;
+      in.br_link = 1;
+      in.link = next;
+      out->next_pc = next;
+      *ir = in;
+      return true;
+    }
+    if (op == AOP_BX) {
+      /* BX Rm (kind 0) and BLX Rm (kind 1) are the same operation with and
+       * without a link, and the target register decides the state: bit 0 goes
+       * to the dispatcher untouched, exactly as in ARM state.  BXJ (kind 2) is
+       * an undefined instruction here, and the Jazelle trap a `bx` can take is
+       * reported by the interpreter, so both stay with it. */
+      if (d.kind > 1) return false;
+      if (d.rm > 14) return false;
+      if (cpu && cpu->cfg.jazelle_trap) return false;
+      in.br_reg = 1;
+      in.b = uint8_t(d.rm);
+      if (d.kind == 1) { in.br_link = 1; in.link = next; }
+      out->next_pc = next;
+      *ir = in;
+      return true;
+    }
+    return false;                                  /* LDM/STM/SWI/undefined */
+  }
+
   if (op == AOP_B) {
     if (d.kind >= 4) return false;             /* Thumb long-branch halves  */
     const uint32_t cond = (d.insn >> 28) & 0xFu;
@@ -373,14 +470,16 @@ bool translate_branch(const Cpu* cpu, uint32_t pc, const ArmDec& d, uint32_t op,
  * that is what the fetch does).  Reading physical memory at `pc` instead would
  * happily translate bytes the guest never sees.  If `prepare_fetch()` changes,
  * this has to change with it. */
-bool fetch_word(Cpu& cpu, uint32_t va, uint32_t* out) {
+bool fetch_word(Cpu& cpu, uint32_t va, bool thumb, uint32_t* out) {
+  const uint32_t n = thumb ? 2u : 4u;
   if (cpu.ram_fast && ((va - cpu.ram_gbase) & ~cpu.ram_mask) == 0) {
-    std::memcpy(out, cpu.ram + (va & cpu.ram_mask), 4);   /* VA == PA here */
+    std::memcpy(out, cpu.ram + (va & cpu.ram_mask), n);   /* VA == PA here */
+    if (thumb) *out &= 0xFFFFu;
     return true;
   }
-  TlbEntry* e = cpu.tlb_lookup(va & ~0xFFFu, MF_FETCH | MF_SZ32);
+  TlbEntry* e = cpu.tlb_lookup(va & ~0xFFFu, MF_FETCH | (thumb ? MF_SZ16 : MF_SZ32));
   if (!e) return false;
-  *out = cpu.phys_read(e->gpa + (va & 0xFFFu), 4);
+  *out = cpu.phys_read(e->gpa + (va & 0xFFFu), n) & (thumb ? 0xFFFFu : ~0u);
   return true;
 }
 
@@ -391,7 +490,13 @@ bool fetch_word(Cpu& cpu, uint32_t va, uint32_t* out) {
  * `translate_ldst`), so a caller-supplied array translates the register and
  * control-flow subset only; branches do not need a machine. */
 uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
-                   IrBlock* out) {
+                   bool thumb, IrBlock* out) {
+  /* The address step: 2 bytes in Thumb state, 4 in ARM.  Everything below that
+   * turns an instruction index into a guest address uses it, which is why a
+   * Thumb block's `code_end` and the resume address of its bails are halfword
+   * addresses (and why the *exit* address carries the T bit - see the branch
+   * translation and jit_cache_enter). */
+  const uint32_t step = thumb ? 2u : 4u;
   out->n = 0;
   out->start_pc = pc;
   out->next_pc = pc;
@@ -403,35 +508,46 @@ uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
   out->mem_gbase = 0;
   out->mem_mask = 0;
   out->truncated = false;
+  out->thumb = thumb;
   out->stop = "empty";
   uint32_t i = 0;
   for (; i < n; ++i) {
+    const uint32_t here = pc + i * step;
     uint32_t word;
     if (words) {
-      word = words[i];
-    } else if (!fetch_word(*cpu, pc + i * 4u, &word)) {
+      word = thumb ? (words[i] & 0xFFFFu) : words[i];
+    } else if (!fetch_word(*cpu, here, thumb, &word)) {
       out->stop = i ? "fetch" : "unsupported";
       break;
     }
     ArmDec d{};
-    const u32 op = decode_arm(word, &d);
+    /* The two decoders have different return conventions: `decode_arm` reports
+     * the operation it found, while `decode_thumb` (like the interpreter's own
+     * call site) always returns 0 and puts the operation in the record. */
+    u32 op;
+    if (thumb) {
+      decode_thumb(word & 0xFFFFu, &d);
+      op = d.op;
+    } else {
+      op = decode_arm(word, &d);
+    }
     IrInsn in{};
     uint32_t cyc = CycleModel::kIssue;
     bool ok = false;
     bool branch = false;
     switch (op) {
       case AOP_DP:
-        ok = translate_dp(d, &in);
+        ok = translate_dp(d, here, thumb, &in);
         break;
       case AOP_LDRST:
       case AOP_LDRSTH:
         if (!cpu) break;                     /* no machine, no memory verdict */
-        ok = translate_ldst(*cpu, pc + i * 4u, d, op == AOP_LDRSTH, &in);
+        ok = translate_ldst(*cpu, here, d, op == AOP_LDRSTH, thumb, &in);
         if (ok) cyc += CycleModel::kAccess;
         break;
       case AOP_B:
       case AOP_BX:
-        ok = translate_branch(cpu, pc + i * 4u, d, op, out, &in);
+        ok = translate_branch(cpu, here, d, op, thumb, out, &in);
         if (ok) {
           branch = true;
           /* A taken branch restarts the prefetch stage; a conditional one that
@@ -468,8 +584,12 @@ uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
       break;
     }
     out->guest_insns++;
-    out->code_end = pc + (i + 1) * 4u;
-    if (!branch) out->next_pc = out->code_end;
+    out->code_end = here + step;
+    /* A straight-line exit resumes in the state the block is *in*, and the exit
+     * address is what carries that: a Thumb block's fall-through address gets
+     * bit 0, exactly like its branch targets, or the dispatcher would read the
+     * result as an ARM address and clear CPSR.T. */
+    if (!branch) out->next_pc = thumb ? (out->code_end | 1u) : out->code_end;
     out->stop = branch ? "branch" : "budget";
     if (branch) { ++i; break; }              /* a branch is the way out */
   }
@@ -480,14 +600,27 @@ uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
 
 uint32_t jit_translate_arm_words(const uint32_t* words, uint32_t n, uint32_t pc,
                                  IrBlock* out) {
-  return translate(nullptr, words, n, pc, out);
+  return translate(nullptr, words, n, pc, /*thumb=*/false, out);
 }
 
 uint32_t jit_translate_arm_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
                                  IrBlock* out) {
   const uint32_t n = max_words < uint32_t(IR_MAX_INSNS) ? max_words
                                                        : uint32_t(IR_MAX_INSNS);
-  return translate(&cpu, nullptr, n, pc, out);
+  return translate(&cpu, nullptr, n, pc, /*thumb=*/false, out);
+}
+
+uint32_t jit_translate_thumb_block(Cpu& cpu, uint32_t pc, uint32_t max_insns,
+                                   IrBlock* out) {
+  const uint32_t n = max_insns < uint32_t(IR_MAX_INSNS) ? max_insns
+                                                       : uint32_t(IR_MAX_INSNS);
+  return translate(&cpu, nullptr, n, pc, /*thumb=*/true, out);
+}
+
+uint32_t jit_translate_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
+                             IrBlock* out) {
+  return cpu.thumb ? jit_translate_thumb_block(cpu, pc, max_words, out)
+                   : jit_translate_arm_block(cpu, pc, max_words, out);
 }
 
 /* An operation that sets the guest's flags needs the bits AArch64 got wrong put

@@ -134,6 +134,16 @@ struct IrInsn {
   uint8_t cond;
   uint8_t br_link;
   uint8_t br_reg;
+  /* IR_BR with `br_reg`: how the target is aligned before it leaves the block,
+   * which the architecture makes a function of the *destination* state -
+   *   BR_MASK_STATE: from the target's own bit 0 (an ARM `bx` to an ARM address
+   *                   drops bits[1:0], to a Thumb one only bit 0 - and that bit
+   *                   is simultaneously the state the dispatcher switches to);
+   *   BR_MASK_HALF : drop bit 0 only (a Thumb target that is known to be Thumb);
+   *   BR_MASK_WORD : drop bits[1:0] (a BLX leaving Thumb for ARM state).
+   * The backend applies it after adding `imm`, and the frontend sets it per
+   * encoding, so a block never has to know which state it is in. */
+  uint8_t br_mask;
   uint32_t link;         /* IR_BR: the value a BL/BLX leaves in R14 */
 
   /* ---------------------------------------------------------- cycle cost --
@@ -153,6 +163,7 @@ struct IrInsn {
 enum : uint8_t {
   MEM_ABS = 0, MEM_IMM = 1, MEM_REG = 2,      /* IR_LD / IR_ST addressing    */
   MEM_WB_NONE = 0, MEM_WB_YES = 1,            /* ...and the writeback        */
+  BR_MASK_STATE = 0, BR_MASK_HALF = 1, BR_MASK_WORD = 3,   /* IR_BR.br_mask   */
 };
 
 enum { IR_NO_DST = 255, IR_MAX_INSNS = 64 };
@@ -179,6 +190,16 @@ struct IrBlock {
   bool uses_mem = false;
   uint32_t mem_gbase = 0, mem_mask = 0;
   bool truncated = false;     /* stopped by IR_MAX_INSNS, not by a boundary */
+  /* The state the block was translated in.  It is not a property of the IR -
+   * the ops are the same in both states, and a Thumb instruction is what
+   * `decode_thumb` made of it - but three things outside the ops depend on it:
+   * the address step (2 or 4 bytes) that turns an instruction index into a pc,
+   * which the backends use for the resume address of a bail; the pc bias a
+   * pc-relative access folded (already folded into `imm`, so only the frontend
+   * reads it); and the *exit* convention below.  A block also carries it into
+   * JitBlock, because the dispatcher has to know whether the address a block
+   * left is a halfword address or a word one. */
+  bool thumb = false;
   const char* stop = nullptr;  /* why the block ended, for --jit tracing   */
 
   bool empty() const { return n == 0; }

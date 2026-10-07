@@ -297,10 +297,20 @@ Both are fed by the same `jit/frontend.cpp` and see only the IR of `jit/ir.h`,
 so the accepted *instruction* set below is a property of the front end and is
 the same for both - what differs is how each machine spells the result.
 
-A block is a straight-line run of translated instructions - ARM state, since the
-dispatcher leaves Thumb to the interpreter - ended by the first instruction the front
-end will not own.  What it will own, as of the round that closed the memory/branch
-gap:
+A block is a straight-line run of translated instructions, in *either* state -
+the dispatcher hands the front end the state the machine is in and the front end
+decodes accordingly (ARM words or Thumb halfwords), so a translated block is a
+block of ARM state or a block of Thumb state and never both.  What a Thumb block
+gets for free, because the IR is state-free: the same op list, the same emitters,
+the same exit protocol; what it gets of its own is the address step (2 bytes), the
+pc bias (`cur + 4`, word aligned for ADR and a literal load) and the exit
+convention below.  Refused in both states, therefore, are also the Thumb shapes
+whose IR there is none of: the LR-setting first half of a long branch (it writes
+R14 as a data value), SP-relative `ADD Rd, SP, #imm` (R13 lives in the shadow),
+and PUSH/POP/LDM/STM.
+
+A block ends at the first instruction the front end will not own.  What it will
+own:
 
 * **data processing**, unconditional, every operand in R0-R12 - all sixteen opcodes,
   RSC included - with the four barrel shifts by an immediate (including RRX, which
@@ -330,18 +340,35 @@ gap:
 
 A block therefore ends at MRS/MSR, at the multiply space, at a *conditional* data
 processing, load or store (predication belongs to the dispatcher, which is also
-where the branch counters see it), at a load or store naming R13-R15 or an operand
-outside R0-R12, at a shift amount taken from a register, at a 32-bit shift (which is
-what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift field only reaches
-31), and at the two shapes whose flags the host cannot produce for free: a
-flag-setting *logical* with a rotated immediate (ARM takes C from the rotator, where
-`ANDS #imm` takes it from the host's own rule), and ADCS/SBCS (whose carry-in has to
-be the C of *before* the operation - a snapshot per instruction, which is exactly
-what RSC does *not* need, because RSC is the platform's own reversed form).
+where the branch counters see it - Thumb has exactly one predicated instruction, its
+`B<cond>`, and that one the block does perform), at a load or store naming R13-R15
+or an operand outside R0-R12, at a shift amount taken from a register, at a 32-bit
+shift (which is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift
+field only reaches 31), at LDM/STM/SWP (a register list is a second addressing mode
+and a bank-switch hazard, and real code has few of them in a hot loop), and at the
+two shapes whose flags the host cannot produce for free: a flag-setting *logical*
+with an immediate (ARM takes C from the rotator - bit 31 of the rotated value when
+the rotation is non-zero, and *unchanged* when it is zero - which is neither the
+arithmetic carry nor anything a host's own `and`/`orr` produces), and ADCS/SBCS
+(whose carry-in has to be the C of *before* the operation - a snapshot per
+instruction, which is exactly what RSC does *not* need, because RSC is the
+platform's own reversed form).
+
 Flag-setting *arithmetic* with an immediate **is** accepted, including `ADDS #imm`
 and `CMP Rn, #imm`: ARM takes C from the adder wherever the second operand came from,
-and so does every host (the 0.5 s in the benchmark below is mostly `add`, `cmp`,
-`bne` running as one block).
+and so does every host - which is what makes the counted loop below one block
+instead of three instructions and an interpreted branch (`adds`, `cmp`, `bne`).
+
+The logical-immediate gate is the one piece of throughput that is still on the
+table, and it is not a backend limitation any more: both emitters already carry the
+machinery (x86-64 chooses between a `setcc`/`bt` pair for "unchanged" and a constant
+for the rotator's bit; AArch64 patches the same two cases with `UBFX`/`ORR`/`MSR`
+from the operand *and* the live flags).  What has not been done is the AArch64
+repair for the forms whose operand is materialised, which is why the gate is still
+shared and still closed - `MOVS Rd, #imm` is the common case in Thumb code, and it
+costs the block it ends.  Making it state- and backend-specific would break the
+invariant that both backends see the same instruction set, so it stays as it is
+until the AArch64 patch path takes an immediate operand.
 
 The flags are the interesting part.  AArch64 has no flag-setting `ORR`/`EOR`, so
 those become a value plus `TST Wd, Wd`; the 64-bit shift inside a shifted logical
@@ -397,6 +424,15 @@ Four x86 rules do not match ARM's, and each costs at most one instruction:
   (which made it the negation of LS), and the corpus case for LS is what caught it;
   the branch sweep in `test_jit_x64` now runs all fifteen conditions against all
   sixteen flag words, in both directions.
+* **The exit address carries the state.**  A block hands back one address, and
+  bit 0 of it says which instruction set the machine continues in - the same
+  convention an ARM `bx`/`blx` target uses, which is why the two rules are one.
+  A Thumb block's fall-through and targets set it; a straight-line exit out of an
+  ARM block leaves it clear; and the dispatcher derives the state *and* the
+  masking from it (bit 0 for a Thumb target, bits[1:0] for an ARM one, which is
+  the architecture's own rule for a register branch).  Forgetting the bit on a
+  Thumb fall-through clears CPSR.T and turns the next instruction into an ARM
+  word - the failure looks like nothing at all until the pc runs away.
 * **A bail is not the end of the block.**  Every guard around a translated access
   jumps to a cold path that reads the flags back out of a `pushfq` (when the guest
   flags are live there), writes the registers the block had modified, stores the
@@ -417,11 +453,15 @@ load/store form over the addresses that matter (the window's edge, a page
 boundary, an unaligned address, and one outside RAM, where the block has to bail),
 compares all fifteen branch conditions against all sixteen flag words plus the
 branch shapes that are not a condition (`BL`, `BX`/`BLX Rm` to both states,
-`BLX #imm`, a backwards branch), pins the two dispatcher rules that let a block
-own an access at all (no entry with SCTLR.A set; a store into a code page leaves
-through the interpreter), then compares thousands of random multi-instruction
-blocks and a register-pressure block against the interpreter instruction by
-instruction - registers, R13/R14, CPSR, the resume pc, the *cycle count* and the
+`BLX #imm`, a backwards branch), runs the same comparison over a Thumb program
+list (halfword addressing and pc bias, SP-relative and literal accesses, both
+directions of `B<cond>`, `bx`/`blx` into each state, the long-branch pair split
+between a block and the interpreter, and an ARM -> Thumb -> ARM round trip), pins
+the two dispatcher rules that let a block own an access at all (no entry with
+SCTLR.A set; a store into a code page leaves through the interpreter) and the three
+Thumb shapes that must not translate (the long-branch setup half, SP-relative ADDs,
+a multiply), then compares thousands of random multi-instruction blocks and a
+register-pressure block against the interpreter instruction by instruction - registers, R13/R14, CPSR, the resume pc, the *cycle count* and the
 whole 1 MiB of RAM.  A disagreement prints the guest words, the entry state and
 the differing register, which is how the bugs this section describes were found -
 the sweep found the rotate/MVN-immediate rules and the HI/LS condition, and the

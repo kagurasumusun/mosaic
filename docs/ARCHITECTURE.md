@@ -176,10 +176,13 @@ and a backend sit three things that are backend-independent:
   each word as it goes (identity-mapped RAM straight out of the array, otherwise
   the TLB exactly as `prepare_fetch` does), and gives up *before* the first
   instruction it cannot translate.  What a block may contain is data processing,
-  the LDR/STR families, and one terminating branch; what it deliberately leaves to
-  the interpreter is listed in `docs/ISA-COVERAGE.md`, and the short version is
-  "anything predicated, anything whose flags the host cannot reproduce, and any
-  access whose verdict depends on the machine it was translated for".
+  the LDR/STR families, and one terminating branch, in *either* instruction set
+  (the front end is handed the state the machine is in and decodes with
+  `decode_arm` or `decode_thumb`; the IR it produces is the same either way); what
+  it deliberately leaves to the interpreter is listed in `docs/ISA-COVERAGE.md`,
+  and the short version is "anything predicated, anything whose flags the host
+  cannot reproduce, and any access whose verdict depends on the machine it was
+  translated for".
 
 A block owns its accesses, so it needs a way to change its mind.  `JitBlock::meta`
 and the shadow buffer carry the entry handoff (the EFLAGS image, the RAM window, the
@@ -189,9 +192,11 @@ code-page map, the fast-memory verdict); the *exit* is a three-way protocol that
 and the address to resume at - the interpreter then performs that one instruction,
 which is what keeps the SMC and abort paths in one place), and a branch, whose taken
 or not-taken outcome feeds `stats.branch_taken`/`branch_not`.  Bit 0 of the address a
-block leaves in `SH_R15` is the instruction-set bit for a `bx`/`blx`, so the
-dispatcher switches state on the way out - a translated block may *enter Thumb*, it
-just never runs a Thumb instruction itself.
+block leaves in `SH_R15` is the instruction-set bit, the same one a `bx`/`blx`
+target carries, so the dispatcher switches state on the way out *and* masks the
+address the way that state requires (bit 0 for Thumb, bits[1:0] for ARM) - which is
+what lets a block of one state hand the machine to the other, and is how a Thumb
+block returns to ARM through a `BLX`.
 
 A backend only ever sees the IR. Two exist, and the host picks one
 (`BRAIN_JIT_BACKEND` in `jit.h`): AArch64 (`emit_arm64.h`), and x86-64
@@ -209,7 +214,8 @@ comparing: `test_instr --jit` replays the whole ISA corpus through the cache, an
 `tests/test_jit_x64.cpp` executes emitted blocks in-process against the
 interpreter (every data-processing opcode over a spread of operands, entry flag
 sets and rotated immediates; every load/store form over the addresses that matter;
-all fifteen branch conditions against all sixteen flag words; the two dispatcher
+all fifteen branch conditions against all sixteen flag words; a Thumb program list,
+its own branch sweep, and the state transitions in and out of it; the two dispatcher
 rules that gate translated accesses; thousands of random blocks and a
 register-pressure block) — plus a shadow-buffer sentinel test, because the
 offsets the generated code hard-codes cannot be checked by the compiler.
@@ -226,7 +232,10 @@ instruction that is architecturally allowed to change the state: `BX`/`BLX`, the
 Thumb long-branch pair, `BLX` with an immediate, and a load into R15.
 
 Branch target masking follows the state, not the encoding: a Thumb target is masked
-to 2 bytes, an ARM target to 4.  `BLX` with an immediate takes its offset from the
+to 2 bytes, an ARM target to 4.  A *translated* branch follows the same rule, and the
+address a block leaves behind carries the state in bit 0 so the dispatcher can apply
+it: a Thumb block's fall-through and its branch targets have the bit set, and only a
+`BLX` leaving Thumb for ARM clears it.  `BLX` with an immediate takes its offset from the
 A32 A2 layout, `imm32 = SignExtend(imm24 : H : 0)` over insn[23:0] with H =
 insn[24]: the offset is an *even* number rather than a multiple of 4, so insn[0] is
 part of the displacement (it contributes 4, not a fixed 1) and every `cond = 1111`
