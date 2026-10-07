@@ -57,17 +57,30 @@ bool Machine::init(const MachineConfig& cfg) {
     return false;
   }
   if (!build_cpu(cfg_.cpu_id)) return false;
+  /* The rest of the machine, by id.  A device or a monitor that fails to build
+   * fails the machine: a board that silently lacks a peripheral is worse than
+   * one that does not start. */
+  for (u32 i = 0; i < cfg_.device_count; ++i)
+    if (!add_device_by_id(cfg_.devices[i])) return false;
+  for (u32 i = 0; i < cfg_.monitor_count; ++i)
+    if (!add_monitor_by_id(cfg_.monitors[i].id)) return false;
   reset();
   return true;
 }
 
 bool Machine::reinit() {
   /* A full rebuild: the CPU goes first (it holds pointers into the bus), then
-   * the address space is released and rebuilt from the same configuration.  The
-   * devices are re-attached by their owners, so only the pointers are dropped
-   * here - the objects outlive the machine, as `add_device` requires. */
+   * the address space is released and rebuilt from the same configuration.  A
+   * device the *caller* owns is re-attached by its owner, so only the pointers
+   * are dropped here - those objects outlive the machine, as `add_device`
+   * requires.  One the machine created from a module id is released with it,
+   * window and all, because `init` is about to build it again from the same
+   * spec. */
   cpu_.reset();
   devices_.clear();
+  monitors_.clear();
+  owned_devices_.clear();
+  owned_monitors_.clear();
   bus_.reset();
   return init(cfg_);
 }
@@ -120,6 +133,7 @@ void Machine::reset() {
 }
 
 bool Machine::add_device(Device& d) {
+  d.on_attach(*this);
   if (!d.attach(bus_)) {
     err_ = std::string("device '") + d.info().id +
            "' does not fit at 0x" + std::to_string(d.base());
@@ -127,6 +141,27 @@ bool Machine::add_device(Device& d) {
   }
   devices_.push_back(&d);
   return true;
+}
+
+Device* Machine::add_device_by_id(const char* id, u32 base, bool has_base) {
+  const DeviceModule* mod = ModuleRegistry::instance().device_by_id(id);
+  if (!mod) {
+    err_ = std::string("no device module named '") + (id ? id : "") +
+           "' (have: " + ModuleRegistry::instance().ids(ModuleKind::Device) + ")";
+    return nullptr;
+  }
+  std::unique_ptr<Device> d = mod->create(has_base ? base : mod->default_base());
+  if (!d) {
+    err_ = std::string("device module '") + id + "' created nothing";
+    return nullptr;
+  }
+  Device* raw = d.get();
+  if (!add_device(*raw)) {
+    err_ = std::string("device '") + raw->info().id + "': " + err_;
+    return nullptr;          /* add_device named the window it could not take */
+  }
+  owned_devices_.push_back(std::move(d));
+  return raw;
 }
 
 void Machine::end_slice(u64 retired) {
@@ -170,7 +205,39 @@ void Machine::stop() {
   if (cpu_) cpu_->request_stop();
 }
 
+Device* Machine::device_by_id(const char* id) {
+  if (!id || !*id) return nullptr;
+  for (Device* d : devices_)
+    if (d->info().id && !std::strcmp(d->info().id, id)) return d;
+  return nullptr;
+}
+
 void Machine::add_monitor(Monitor& m) { monitors_.push_back(&m); }
+
+Monitor* Machine::add_monitor_by_id(const char* id) {
+  const MonitorModule* mod = ModuleRegistry::instance().monitor_by_id(id);
+  if (!mod) {
+    err_ = std::string("no monitor module named '") + (id ? id : "") +
+           "' (have: " + ModuleRegistry::instance().ids(ModuleKind::Monitor) + ")";
+    return nullptr;
+  }
+  std::unique_ptr<Monitor> m = mod->create();
+  if (!m) {
+    err_ = std::string("monitor module '") + id + "' created nothing";
+    return nullptr;
+  }
+  Monitor* raw = m.get();
+  monitors_.push_back(raw);
+  owned_monitors_.push_back(std::move(m));
+  return raw;
+}
+
+Monitor* Machine::monitor_by_id(const char* id) {
+  if (!id || !*id) return nullptr;
+  for (Monitor* m : monitors_)
+    if (m->info().id && !std::strcmp(m->info().id, id)) return m;
+  return nullptr;
+}
 
 /* --------------------------------------------------------------- images -- */
 

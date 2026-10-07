@@ -73,13 +73,83 @@ const Loader* ModuleRegistry::loader_by_probe(const void* data, u64 size) const 
 
 u32 ModuleRegistry::loader_count() const { return nloaders_; }
 
-u32 ModuleRegistry::count() const { return ncpus_ + nloaders_; }
+void ModuleRegistry::add_device(const DeviceModule* m) {
+  if (!m || ndevices_ >= kMaxDevices) return;
+  if (device_by_id(m->info().id)) return;
+  devices_[ndevices_++] = m;
+}
+
+const DeviceModule* ModuleRegistry::device_by_id(const char* id) const {
+  if (!id || !*id) return nullptr;
+  for (u32 i = 0; i < ndevices_; ++i)
+    if (devices_[i]->info().id && !std::strcmp(devices_[i]->info().id, id))
+      return devices_[i];
+  return nullptr;
+}
+
+const DeviceModule* ModuleRegistry::device_by_index(u32 i) const {
+  return i < ndevices_ ? devices_[i] : nullptr;
+}
+
+u32 ModuleRegistry::device_count() const { return ndevices_; }
+
+void ModuleRegistry::add_monitor(const MonitorModule* m) {
+  if (!m || nmonitors_ >= kMaxMonitors) return;
+  if (monitor_by_id(m->info().id)) return;
+  monitors_[nmonitors_++] = m;
+}
+
+const MonitorModule* ModuleRegistry::monitor_by_id(const char* id) const {
+  if (!id || !*id) return nullptr;
+  for (u32 i = 0; i < nmonitors_; ++i)
+    if (monitors_[i]->info().id && !std::strcmp(monitors_[i]->info().id, id))
+      return monitors_[i];
+  return nullptr;
+}
+
+const MonitorModule* ModuleRegistry::monitor_by_index(u32 i) const {
+  return i < nmonitors_ ? monitors_[i] : nullptr;
+}
+
+u32 ModuleRegistry::monitor_count() const { return nmonitors_; }
+
+u32 ModuleRegistry::count() const {
+  return ncpus_ + nloaders_ + ndevices_ + nmonitors_;
+}
 
 const ModuleInfo* ModuleRegistry::info(u32 i) const {
   if (i < ncpus_) return &cpus_[i]->info();
   i -= ncpus_;
   if (i < nloaders_) return &loaders_[i]->info();
+  i -= nloaders_;
+  if (i < ndevices_) return &devices_[i]->info();
+  i -= ndevices_;
+  if (i < nmonitors_) return &monitors_[i]->info();
   return nullptr;
+}
+
+const char* ModuleRegistry::ids(ModuleKind kind) const {
+  char* out = idbuf_;
+  char* end = idbuf_ + sizeof(idbuf_) - 1;
+  u32 n = 0;
+  const ModuleInfo* mi = nullptr;
+  auto append = [&](const ModuleInfo& m) {
+    if (out >= end) return;
+    if (n++) {
+      *out++ = ',';
+      *out++ = ' ';
+      *out++ = ' ';
+    }
+    for (const char* p = m.id; *p && out < end; ++p) *out++ = *p;
+  };
+  for (u32 i = 0; (mi = info(i)) != nullptr; ++i)
+    if (mi->kind == kind) append(*mi);
+  if (!n) {
+    const char* none = "(none)";
+    for (const char* p = none; *p && out < end; ++p) *out++ = *p;
+  }
+  *out = 0;
+  return idbuf_;
 }
 
 }  // namespace brain

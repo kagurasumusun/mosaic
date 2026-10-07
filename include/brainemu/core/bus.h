@@ -50,6 +50,31 @@ struct BusRegion {
    * buffer (map_host).  Only the bus's own memory is ever released - which is
    * what makes it safe to reset a bus that has a board's ROM mapped into it. */
   bool owned = false;
+  /* The window the caller asked for, before page rounding (0 = `size`).  A
+   * device that answers in four bytes still claims its whole page when the page
+   * is free - that is what keeps a stray access next to it from being an abort -
+   * but the exact window is what decides whether it can share the page. */
+  u32 win_size = 0;
+
+  /* Sharing a 4 KiB page.  Real peripheral maps put several registers in one
+   * page (the i.MX28's test-port block is four words in the 0x10000000 page), so
+   * a device may map into a page another device already owns as long as the byte
+   * windows do not overlap.  The page's region then becomes a *router*: it
+   * keeps the windows in page order, its own `read`/`write` become the routing
+   * functions, and an access outside every window still reaches the first
+   * device - which owns the page, exactly as it would alone.  A page with one
+   * device has `nsubs == 0` and its own callbacks, so the common case costs
+   * nothing. */
+  struct Sub {
+    u32 base = 0;
+    u32 size = 0;
+    void* user = nullptr;
+    BusReadFn read = nullptr;
+    BusWriteFn write = nullptr;
+  };
+  static constexpr u32 kMaxSubs = 8;
+  Sub subs[kMaxSubs];
+  u32 nsubs = 0;
 };
 
 enum PageFlag : u32 {
@@ -89,7 +114,11 @@ class Bus {
   bool map_ram(u32 base, u32 size, const char* name);
   /* Adopt an existing host buffer as RAM/ROM. */
   bool map_host(u32 base, u32 size, u8* host, u32 flags, const char* name);
-  /* Map a device (MMIO) region. */
+  /* Map a device (MMIO) region.  `size` is the window the device answers for; a
+   * window with no rival claims its whole covering page(s), and a second device
+   * may map into a page the first already holds as long as the two windows do
+   * not overlap (see BusRegion: the region becomes a router).  Unmapping such a
+   * page takes the whole group with it. */
   bool map_device(u32 base, u32 size, BusReadFn r, BusWriteFn w, void* user,
                   const char* name);
   bool unmap(u32 base, u32 size);
@@ -186,6 +215,8 @@ class Bus {
   bool map_backing(u32 base, u32 size, u8* host, u32 flags, const char* name,
                    bool owned);
   static void release_region(BusRegion& r);
+  static u32 route_read(void* user, u32 addr, u32 size);
+  static void route_write(void* user, u32 addr, u32 val, u32 size);
 
   PageDesc* l1_[1 << kL1Bits];
   /* A fixed array, not a vector: PageDesc keeps raw pointers to its region and

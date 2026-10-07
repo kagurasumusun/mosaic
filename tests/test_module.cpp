@@ -586,6 +586,197 @@ void test_devices() {
   CHECK(!bus.read_byte(0x0, &b));                /* ...and so is the RAM     */
 }
 
+/* The two device modules the build ships, and the page they share.  This is the
+ * test of the *kind*: the registry hands out factories, the machine builds from
+ * an id, and the bus lets two windows live in one 4 KiB page - which is what a
+ * real peripheral map looks like (the i.MX28's test ports are four words inside
+ * the 0x10000000 page). */
+void test_device_modules() {
+  std::printf("[device modules]\n");
+  const ModuleRegistry& reg = ModuleRegistry::instance();
+  const DeviceModule* exit = reg.device_by_id("exit");
+  const DeviceModule* console = reg.device_by_id("console");
+  CHECK(exit != nullptr && console != nullptr);
+  CHECK(exit && exit->info().kind == ModuleKind::Device);
+  CHECK(exit && std::strcmp(module_kind_name(exit->info().kind), "device") == 0);
+  CHECK(exit && exit->default_base() == 0x10000010u);
+  CHECK(console && console->default_base() == 0x10000000u);
+  CHECK(reg.device_by_id("no-such-device") == nullptr);
+  CHECK(reg.device_by_id(nullptr) == nullptr);
+
+  /* Every registered kind is listed, and the ids of a kind are joined for an
+   * error message. */
+  bool saw_exit = false, saw_console = false;
+  for (u32 i = 0; i < reg.count(); ++i) {
+    const ModuleInfo* mi = reg.info(i);
+    if (!mi) continue;
+    if (mi->kind == ModuleKind::Device && !std::strcmp(mi->id, "exit")) saw_exit = true;
+    if (mi->kind == ModuleKind::Device && !std::strcmp(mi->id, "console")) saw_console = true;
+  }
+  CHECK(saw_exit && saw_console);
+  CHECK(std::strstr(reg.ids(ModuleKind::Device), "exit") != nullptr);
+  CHECK(std::strstr(reg.ids(ModuleKind::Device), "console") != nullptr);
+  CHECK(std::strcmp(reg.ids(ModuleKind::Cpu), "") != 0);
+
+  /* A machine built by id: both modules attach, in one page, and the exit port
+   * stops the run when the guest writes to it. */
+  MachineConfig c;
+  c.ram_size = 1u << 16;
+  c.cpu_id = "toy8";
+  c.add_device(ModuleSpec("console"));
+  c.add_device(ModuleSpec("exit"));
+  Machine m;
+  CHECK(m.init(c));
+  CHECK(m.device_count() == 2);
+  Device* con = m.device_by_id("console");
+  Device* ex = m.device_by_id("exit");
+  CHECK(con && std::strcmp(con->info().name, "test console") == 0);
+  CHECK(ex && ex->base() == 0x10000010u);
+  CHECK(con && con->base() == 0x10000000u);
+  CHECK(std::strcmp(m.last_error(), "no error") == 0);
+
+  /* toy8 reaches the bus with STA/OUT: `STA (X)` writes through it.  Whatever
+   * lands on the console device is text; the exit port's fields say what the
+   * guest stored and that the run stopped. */
+  CHECK(m.bus().write_byte(0x10000000, 'h'));
+  CHECK(m.bus().write_byte(0x10000000, 'i'));
+  CHECK(std::strcmp(static_cast<ConsoleDevice*>(con)->log(), "hi") == 0);
+  CHECK(m.bus().write_byte(0x10000010, 3));
+  CHECK(m.bus().write_byte(0x10000011, 0));
+  CHECK(m.run_insns(1) == 0);      /* the stop was requested by the write   */
+
+  /* The fields are how a tool reads a device it knows nothing about. */
+  CHECK(ex->field_count() == 3);
+  CHECK(std::strcmp(ex->field_name(0), "code") == 0);
+  CHECK(std::strcmp(ex->field_value(0), "0x00000003") == 0);
+  CHECK(std::strcmp(ex->field_value(2), "1") == 0);          /* one write  */
+  CHECK(con->field_count() == 2);
+  CHECK(std::strcmp(con->field_name(0), "bytes") == 0);
+  CHECK(std::strcmp(con->field_value(0), "2") == 0);
+
+  /* An id nothing registers fails, and the message says what does. */
+  Machine m2;
+  MachineConfig c2;
+  c2.ram_size = 1u << 16;
+  c2.cpu_id = "toy8";
+  CHECK(m2.init(c2));
+  CHECK(m2.add_device_by_id("nope", 0, true) == nullptr);
+  CHECK(std::strstr(m2.last_error(), "no device module named 'nope'") != nullptr);
+  CHECK(std::strstr(m2.last_error(), "exit") != nullptr);
+  CHECK(m2.add_monitor_by_id("nope") == nullptr);
+  CHECK(std::strstr(m2.last_error(), "no monitor module named 'nope'") != nullptr);
+}
+
+/* Sharing a page: two windows in 0x10000000, disjoint, plus the two ways it is
+ * refused (an overlap, and a window that would need a second page). */
+void test_device_page_sharing() {
+  std::printf("[device page sharing]\n");
+  Bus bus;
+  CHECK(bus.map_ram(0, 0x4000u, "ram"));
+  u8 seen = 0;
+  FuncDevice lo("lo", "lo", 0x10000000, 4,
+                [](void* u, u32, u32) -> u32 { return *(u8*)u; },
+                [](void* u, u32, u32 v, u32) { *(u8*)u = (u8)v; }, &seen);
+  CHECK(lo.attach(bus));
+  CHECK(bus.write_byte(0x10000000, 0x11) && seen == 0x11);
+
+  /* A second window in the same page is fine as long as it does not overlap. */
+  u8 other = 0;
+  FuncDevice hi("hi", "hi", 0x10000010, 4,
+                [](void* u, u32, u32) -> u32 { return *(u8*)u; },
+                [](void* u, u32, u32 v, u32) { *(u8*)u = (u8)v; }, &other);
+  CHECK(hi.attach(bus));
+  CHECK(bus.write_byte(0x10000010, 0x22) && other == 0x22);
+  CHECK(seen == 0x11);                       /* the first device was untouched */
+  u8 b = 0;
+  CHECK(bus.read_byte(0x10000000, &b) && b == 0x11);
+  CHECK(bus.read_byte(0x10000010, &b) && b == 0x22);
+
+  /* An address in the page that belongs to no window still reaches the device
+   * that owns the page - which is what it sees when it is alone. */
+  seen = 0;
+  CHECK(bus.read_byte(0x10000004, &b));
+  CHECK(seen == 0);
+
+  /* Overlapping the first window is refused, and so is a window wide enough to
+   * need a second page: sharing is one page, two or more windows. */
+  FuncDevice clash("clash", "clash", 0x10000002, 4,
+                   [](void*, u32, u32) -> u32 { return 0; },
+                   [](void*, u32, u32, u32) {}, nullptr);
+  CHECK(!clash.attach(bus));
+  FuncDevice wide("wide", "wide", 0x10000FF0, 0x20,
+                  [](void*, u32, u32) -> u32 { return 0; },
+                  [](void*, u32, u32, u32) {}, nullptr);
+  CHECK(!wide.attach(bus));
+
+  /* A shared page is one region and goes as one when it is unmapped. */
+  CHECK(bus.unmap(0x10000000, 4));
+  CHECK(!bus.read_byte(0x10000010, &b));
+  CHECK(!bus.read_byte(0x10000000, &b));
+}
+
+void test_monitor_modules() {
+  std::printf("[monitor modules]\n");
+  const ModuleRegistry& reg = ModuleRegistry::instance();
+  CHECK(reg.monitor_by_id("no-such-monitor") == nullptr);
+  Machine m;
+  MachineConfig c;
+  c.ram_size = 1u << 16;
+  c.cpu_id = "toy8";
+  CHECK(m.init(c));
+
+  /* A monitor module registered inside a test - the point being that the core
+   * needs no line of code to know about it, only a factory.  It counts slices
+   * and describes itself through fields. */
+  struct SliceCounter : Monitor {
+    const ModuleInfo& info() const override {
+      static const ModuleInfo mi = {"slices", "slice counter", ModuleKind::Monitor,
+                                    "counts the slices the run loop reports"};
+      return mi;
+    }
+    void on_slice(Machine&, u64 retired) override {
+      ++slices;
+      retired_total += retired;
+    }
+    u32 field_count() const override { return 2; }
+    const char* field_name(u32 i) const override {
+      return i == 0 ? "slices" : "retired";
+    }
+    const char* field_value(u32 i) const override {
+      static char n[2][24];
+      if (i == 0) std::snprintf(n[0], sizeof(n[0]), "%llu", (unsigned long long)slices);
+      else std::snprintf(n[1], sizeof(n[1]), "%llu", (unsigned long long)retired_total);
+      return n[i];
+    }
+    u64 slices = 0, retired_total = 0;
+  };
+  struct CounterModule : MonitorModule {
+    const ModuleInfo& info() const override {
+      static const ModuleInfo mi = {"slices", "slice counter", ModuleKind::Monitor,
+                                    "counts the slices the run loop reports"};
+      return mi;
+    }
+    std::unique_ptr<Monitor> create() const override {
+      return std::unique_ptr<Monitor>(new SliceCounter());
+    }
+  };
+  static const CounterModule mod;
+  ModuleRegistry::instance().add_monitor(&mod);
+
+  /* By id, through the machine: built, told about the run, readable through the
+   * self-description the core only forwards. */
+  const u8 prog[] = {0x01, 0x07, 0x07, 0x07, 0x0D, 0x00, 0x1F};
+  CHECK(m.load_raw(prog, sizeof prog, 0x100) == 0);
+  Monitor* mon = m.add_monitor_by_id("slices");
+  CHECK(mon != nullptr);
+  CHECK(m.monitor_count() == 1);
+  CHECK(m.monitor_by_id("slices") == mon);
+  CHECK(m.run_insns(3) == 3);
+  CHECK(std::strcmp(mon->field_value(0), "1") == 0);      /* one slice   */
+  CHECK(std::strcmp(mon->field_value(1), "3") == 0);      /* three insns */
+  CHECK(std::strcmp(mon->info().id, "slices") == 0);
+}
+
 void test_loader_registry() {
   std::printf("[loader module]\n");
   Bus bus;
@@ -614,6 +805,9 @@ int main() {
   test_fake_cpu_module();
   test_monitors();
   test_devices();
+  test_device_modules();
+  test_device_page_sharing();
+  test_monitor_modules();
   test_loader_registry();
   if (g_failed) {
     std::printf("FAIL: %d/%d checks passed\n", g_checks - g_failed, g_checks);

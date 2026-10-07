@@ -8,7 +8,10 @@
  * drive one whose registers it has never heard of.
  *
  * The default CPU is this build's primary one (the ARM926EJ-S); `--list-cpus`
- * prints what the build contains.
+ * prints what the build contains, and `--device`/`--monitor` add the rest of the
+ * machine by id.  Nothing here knows what a device is beyond its fields: the
+ * `--stats` print asks each of them to describe itself, which is what makes a
+ * peripheral the core has never heard of show up in the output.
  */
 #include <brainemu/brainemu.h>
 
@@ -42,21 +45,21 @@ struct Options {
   uint32_t ram_size = 32u << 20;
   uint32_t exit_port = 0;
   bool have_exit_port = false;
+  std::vector<std::string> devices;   /* --device ID[@BASE]                    */
+  std::vector<std::string> monitors;  /* --monitor ID                          */
   uint32_t dump_addr = 0, dump_len = 0;
   bool have_dump = false;
 };
 
-/* The exit device: a write to it stops the machine and becomes the process
- * exit status.  A guest that wants to report success ends with
- * `STR Rn, [port]`, which is all a functional model needs to terminate. */
+/* The tool's own `--exit-port` callback, for a caller that wants the port at an
+ * address the *exit module* does not take.  `--exit` is the module; this is the
+ * one-line function-device spelling of the same thing, and both end the run. */
 brain_emu_t* g_emu = nullptr;
 uint32_t g_exit_status = 0;
 
 uint32_t exit_read(void*, uint32_t, uint32_t) { return g_exit_status; }
 void exit_write(void*, uint32_t, uint32_t value, uint32_t) {
   g_exit_status = value;
-  if (getenv("BRAINEMU_DEBUG"))
-    std::fprintf(stderr, "[tool] guest wrote 0x%08x, stop=%d\n", value, g_emu != nullptr);
   if (g_emu) brain_stop(g_emu);
 }
 
@@ -111,8 +114,14 @@ void usage(const char* argv0) {
       "  --steps N        retire at most N instructions (default 1000000)\n"
       "  --cycles N       stop after N cycles instead of at --steps\n"
       "  --ram-mb N       size of the RAM window (default 32)\n"
-      "  --exit-port A    map a device at A; a write there stops the run and\n"
-      "                   its value becomes this process' exit status\n"
+      "  --device ID[@A]  build a device module into the machine, at A or at\n"
+      "                   the module's own default address (repeatable;\n"
+      "                   --list-modules names them)\n"
+      "  --monitor ID     tell a monitor module about the run (repeatable)\n"
+      "  --exit           shorthand for --device exit and its status as this\n"
+      "                   process' exit code\n"
+      "  --exit-port A    map a callback device at A; a write there stops the\n"
+      "                   run and its value becomes this process' status\n"
       "  --dump A:N       after the run, print N bytes at address A\n"
       "  --regs           after the run, print R0-R15, CPSR and the flags\n"
       "  --stats          after the run, print the counters\n"
@@ -147,6 +156,9 @@ bool parse_args(int argc, char** argv, Options* o) {
     else if (a == "--cycles") { o->cycles = parse_num64(take("--cycles")); ++i; }
     else if (a == "--ram-mb") { o->ram_size = parse_num(take("--ram-mb")) << 20; ++i; }
     else if (a == "--exit-port") { o->exit_port = parse_num(take("--exit-port")); o->have_exit_port = true; ++i; }
+    else if (a == "--exit") o->devices.push_back("exit");
+    else if (a == "--device") { o->devices.push_back(take("--device")); ++i; }
+    else if (a == "--monitor") { o->monitors.push_back(take("--monitor")); ++i; }
     else if (a == "--dump") {
       const char* s = take("--dump");
       const char* colon = std::strchr(s, ':');
@@ -314,6 +326,27 @@ int main(int argc, char** argv) {
     }
     std::printf("exit port at 0x%08x\n", o.exit_port);
   }
+  /* The modules the caller asked for, by id: "ID" or "ID@ADDRESS".  A device
+   * module knows its own default address, so the address is optional - which is
+   * the difference between `--exit` and `--exit-port A`. */
+  for (const std::string& spec : o.devices) {
+    const size_t at = spec.find('@');
+    const std::string id = spec.substr(0, at);
+    const bool has_base = at != std::string::npos;
+    const uint32_t base = has_base ? parse_num(spec.substr(at + 1).c_str()) : 0;
+    if (brain_add_device_module(e, id.c_str(), base, has_base ? 1 : 0)) {
+      std::fprintf(stderr, "brainemu: %s\n", brain_last_error(e));
+      brain_emu_destroy(e);
+      return 2;
+    }
+  }
+  for (const std::string& id : o.monitors) {
+    if (brain_add_monitor_module(e, id.c_str())) {
+      std::fprintf(stderr, "brainemu: %s\n", brain_last_error(e));
+      brain_emu_destroy(e);
+      return 2;
+    }
+  }
 
   const uint64_t retired =
       o.cycles ? brain_run_cycles(e, o.cycles) : brain_run_insns(e, o.steps);
@@ -353,9 +386,35 @@ int main(int argc, char** argv) {
       if (s.exc[i])
         std::printf("  exc %-8s %llu\n", brain_exception_name(i),
                     (unsigned long long)s.exc[i]);
+    /* Each device and monitor describes itself; the tool prints the names and
+     * values it is handed and knows nothing about what they mean. */
+    for (uint32_t i = 0; i < brain_device_count(e); ++i) {
+      std::printf("  device %s @0x%08x", brain_device_id(e, i),
+                  brain_device_base(e, i));
+      for (uint32_t f = 0; f < brain_device_field_count(e, i); ++f)
+        std::printf(" %s=%s", brain_device_field_name(e, i, f),
+                    brain_device_field_value(e, i, f));
+      std::printf("\n");
+    }
+    for (uint32_t i = 0; i < brain_monitor_count(e); ++i) {
+      std::printf("  monitor %s", brain_monitor_id(e, i));
+      for (uint32_t f = 0; f < brain_monitor_field_count(e, i); ++f)
+        std::printf(" %s=%s", brain_monitor_field_name(e, i, f),
+                    brain_monitor_field_value(e, i, f));
+      std::printf("\n");
+    }
   }
 
-  const int status = o.have_exit_port ? (int)g_exit_status : 0;
+  /* An exit port the *device module* built reports its code through its fields;
+   * the tool reads "status" out of them, which is the whole point of the field
+   * mechanism: the guest's exit path is a peripheral like any other. */
+  int status = o.have_exit_port ? (int)g_exit_status : 0;
+  for (uint32_t i = 0; i < brain_device_count(e); ++i) {
+    if (std::strcmp(brain_device_id(e, i), "exit")) continue;
+    for (uint32_t f = 0; f < brain_device_field_count(e, i); ++f)
+      if (!std::strcmp(brain_device_field_name(e, i, f), "status"))
+        status = std::atoi(brain_device_field_value(e, i, f));
+  }
   brain_emu_destroy(e);
   return status;
 }

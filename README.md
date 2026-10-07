@@ -12,9 +12,12 @@ asserted.
 Two execution paths, both live: the interpreter, and a JIT that runs *this*
 host's code (x86-64 and AArch64 backends), selected per machine. Nothing about
 the core is ARM-specific - the CPU is a module (`arm926`), the loaders are
-modules (`elf32`, `raw`), devices are modules, and `src/modules/toy8/` is a
-complete second CPU that exists to keep that claim honest. `docs/MODULES.md` is
-the guide to the split.
+modules (`elf32`, `raw`), devices and monitors are modules too (`console`,
+`exit`, and any the tests declare), and `src/modules/toy8/` is a complete second
+CPU that exists to keep that claim honest. A machine is assembled out of *ids*
+(`--cpu`, `--device`, `--monitor`, or the same fields in `MachineConfig` /
+`brain_config_t`), so a build can contain a peripheral the core has never heard
+of. `docs/MODULES.md` is the guide to the split.
 
 ## Build
 
@@ -40,6 +43,9 @@ build/brainemu --raw --addr 0x8000 --steps 1000 --regs program.bin
 # a statically linked armel ELF, with the guest deciding when to stop
 build/brainemu --elf --exit-port 0x80000000 --stats prog.elf; echo $?
 
+# a bare-metal image that prints and then decides when to stop
+build/brainemu --device console --exit prog.bin; echo $?
+
 # what CPUs this build contains, and one that is not an ARM
 build/brainemu --list-cpus
 build/brainemu --cpu toy8 --regs program.t8
@@ -50,10 +56,17 @@ machine around another CPU module, and `--cpu-opt K=V` hands a module an option
 the generic config does not carry. A `--regs` dump names its registers from the
 module's own description, so it works for a CPU whose PC is not register 15.
 
-`--exit-port A` maps a one-page device at `A`: a guest store there ends the run
-and the value written becomes the tool's exit status, which is all a test image
-needs to report success (see `tests/test_unit.cpp` for the encoding). A guest
-that ends with `B .` and no exit port simply runs until `--steps` runs out.
+`--device ID[@A]` builds a device module into the machine (at `A`, or at the
+address the module says is its default), `--monitor ID` tells a monitor module
+about the run, and `--exit` is the shorthand for the `exit` module - a guest
+store there ends the run and the value becomes the tool's exit status, which is
+all a test image needs to report success. `--exit-port A` is the older spelling
+of the same thing for a caller that wants the port somewhere else: it maps a
+callback device at `A`. A guest that ends with `B .` and no exit port simply
+runs until `--steps` runs out. `--stats` prints what each device and monitor has
+to say about itself (`--device console --exit` gives `bytes=4 log=Hi!` and
+`code=0x00000007 status=7 writes=1`), which is how a peripheral the tool has
+never heard of still reports in.
 
 ## Tests
 
@@ -72,8 +85,10 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
   and the counters.
 * `tests/test_module.cpp` — the core as a core: the module registry, the second
   CPU module (toy8) driven by the machine and by the C API, a CPU module
-  declared inside the test file, monitors, the device adapters, and the option
-  and error paths. If this passes, no part of `src/core` needs an ARM to run.
+  declared inside the test file, monitors, the device adapters, the device and
+  monitor *modules* (built by id, sharing a page, describing themselves), and the
+  option and error paths. If this passes, no part of `src/core` needs an ARM to
+  run.
 * `tests/test_loader.cpp` — the loaders as modules, over a bare `Bus` with no
   CPU: raw placement, ELF32 acceptance and every refusal, a loader declared
   inside the test, and the all-or-nothing promise (a refused image leaves memory
@@ -100,6 +115,8 @@ src/modules/*/        the modules this build contains
   arm926/             the ARM926EJ-S: ARM/Thumb, CP15 + MMU + TLB, interpreter
   arm926/jit/         its block cache, IR and host backends
   toy8/               a second CPU module: the worked example of the interface
+  console/            a device module: bytes written there become text
+  exit/               a device module: a store there stops the machine
 src/loader/           the built-in image formats (elf32, raw)
 src/api.cpp           the C API, implemented against the machine
 tools/                brainemu (runner), bench (throughput), jit_emit (encoder)
@@ -114,8 +131,11 @@ LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES
 * One core, modules: `Machine` (bus + one CPU + devices + run loop) over a module
   registry; `CpuCore` is the whole CPU contract and is only called at slice
   boundaries, so a module's inner loop stays non-virtual and monomorphic. Two CPU
-  modules ship (`arm926`, `toy8`) and the loaders (`elf32`, `raw`) are modules
-  too. `docs/MODULES.md` documents the contract and how to add a processor.
+  modules ship (`arm926`, `toy8`), the loaders (`elf32`, `raw`) are modules, and
+  so are the two peripherals the core used to build itself, the console and the
+  exit port - a machine takes them by id, and each reports its state through
+  name/value fields the core only forwards. `docs/MODULES.md` documents the
+  contract and how to add a processor, a device or a monitor.
 * ARM and Thumb state, ARMv5TEJ data processing, loads/stores (including the
   halfword, signed, dual and swap families), multiply, CLZ, MRS/MSR, branch and
   coprocessor groups, with the exceptions, banked registers, CP15 c1 (Table

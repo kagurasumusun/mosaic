@@ -22,6 +22,7 @@
 
 #include "brainemu/core/machine.h"
 #include "brainemu/cpu/cpu.h"
+#include "brainemu/core/monitor.h"
 #include "brainemu/device/device.h"
 #include "brainemu/loader/loader.h"
 
@@ -32,6 +33,7 @@ using brain::FuncDevice;
 using brain::ImageInfo;
 using brain::Machine;
 using brain::MachineConfig;
+using brain::Monitor;
 using brain::ModuleRegistry;
 using brain::u32;
 using brain::u8;
@@ -247,6 +249,82 @@ int brain_load_elf32(brain_emu_t* e, const void* image, size_t size,
   }
   if (entry) *entry = info.entry;
   return 0;
+}
+
+int brain_add_device_module(brain_emu_t* e, const char* id, u32 base,
+                            int has_base) {
+  if (!e || !id) return -1;
+  e->err.clear();
+  if (!e->m.add_device_by_id(id, base, has_base != 0)) {
+    set_err(e, e->m.last_error());
+    return -1;
+  }
+  return 0;
+}
+
+int brain_add_monitor_module(brain_emu_t* e, const char* id) {
+  if (!e || !id) return -1;
+  e->err.clear();
+  if (!e->m.add_monitor_by_id(id)) {
+    set_err(e, e->m.last_error());
+    return -1;
+  }
+  return 0;
+}
+
+/* ---- what the machine is made of ---------------------------------------- */
+
+u32 brain_device_count(const brain_emu_t* e) {
+  return e ? e->m.device_count() : 0;
+}
+
+const char* brain_device_id(const brain_emu_t* e, u32 index) {
+  const Device* d = e ? e->m.device(index) : nullptr;
+  return d ? d->info().id : "";
+}
+
+u32 brain_device_base(const brain_emu_t* e, u32 index) {
+  const Device* d = e ? e->m.device(index) : nullptr;
+  return d ? d->base() : 0;
+}
+
+u32 brain_device_field_count(const brain_emu_t* e, u32 device) {
+  const Device* d = e ? e->m.device(device) : nullptr;
+  return d ? d->field_count() : 0;
+}
+
+const char* brain_device_field_name(const brain_emu_t* e, u32 device, u32 field) {
+  const Device* d = e ? e->m.device(device) : nullptr;
+  return d && field < d->field_count() ? d->field_name(field) : "";
+}
+
+const char* brain_device_field_value(const brain_emu_t* e, u32 device, u32 field) {
+  const Device* d = e ? e->m.device(device) : nullptr;
+  return d && field < d->field_count() ? d->field_value(field) : "";
+}
+
+u32 brain_monitor_count(const brain_emu_t* e) {
+  return e ? e->m.monitor_count() : 0;
+}
+
+const char* brain_monitor_id(const brain_emu_t* e, u32 index) {
+  const Monitor* m = e ? e->m.monitor(index) : nullptr;
+  return m ? m->info().id : "";
+}
+
+u32 brain_monitor_field_count(const brain_emu_t* e, u32 monitor) {
+  const Monitor* m = e ? e->m.monitor(monitor) : nullptr;
+  return m ? m->field_count() : 0;
+}
+
+const char* brain_monitor_field_name(const brain_emu_t* e, u32 monitor, u32 field) {
+  const Monitor* m = e ? e->m.monitor(monitor) : nullptr;
+  return m && field < m->field_count() ? m->field_name(field) : "";
+}
+
+const char* brain_monitor_field_value(const brain_emu_t* e, u32 monitor, u32 field) {
+  const Monitor* m = e ? e->m.monitor(monitor) : nullptr;
+  return m && field < m->field_count() ? m->field_value(field) : "";
 }
 
 int brain_map_device(brain_emu_t* e, u32 base, u32 size, brain_bus_read_t rd,

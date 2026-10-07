@@ -23,6 +23,8 @@ src/loader/elf.cpp                 the two built-in loader modules
 src/modules/builtin.cpp            the list of modules this build contains
 src/modules/arm926/                the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
 src/modules/toy8/                  a second CPU, in 300 lines, on purpose
+src/modules/console/               a device module: a window that collects text
+src/modules/exit/                  a device module: a store that stops the run
 ```
 
 ## The kinds of module
@@ -31,8 +33,16 @@ src/modules/toy8/                  a second CPU, in 300 lines, on purpose
 | --- | --- | --- | --- |
 | `cpu` | a processor: registers, an instruction set, its own timing | the machine, at slice boundaries | `arm926`, `toy8` |
 | `loader` | an image format | `Machine::load_image`, by content | `elf32`, `raw` |
-| `device` | something mapped into the address space | the bus, per access | exit port, console, UART |
-| `monitor` | an observer of a running machine | the run loop, per slice | `Monitor` (`brainemu/core/monitor.h`); the tests have a demo one |
+| `device` | something mapped into the address space | the bus, per access | `exit`, `console`, a UART |
+| `monitor` | an observer of a running machine | the run loop, per slice | none built in; the tests declare one |
+
+All four kinds are *registry* modules and all four are created through a factory
+(`CpuModule`, `Loader`, `DeviceModule`, `MonitorModule` in
+`include/brainemu/core/module.h`), so a machine can be assembled out of ids:
+`MachineConfig::cpu_id`, `devices[]` and `monitors[]`, or
+`Machine::add_device_by_id` / `add_monitor_by_id` after the fact. The C API
+mirrors the latter (`brain_add_device_module`, `brain_add_monitor_module`) and
+`brain_module_*` lists every kind the build contains.
 
 Only a CPU module is *driven*; the others are called. A CPU module is therefore
 the only one with an execution contract, and it is the one this document is
@@ -149,12 +159,71 @@ The ARM module's keys are `jazelle_trap`, `strict_unpredictable`,
 `serror_on_busfault`, `tlb_bits`, `max_block_insns`, `jit_cache_mb`,
 `jit_fast_mem` and `big_endian_data` (`src/modules/arm926/arm926.cpp`).
 
+### Devices and monitors after the machine exists
+
+In C++, before building (the base is optional: no base means *the module's own
+default address*, which is the difference between `--exit` and `--exit-port A`):
+
+```cpp
+MachineConfig cfg;
+cfg.add_device(ModuleSpec("console"));          /* its default base   */
+cfg.add_device(ModuleSpec("exit", 0x10000010)); /* and an explicit one */
+cfg.add_monitor(ModuleSpec("slicer"));
+if (!machine.init(cfg)) { /* last_error() names the id that was refused */ }
+```
+
+Through the C API, after creating the machine:
+
+```c
+brain_emu_t* e = brain_emu_create(NULL);          /* the default machine   */
+brain_add_device_module(e, "console", 0, 0);      /* 0,0 = module default  */
+brain_add_device_module(e, "exit", 0x10000010, 1);
+brain_add_monitor_module(e, "slicer");
+for (uint32_t i = 0; i < brain_device_count(e); ++i) {
+  for (uint32_t f = 0; f < brain_device_field_count(e, i); ++f)
+    printf("%s=%s\n", brain_device_field_name(e, i, f),
+                      brain_device_field_value(e, i, f));
+}
+```
+
+An id nothing registered is refused with the ids that would have worked
+(`no device module named 'uart' (have: exit, console)`), the same way an unknown
+`--cpu` is.
+
+### Adding a device
+
+A device module is a factory for a `Device` (`include/brainemu/device/device.h`)
+plus its identity: implement `info()`, `create(base)` and, if the window has a
+home, `default_base()`. `Machine::add_device_by_id("uart")` then builds it,
+calls `on_attach(*this)` so the device can keep a pointer to the machine if it
+needs one (the exit port does: it calls `Machine::stop`), attaches it to the bus
+and resets it. `--device uart@0x80000000` is the CLI spelling; the C API's is
+`brain_add_device_module`.
+
+Two rules the shipped ones follow:
+
+* **A device reports its own state.** `field_count()` / `field_name(i)` /
+  `field_value(i)` are name/value text the core never interprets, and `--stats`
+  prints them for every device and monitor. That is how the console and the exit
+  port show up in a tool that knows nothing about either.
+* **One page, several windows.** A device's window is what it answers for; the
+  bus claims the whole 4 KiB page when the page is free (so a stray access next
+  to a four-byte register is not an abort), and a second device may map into a
+  page the first already holds as long as the two windows do not overlap and both
+  fit in that one page - which is what a real peripheral map looks like (the
+  i.MX28's test ports are four words inside the 0x10000000 page). The page's
+  region then routes by address, and an access outside every window still reaches
+  the device that owns the page. Unmapping a shared page takes the whole group
+  with it.
+
 ### Adding a monitor
 
 A monitor does not execute and is not mapped anywhere: `Machine::add_monitor`
 puts it in the run loop, which calls `on_slice(machine, retired)` after every
 slice (devices already ticked, CPU already returned) and `on_reset(machine)`
-after a reset.  This is where a tracer, a profiler, a coverage collector, a
+after a reset. A *monitor module* is a `MonitorModule` factory;
+`Machine::add_monitor_by_id("profiler")` builds one, the machine owns it, and
+`field_*` describes it to a tool exactly like a device.  This is where a tracer, a profiler, a coverage collector, a
 watchpoint layer or a gdb stub belongs - the core gains a *report*, not a
 feature.  A hook may read registers and memory freely, and may call
 `Machine::stop()`: the stop takes effect at the next slice boundary, which is

@@ -15,10 +15,12 @@ ARM926EJ-S is the first CPU module, not the shape of the emulator
 ```
 include/brainemu/brainemu.h        public C API: create/load/run/state/stats
 include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
-include/brainemu/core/module.h     ModuleInfo, CpuModule, ModuleRegistry
+include/brainemu/core/module.h     ModuleInfo, CpuModule, Loader, DeviceModule,
+                                   MonitorModule, ModuleRegistry
 include/brainemu/core/machine.h    MachineConfig, Machine (bus + CPU + devices)
 include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
 include/brainemu/device/device.h   Device, FuncDevice, BufferDevice, ConsoleDevice
+include/brainemu/core/monitor.h    Monitor: an observer the run loop reports to
 include/brainemu/loader/loader.h   Loader (probe + load) + ImageInfo
 src/core/bus.cpp                   the address space (RAM, ROM, devices, watch)
 src/core/device.cpp                the device base class and its adapters
@@ -148,13 +150,43 @@ stop at the next slice boundary like any other.
 `Bus` keeps a two-level page table (1024 × 1024 × 4 KiB = the whole 32-bit
 space, allocated lazily) plus a flat list of regions. Mapping is *all-or-nothing*
 in both directions: a bulk load that does not fit the RAM window writes nothing,
-and `map_device` refuses a span that overlaps anything already present — a
-device silently shadowed by the identity fast path would be invisible to the
-guest, which is a much worse failure than a refused mapping. One guest access is
-one hook call at the natural size (`LDR`/`STR` reach `read`/`write` with `size`
-4; the byte-level fallback is used for sizes/conditions the region cannot serve
-directly). `tests/test_unit.cpp` asserts that count, because a UART FIFO does not
-tolerate being read four times per instruction.
+and a device may not overlap RAM, ROM or another device — a device silently
+shadowed by the identity fast path would be invisible to the guest, which is a
+much worse failure than a refused mapping. One guest access is one hook call at
+the natural size (`LDR`/`STR` reach `read`/`write` with `size` 4; the byte-level
+fallback is used for sizes/conditions the region cannot serve directly).
+`tests/test_unit.cpp` asserts that count, because a UART FIFO does not tolerate
+being read four times per instruction.
+
+**A page can hold several devices.** A window with the page to itself claims the
+whole 4 KiB page — so a stray access next to a four-byte register is served, not
+an abort — and a second device may map into that page if the two windows are
+disjoint and both live inside it. The page's region then becomes a *router*: it
+keeps the windows in address order, dispatches by address, and falls back to the
+device that owns the page for addresses outside every window. This is what a real
+peripheral map looks like (the i.MX28's test ports are four words inside the
+0x10000000 page), and it costs a machine with one device per page nothing: a
+region with `nsubs == 0` keeps its own callbacks, and the router exists only when
+something actually shares. A shared page is unmapped as a unit.
+
+## Modules: four kinds, one registry
+
+`include/brainemu/core/module.h` is the whole extension point. A CPU module is a
+`CpuCore` factory; a *device* module is a `Device` factory with a default window;
+a *monitor* module is a `Monitor` factory; a loader module claims an image by
+content. All four register in `ModuleRegistry` under an id, and a `Machine` can be
+assembled out of those ids — `MachineConfig::cpu_id`/`devices[]`/`monitors[]`,
+`Machine::add_device_by_id`/`add_monitor_by_id`, or the C API's
+`brain_add_device_module`/`brain_add_monitor_module`. An unknown id is refused
+with the ids that exist, never silently ignored.
+
+The machine owns what it creates and calls `Device::on_attach(*this)` before
+`attach`, which is how a device reaches the machine it is part of (the exit port
+calls `Machine::stop`). Devices and monitors describe themselves through
+`field_count()`/`field_name(i)`/`field_value(i)`: name/value text the core never
+interprets, forwarded by the C API (`brain_device_field_*`) and printed by
+`--stats`. That is the seam that lets a peripheral the tool has never heard of
+still show up in the output.
 
 ## The JIT: one interpreter, a translation layer, two backends
 

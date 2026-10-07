@@ -16,6 +16,14 @@
  * whole point of the split: the ARM926EJ-S is the first CPU module, not the
  * shape of the emulator.
  *
+ * All four kinds are registry-managed, and all four are created through a
+ * factory here rather than by the core naming a class: a machine is assembled
+ * out of *ids* (`MachineConfig::cpu_id`, `devices[]`, `monitors[]`, and the
+ * loader a `load_image` call probes for), so a build can contain a peripheral
+ * the core has never heard of and a caller can select it by name.  The two
+ * adapters the core itself ships - the exit port and the console - are modules
+ * in exactly that sense (src/modules/console/, src/modules/exit/).
+ *
  * Registration is explicit rather than magically static-initialised, because
  * this library is a static archive and an unreferenced object file inside one is
  * simply not linked in: `register_builtin_modules()` (src/modules/builtin.cpp)
@@ -59,6 +67,32 @@ class CpuModule {
   virtual std::unique_ptr<CpuCore> create() const = 0;
 };
 
+/* A device module: a factory for one instance of a peripheral, placed at the
+ * base address the caller chooses.  `default_base()` is what a caller that has
+ * no opinion gets (the address the adapter normally sits at, so `--device
+ * console` alone works and `--device console@0x40000000` moves it).  A module
+ * whose window is not fixed can still ignore the argument; the core only ever
+ * passes it through. */
+class Device;
+class DeviceModule {
+ public:
+  virtual ~DeviceModule() = default;
+  virtual const ModuleInfo& info() const = 0;
+  virtual std::unique_ptr<Device> create(u32 base) const = 0;
+  virtual u32 default_base() const { return 0; }
+};
+
+/* A monitor module: a factory for one observer (see core/monitor.h).  A monitor
+ * with state of its own - a profiler, a coverage collector - is created per
+ * machine, and the machine keeps it. */
+class Monitor;
+class MonitorModule {
+ public:
+  virtual ~MonitorModule() = default;
+  virtual const ModuleInfo& info() const = 0;
+  virtual std::unique_ptr<Monitor> create() const = 0;
+};
+
 /* A loader module: `probe` claims an image by content and `load` places it.
  * Declared here and defined in brainemu/loader/loader.h, so a CPU module never
  * has to pull the loader interface in. */
@@ -82,18 +116,42 @@ class ModuleRegistry {
   const Loader* loader_by_probe(const void* data, u64 size) const;
   u32 loader_count() const;
 
-  /* Every module kind, for a `--list-modules` in a tool or a GUI picker. */
+  void add_device(const DeviceModule* m);
+  const DeviceModule* device_by_id(const char* id) const;
+  const DeviceModule* device_by_index(u32 i) const;
+  u32 device_count() const;
+
+  void add_monitor(const MonitorModule* m);
+  const MonitorModule* monitor_by_id(const char* id) const;
+  const MonitorModule* monitor_by_index(u32 i) const;
+  u32 monitor_count() const;
+
+  /* Every module kind, for a `--list-modules` in a tool or a GUI picker.  The
+   * order is the kind order above (all CPUs, then loaders, devices, monitors),
+   * so a listing groups itself. */
   u32 count() const;
   const ModuleInfo* info(u32 i) const;
+  /* The ids of one kind, joined for an error message ("console, exit").  Used
+   * when an unknown id is refused, so the message can say what exists. */
+  const char* ids(ModuleKind kind) const;
 
  private:
   ModuleRegistry() = default;
   static constexpr u32 kMaxCpus = 16;
   static constexpr u32 kMaxLoaders = 16;
+  static constexpr u32 kMaxDevices = 16;
+  static constexpr u32 kMaxMonitors = 16;
   const CpuModule* cpus_[kMaxCpus] = {};
   u32 ncpus_ = 0;
   const Loader* loaders_[kMaxLoaders] = {};
   u32 nloaders_ = 0;
+  const DeviceModule* devices_[kMaxDevices] = {};
+  u32 ndevices_ = 0;
+  const MonitorModule* monitors_[kMaxMonitors] = {};
+  u32 nmonitors_ = 0;
+  /* The last `ids()` answer, so the accessor can return a `const char*`.  One
+   * buffer per instance and single-threaded by design, like the registry. */
+  mutable char idbuf_[256] = {};
 };
 
 /* Called once by the core (Machine::init) - see the note at the top. */

@@ -37,6 +37,19 @@ namespace brain {
 class Device;
 class Monitor;
 
+/* One module a machine is asked to build, by id.  `base` is the window a device
+ * wants, and `has_base == false` means "whatever the module's own default is"
+ * (a device module knows where its peripheral normally sits).  A monitor
+ * ignores both. */
+struct ModuleSpec {
+  const char* id = nullptr;
+  u32 base = 0;
+  bool has_base = false;
+
+  ModuleSpec() = default;
+  ModuleSpec(const char* i, u32 b = 0, bool hb = false) : id(i), base(b), has_base(hb) {}
+};
+
 struct MachineConfig {
   /* Memory.  `ram_size` of 0 means "the caller maps its own memory" (a board
    * model, or a test that wants the whole space to itself). */
@@ -47,6 +60,23 @@ struct MachineConfig {
   /* Which CPU module to instantiate.  Null (or "") picks the first one
    * registered, which is the tree's primary target. */
   const char* cpu_id = nullptr;
+
+  /* The rest of the machine, by id: devices to map and monitors to tell.  Both
+   * arrays are small and fixed - a board is a handful of peripherals - and a
+   * caller that wants more than `kMaxModules` builds them itself with
+   * `add_device`/`add_monitor`. */
+  static constexpr u32 kMaxModules = 16;
+  ModuleSpec devices[kMaxModules];
+  u32 device_count = 0;
+  ModuleSpec monitors[kMaxModules];
+  u32 monitor_count = 0;
+
+  void add_device(const ModuleSpec& s) {
+    if (device_count < kMaxModules) devices[device_count++] = s;
+  }
+  void add_monitor(const ModuleSpec& s) {
+    if (monitor_count < kMaxModules) monitors[monitor_count++] = s;
+  }
 
   bool use_jit = false;
   bool trace = false;
@@ -91,10 +121,25 @@ class Machine {
 
   /* Modules.  `add_device` maps the device through its own window; the machine
    * keeps the pointer to reset and tick it, so the device must outlive the
-   * machine (attach a member, or a heap object the caller owns). */
+   * machine (attach a member, or a heap object the caller owns).  It also calls
+   * `Device::on_attach`, so a device that has to reach the machine gets the
+   * chance before anything can use it. */
   bool add_device(Device& d);
   u32 device_count() const { return (u32)devices_.size(); }
   Device* device(u32 i) { return i < devices_.size() ? devices_[i] : nullptr; }
+  const Device* device(u32 i) const {
+    return i < devices_.size() ? devices_[i] : nullptr;
+  }
+
+  /* The same, by module id - what `MachineConfig::devices[]` is shorthand for.
+   * The machine owns what it creates; the device is mapped and reset like any
+   * other.  A failure says which ids exist. */
+  Device* add_device_by_id(const char* id, u32 base, bool has_base = true);
+  /* Look one up by module id, whether the machine built it or the caller did. */
+  Device* device_by_id(const char* id);
+  Device* add_device_by_id(const ModuleSpec& spec) {
+    return add_device_by_id(spec.id, spec.base, spec.has_base);
+  }
 
   /* Monitors: observers the run loop reports every slice and every reset to
    * (see brainemu/core/monitor.h).  The machine keeps the pointer, so the
@@ -102,6 +147,11 @@ class Machine {
   void add_monitor(Monitor& m);
   u32 monitor_count() const { return (u32)monitors_.size(); }
   Monitor* monitor(u32 i) { return i < monitors_.size() ? monitors_[i] : nullptr; }
+  const Monitor* monitor(u32 i) const {
+    return i < monitors_.size() ? monitors_[i] : nullptr;
+  }
+  Monitor* add_monitor_by_id(const char* id);
+  Monitor* monitor_by_id(const char* id);
 
   /* Images.  `load_image` picks a loader by content (and falls back to a raw
    * load at `addr`), then points the CPU at the entry: PC, instruction-set bit
@@ -127,6 +177,11 @@ class Machine {
   std::unique_ptr<CpuCore> cpu_{};
   std::vector<Device*> devices_{};
   std::vector<Monitor*> monitors_{};
+  /* The devices and monitors the machine itself created from module ids.  They
+   * are destroyed here, which is after the bus released its regions and after
+   * the CPU is gone - a device never outlives its window. */
+  std::vector<std::unique_ptr<Device>> owned_devices_{};
+  std::vector<std::unique_ptr<Monitor>> owned_monitors_{};
   MachineConfig cfg_{};
   u64 device_cycles_ = 0;
   std::string err_{};

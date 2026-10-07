@@ -41,6 +41,13 @@ class Monitor {
   /* The machine was reset: registers, counters and devices went back to their
    * starting state.  Called last, after the CPU and the devices. */
   virtual void on_reset(Machine& m) { (void)m; }
+
+  /* Self-description, for tools: whatever this observer wants a report to show
+   * (a slice count, a histogram's top entry, a hit or miss tally).  Same
+   * contract as `Device::field_*` - name/value text the core never interprets. */
+  virtual u32 field_count() const { return 0; }
+  virtual const char* field_name(u32 i) const { (void)i; return ""; }
+  virtual const char* field_value(u32 i) const { (void)i; return ""; }
 };
 
 }  // namespace brain

@@ -16,12 +16,15 @@
 #ifndef BRAINEMU_DEVICE_DEVICE_H
 #define BRAINEMU_DEVICE_DEVICE_H
 
+#include <cstdio>
+
 #include "brainemu/core/module.h"
 #include "brainemu/types.h"
 
 namespace brain {
 
 class Bus;
+class Machine;
 
 class Device {
  public:
@@ -38,6 +41,22 @@ class Device {
   virtual u32 read(u32 offset, u32 size) = 0;
   virtual void write(u32 offset, u32 value, u32 size) = 0;
   virtual void tick(u64 cycles) { (void)cycles; }
+
+  /* Called once, by `Machine::add_device`, before `attach`: a device that has
+   * to *do* something to the machine around it - stop the run loop, raise an
+   * interrupt line, read the CPU's counters - keeps the pointer.  A plain
+   * memory-mapped peripheral ignores it, and so does a device the caller owns
+   * and talks to directly. */
+  virtual void on_attach(Machine& m) { (void)m; }
+
+  /* Self-description, for tools: any name/value pair this device wants a
+   * `--stats` print, a debugger or a GUI to show (an exit code, a byte count, a
+   * log, a FIFO level).  The core never interprets a field - it just asks - so a
+   * new peripheral surfaces its state without a core change.  Names are short
+   * and stable ("code", "hits", "log"), values are text. */
+  virtual u32 field_count() const { return 0; }
+  virtual const char* field_name(u32 i) const { (void)i; return ""; }
+  virtual const char* field_value(u32 i) const { (void)i; return ""; }
 
   /* Map into `bus` and reset the device.  The bus publishes regions a page at a
    * time, so a window smaller than a page (a UART's four bytes, say) maps the
@@ -126,6 +145,22 @@ class ConsoleDevice final : public Device {
   const char* log() const { return log_; }
   u32 log_len() const { return len_; }
   void clear() { len_ = 0; log_[0] = 0; }
+
+  /* What the host wanted to see: the text so far, and how much of it there is
+   * (`len` in the field list rather than the log itself, because a field value
+   * is one line and a log is not). */
+  u32 field_count() const override { return 2; }
+  const char* field_name(u32 i) const override {
+    return i == 0 ? "bytes" : "log";
+  }
+  const char* field_value(u32 i) const override {
+    static char n[16];
+    if (i == 0) {
+      std::snprintf(n, sizeof(n), "%u", len_);
+      return n;
+    }
+    return i == 1 ? (len_ ? log_ : "(empty)") : "";
+  }
 
   static constexpr u32 kLogSize = 4096;
 

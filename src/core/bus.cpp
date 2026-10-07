@@ -75,8 +75,13 @@ bool Bus::map_backing(u32 base, u32 size, u8* host, u32 flags, const char* name,
    * invisible to the guest. */
   if (span_taken(base, size, PG_DEVICE)) return false;
   BusRegion& r = regions_[nregions_++];
-  r = BusRegion{base, size, flags, host, nullptr, nullptr, nullptr,
-                name ? name : "ram", owned};
+  r = BusRegion{};
+  r.base = base;
+  r.size = size;
+  r.flags = flags;
+  r.host = host;
+  r.name = name ? name : "ram";
+  r.owned = owned;
   for (u32 off = 0; off < size; off += 0x1000) {
     PageDesc& p = l2_lookup((base + off) >> 12);
     p.host = host + off;
@@ -99,25 +104,123 @@ bool Bus::map_backing(u32 base, u32 size, u8* host, u32 flags, const char* name,
   return true;
 }
 
+u32 Bus::route_read(void* user, u32 addr, u32 size) {
+  BusRegion* r = static_cast<BusRegion*>(user);
+  for (u32 i = 0; i < r->nsubs; ++i) {
+    const BusRegion::Sub& s = r->subs[i];
+    if (addr - s.base < s.size) return s.read ? s.read(s.user, addr, size) : 0;
+  }
+  const BusRegion::Sub& owner = r->subs[0];
+  return owner.read ? owner.read(owner.user, addr, size) : 0;
+}
+
+void Bus::route_write(void* user, u32 addr, u32 val, u32 size) {
+  BusRegion* r = static_cast<BusRegion*>(user);
+  for (u32 i = 0; i < r->nsubs; ++i) {
+    const BusRegion::Sub& s = r->subs[i];
+    if (addr - s.base < s.size) {
+      if (s.write) s.write(s.user, addr, val, size);
+      return;
+    }
+  }
+  const BusRegion::Sub& owner = r->subs[0];
+  if (owner.write) owner.write(owner.user, addr, val, size);
+}
+
 bool Bus::map_device(u32 base, u32 size, BusReadFn r, BusWriteFn w,
                      void* user, const char* name) {
+  if (!size || (u64)base + size > 0x100000000ull) return false;
+  /* The pages this window touches, from the one its first byte is in to the one
+   * its last byte is in - a window that starts mid-page can still end in the
+   * next one. */
+  const u32 page0 = base & ~0xFFFu;
+  const u32 npages = ((base + size - 1) >> 12) - (base >> 12) + 1;
+  const u32 cover = npages << 12;
+  /* Whose pages are these?  Free pages mean the window claims the covering
+   * pages, one region, exactly as it always has.  Pages held by another *device*
+   * can be shared, as long as the byte windows stay disjoint and both live
+   * inside one page. */
+  BusRegion* owner = nullptr;
+  for (u32 off = 0; off < cover; off += 0x1000) {
+    PageDesc& p = l2_lookup((page0 + off) >> 12);
+    if (!(p.flags & PG_PRESENT)) continue;
+    if (!(p.flags & PG_DEVICE)) return false;            /* RAM/ROM: refuse   */
+    if (!owner) owner = p.region;
+    else if (owner != p.region) return false;            /* two owners: rare  */
+  }
+  if (owner) {
+    /* Sharing is a single-page affair on both sides: the page's owner must be a
+     * one-page window too, or the router would have to cover several pages. */
+    if (npages != 1 || owner->size > 0x1000) return false;
+    if (owner->nsubs >= BusRegion::kMaxSubs) return false;
+    const u32 win = size;
+    if (owner->nsubs == 0) {
+      /* First rival: the page's device becomes a router over its own window and
+       * the new one.  Its exact window is what was asked for, not the page. */
+      BusRegion::Sub& own = owner->subs[owner->nsubs++];
+      own.base = owner->base;
+      own.size = owner->win_size ? owner->win_size : owner->size;
+      own.user = owner->user;
+      own.read = owner->read;
+      own.write = owner->write;
+      owner->read = route_read;
+      owner->write = route_write;
+      owner->user = owner;
+    }
+    for (u32 i = 0; i < owner->nsubs; ++i) {
+      const BusRegion::Sub& s = owner->subs[i];
+      if (base < s.base + s.size && s.base < base + win) return false;  /* overlap */
+    }
+    BusRegion::Sub& sub = owner->subs[owner->nsubs++];
+    sub.base = base;
+    sub.size = win;
+    sub.user = user;
+    sub.read = r;
+    sub.write = w;
+    return true;                    /* pages already point at the router */
+  }
   if (nregions_ == kMaxRegions) return false;
-  if (span_taken(base, size, PG_PRESENT)) return false;   /* no shadowing */
   BusRegion& nr = regions_[nregions_++];
-  nr = BusRegion{base, size, REG_DEVICE, nullptr, user, r, w,
-                 name ? name : "dev", false};
+  nr = BusRegion{};
+  nr.base = base;
+  nr.size = cover;
+  nr.flags = REG_DEVICE;
+  nr.user = user;
+  nr.read = r;
+  nr.write = w;
+  nr.name = name ? name : "dev";
+  nr.win_size = size;
   BusRegion* rp = &nr;
-  for (u32 off = 0; off < size; off += 0x1000) {
-    PageDesc& p = l2_lookup((base + off) >> 12);
+  for (u32 off = 0; off < cover; off += 0x1000) {
+    PageDesc& p = l2_lookup((page0 + off) >> 12);
     p.host = nullptr;
     p.region = rp;
     p.flags = PG_PRESENT | PG_DEVICE;
-    p.gbase = base + off;
+    p.gbase = page0 + off;
   }
   return true;
 }
 
 bool Bus::unmap(u32 base, u32 size) {
+  /* A page shared by several windows is one region, and it goes as one: any
+   * window's base tears the page down and every device in it loses the page at
+   * once.  (Finer grained detach is not a thing yet; a board that needs it can
+   * reset the bus.)  A page with a single device is the ordinary case below. */
+  for (u32 i = 0; i < nregions_; ++i) {
+    BusRegion& r = regions_[i];
+    if (!r.nsubs) continue;
+    bool mine = (r.base == base);
+    for (u32 k = 0; !mine && k < r.nsubs; ++k) mine = (r.subs[k].base == base);
+    if (!mine) continue;
+    PageDesc& p = l2_lookup(r.base >> 12);
+    p.host = nullptr;
+    p.region = nullptr;
+    p.flags = 0;
+    p.gbase = 0;
+    release_region(r);
+    regions_[i] = regions_[--nregions_];
+    return true;
+  }
   for (u32 i = 0; i < nregions_; ++i) {
     if (regions_[i].base == base) {
       /* Release the backing store only if the bus allocated it: a caller's

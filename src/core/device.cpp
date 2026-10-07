@@ -34,7 +34,10 @@ void device_write(void* user, u32 addr, u32 value, u32 size) {
 bool Device::attach(Bus& bus) {
   if (attached_) return true;
   if (!size()) return false;
-  if (!bus.map_device(base(), covering_size(size()), device_read, device_write,
+  /* The window, not the covering page: the bus claims the page when it is free
+   * (so a stray access next to a four-byte register is not an abort) and shares
+   * it when another device is already there. */
+  if (!bus.map_device(base(), size(), device_read, device_write,
                       this, info().name ? info().name : info().id))
     return false;
   attached_ = true;
@@ -51,8 +54,11 @@ FuncDevice::FuncDevice(const char* id, const char* name, u32 base, u32 size,
   info_.name = name ? name : "function-backed device";
   info_.kind = ModuleKind::Device;
   info_.description = "a device whose behaviour is a pair of host callbacks";
-  if (size_ < 0x1000u) size_ = 0x1000u;      /* the smallest page the bus maps */
-  if (size_ & 0xFFFu) size_ = (size_ + 0xFFFu) & ~0xFFFu;
+  /* The window is kept exactly as the caller gave it.  A window smaller than the
+   * page still gets the whole page when the page is free (the bus rounds the
+   * claim, so a stray access next to a register is not an abort), but an exact
+   * window is what lets a second device share the page - see BusRegion. */
+  if (!size_) size_ = 4;
 }
 
 u32 FuncDevice::read(u32 offset, u32 size) {
@@ -101,9 +107,9 @@ bool BufferDevice::attach(Bus& bus) {
 
 ConsoleDevice::ConsoleDevice(u32 base) : base_(base) {
   info_.id = "console";
-  info_.name = "console";
+  info_.name = "test console";
   info_.kind = ModuleKind::Device;
-  info_.description = "the last 4 KiB the guest wrote to the window, as text";
+  info_.description = "bytes written to the window, collected as text";
   log_[0] = 0;
 }
 

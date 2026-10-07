@@ -89,8 +89,11 @@ typedef struct {
 /* ---- modules ------------------------------------------------------------ */
 
 /* What this build can do, without creating a machine.  `brain_module_*` are
- * indexed 0..brain_module_count()-1; a CPU module is what a machine can be
- * built around, the other kinds (devices, loaders) come with the core. */
+ * indexed 0..brain_module_count()-1, grouped by kind (every CPU, then the
+ * loaders, then the devices, then the monitors); a CPU module is what a machine
+ * can be built around, and the other kinds are selected by id too - a loader by
+ * `brain_load_*`, a device by `brain_add_device_module`, a monitor by
+ * `brain_add_monitor_module`. */
 uint32_t brain_module_count(void);
 const char* brain_module_id(uint32_t index);
 const char* brain_module_name(uint32_t index);
@@ -146,6 +149,35 @@ int brain_load_raw(brain_emu_t* e, const void* data, size_t size,
  * Returns 0 on success, -1 on any problem (brain_last_error() explains). */
 int brain_load_elf32(brain_emu_t* e, const void* image, size_t size,
                      uint32_t* entry);
+
+/* Build a *device module* into the machine, by id - the same thing the config's
+ * `devices[]` does, for a caller that assembles a machine after creating it.
+ * `base` is the device's window; `has_base == 0` means "the module's own
+ * default address".  Returns 0, or -1 with the error naming the ids that exist.
+ * Devices and monitors built this way live in the machine. */
+int brain_add_device_module(brain_emu_t* e, const char* id, uint32_t base,
+                            int has_base);
+int brain_add_monitor_module(brain_emu_t* e, const char* id);
+
+/* What the machine's devices and monitors are, and what they have to say.  The
+ * core does not know any field: a device or monitor describes itself (see
+ * Device::field_* in the C++ headers), and this is how a tool - a stats print, a
+ * debugger, a GUI - collects the description without a core change. */
+uint32_t brain_device_count(const brain_emu_t* e);
+const char* brain_device_id(const brain_emu_t* e, uint32_t index);
+uint32_t brain_device_base(const brain_emu_t* e, uint32_t index);
+uint32_t brain_device_field_count(const brain_emu_t* e, uint32_t device);
+const char* brain_device_field_name(const brain_emu_t* e, uint32_t device,
+                                    uint32_t field);
+const char* brain_device_field_value(const brain_emu_t* e, uint32_t device,
+                                     uint32_t field);
+uint32_t brain_monitor_count(const brain_emu_t* e);
+const char* brain_monitor_id(const brain_emu_t* e, uint32_t index);
+uint32_t brain_monitor_field_count(const brain_emu_t* e, uint32_t monitor);
+const char* brain_monitor_field_name(const brain_emu_t* e, uint32_t monitor,
+                                     uint32_t field);
+const char* brain_monitor_field_value(const brain_emu_t* e, uint32_t monitor,
+                                      uint32_t field);
 
 /* Map a device over `size` bytes at `base`.  Useful for a test harness that
  * wants an exit path: the callback can call brain_stop(). */
