@@ -46,6 +46,9 @@ build/brainemu --elf --exit-port 0x80000000 --stats prog.elf; echo $?
 # a bare-metal image that prints and then decides when to stop
 build/brainemu --device console --exit prog.bin; echo $?
 
+# a named machine: a board preset, plus a wire of your own
+build/brainemu --board timer --wire timer.irq=irq --stats prog.bin
+
 # what CPUs this build contains, and one that is not an ARM
 build/brainemu --list-cpus
 build/brainemu --cpu toy8 --regs program.t8
@@ -55,6 +58,14 @@ build/brainemu --cpu toy8 --regs program.t8
 machine around another CPU module, and `--cpu-opt K=V` hands a module an option
 the generic config does not carry. A `--regs` dump names its registers from the
 module's own description, so it works for a CPU whose PC is not register 15.
+
+`--board ID` starts from a *board* - a named machine preset (which CPU, which
+devices, which wires) - and everything else on the command line is applied on top
+of it, so `--board timer --device exit` is that board plus a peripheral.
+`--wire DEV.OUT=CPU_IN` connects a device's interrupt output to one of the CPU's
+inputs by name (`--wire timer.irq=irq`), which is the only place the two modules
+are named together; `--list-modules` prints the boards, devices and monitors this
+build contains.
 
 `--device ID[@A]` builds a device module into the machine (at `A`, or at the
 address the module says is its default), `--monitor ID` tells a monitor module
@@ -117,6 +128,8 @@ src/modules/*/        the modules this build contains
   toy8/               a second CPU module: the worked example of the interface
   console/            a device module: bytes written there become text
   exit/               a device module: a store there stops the machine
+  timer/              a device module with an interrupt output (the reference)
+  boards/             board modules: named machine presets
 src/loader/           the built-in image formats (elf32, raw)
 src/api.cpp           the C API, implemented against the machine
 tools/                brainemu (runner), bench (throughput), jit_emit (encoder)
@@ -130,12 +143,16 @@ LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES
 
 * One core, modules: `Machine` (bus + one CPU + devices + run loop) over a module
   registry; `CpuCore` is the whole CPU contract and is only called at slice
-  boundaries, so a module's inner loop stays non-virtual and monomorphic. Two CPU
-  modules ship (`arm926`, `toy8`), the loaders (`elf32`, `raw`) are modules, and
-  so are the two peripherals the core used to build itself, the console and the
-  exit port - a machine takes them by id, and each reports its state through
-  name/value fields the core only forwards. `docs/MODULES.md` documents the
-  contract and how to add a processor, a device or a monitor.
+  boundaries, so a module's inner loop stays non-virtual and monomorphic. Five
+  kinds of module ship - CPUs (`arm926`, `toy8`), loaders (`elf32`, `raw`),
+  devices (the console, the exit port, a timer with an interrupt output),
+  monitors, and *boards* (named machine presets: which CPU, which devices, how
+  their interrupt lines are wired). A device declares interrupt *outputs* and a
+  CPU declares named interrupt *inputs*; a board is the only place that names both
+  ends, and the machine carries the level between them, so no module knows another
+  module's type. Each reports its state through name/value fields the core only
+  forwards. `docs/MODULES.md` documents the contract and how to add a processor,
+  a device, a monitor or a board.
 * ARM and Thumb state, ARMv5TEJ data processing, loads/stores (including the
   halfword, signed, dual and swap families), multiply, CLZ, MRS/MSR, branch and
   coprocessor groups, with the exceptions, banked registers, CP15 c1 (Table

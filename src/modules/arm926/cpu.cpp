@@ -245,28 +245,49 @@ bool Cpu::jit_enable(bool on) {
 
 /* ---------------------------------------------------------- exceptions -- */
 
-/* LR offsets relative to the address of the instruction being executed.
- * DDI 0100I A2.6.3..A2.6.9 (ARM) and table A6-1 (Thumb). */
+/* R14 at exception entry.  There are two families here and they are specified
+ * against different addresses, which is the single easiest thing to get wrong in
+ * an exception model (DDI 0100I A2.6.3-A2.6.10 in ARM state, A6.1.2 with table
+ * A6-1 in Thumb state):
+ *
+ *  - an exception *raised by an instruction* is reported against that
+ *    instruction's address, which is `cur` while the trap is being taken:
+ *
+ *                     ARM  Thumb   handler return
+ *      undefined       +4    +2    `MOVS PC, R14` -> the next instruction
+ *      SWI             +4    +2
+ *      prefetch abort  +4    +4    `SUBS PC, R14, #4` -> retry the fetch
+ *      data abort      +8    +8    `SUBS PC, R14, #8` -> re-execute
+ *
+ *  - an interrupt (IRQ/FIQ) is taken *between* instructions, at an instruction
+ *    boundary, and the ARM ARM specifies it against the instruction that has not
+ *    run yet: "R14_irq = address of next instruction to be executed + 4"
+ *    (A2.6.8).  That instruction is `npc` here, and the +4 is state-independent -
+ *    a Thumb guest uses the same `SUBS PC, R14, #4` return, so what moves is the
+ *    base address, not the offset (see take_interrupt()).
+ *
+ * The distinction is not academic: for a fall-through the two readings agree
+ * (npc + 4 == cur + 8 in ARM state), but when the last retired instruction was a
+ * *taken branch* they no longer do, and a handler built on the wrong one resumes
+ * at an address the guest never intended - silently skipping or repeating one
+ * instruction, in the worst case at the top of a loop.
+ */
 u32 Cpu::exception_lr_offset(u32 e) const {
   if (thumb) {
     switch (e) {
-      case EXC_UNDEF:  return 2;   /* MOVS PC,R14 -> next instruction      */
+      case EXC_UNDEF:  return 2;   /* the next halfword                     */
       case EXC_SWI:    return 2;
-      case EXC_PABORT: return 4;   /* SUBS PC,R14,#4 -> retry the fetch     */
-      case EXC_DABORT: return 8;   /* SUBS PC,R14,#8 -> re-execute          */
-      case EXC_IRQ:    return 6;
-      case EXC_FIQ:    return 6;
-      default: return 0;
+      case EXC_PABORT: return 4;   /* aborted + 4 = retry the fetch          */
+      case EXC_DABORT: return 8;   /* aborted + 8 = re-execute               */
+      default: return 0;           /* interrupts do not use this table       */
     }
   }
   switch (e) {
-    case EXC_UNDEF:  return 4;
+    case EXC_UNDEF:  return 4;     /* the next instruction                  */
     case EXC_SWI:    return 4;
-    case EXC_PABORT: return 4;
-    case EXC_DABORT: return 8;
-    case EXC_IRQ:    return 8;   /* R14 = PC = instruction + 8            */
-    case EXC_FIQ:    return 8;
-    default: return 0;
+    case EXC_PABORT: return 4;     /* aborted + 4                           */
+    case EXC_DABORT: return 8;     /* aborted + 8                           */
+    default: return 0;             /* interrupts do not use this table       */
   }
 }
 
@@ -283,14 +304,14 @@ static u32 vector_offset(u32 e) {
   }
 }
 
-void Cpu::enter_exception(u32 e, u32 vector, u32 mode, u32 lr_adjust) {
+void Cpu::enter_exception(u32 e, u32 vector, u32 mode, u32 lr) {
   const u32 old_cpsr = cpsr;
   flush_bank();
 
   const u32 idx = bank_for_mode_static(mode);
   Bank& nb = bank[idx];
   nb.spsr = old_cpsr;
-  nb.r[14] = cur + lr_adjust;
+  nb.r[14] = lr;
   regs[13] = nb.r[13];
   regs[14] = nb.r[14];
   const Bank& shared = (idx == BANK_FIQ) ? nb : bank[BANK_USR];
@@ -319,24 +340,42 @@ void Cpu::enter_exception(u32 e, u32 vector, u32 mode, u32 lr_adjust) {
   if (jit) jit->on_exception();
 }
 
-void Cpu::take_exception(u32 e) {
-  u32 mode;
+/* Mode and vector for an exception - the two tables of DDI 0100I A2.6 and the
+ * layout of the vector page.  Shared by the traps and the interrupts. */
+static u32 exception_mode(u32 e) {
   switch (e) {
-    case EXC_UNDEF: mode = MODE_UND; break;
-    case EXC_IRQ:   mode = MODE_IRQ; break;
-    case EXC_FIQ:   mode = MODE_FIQ; break;
+    case EXC_UNDEF: return MODE_UND;
+    case EXC_IRQ:   return MODE_IRQ;
+    case EXC_FIQ:   return MODE_FIQ;
     case EXC_PABORT:
-    case EXC_DABORT: mode = MODE_ABT; break;
-    default: mode = MODE_SVC; break;   /* SWI, reset */
+    case EXC_DABORT: return MODE_ABT;
+    default: return MODE_SVC;   /* SWI, reset */
   }
+}
+
+/* An exception raised by the instruction at `cur`: the abort status registers are
+ * updated and R14 gets the instruction-relative offset from the table above. */
+void Cpu::take_exception(u32 e) {
   if (e == EXC_DABORT) {
     cp15.c[C5_FSR] = exc_fsr;
     cp15.c[C6_FAR] = exc_far;
   } else if (e == EXC_PABORT) {
     cp15.c[C5_IFSR] = exc_fsr;   /* FAR is not updated by prefetch aborts */
   }
-  u32 base = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
-  enter_exception(e, base + vector_offset(e), mode, exception_lr_offset(e));
+  const u32 base = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
+  enter_exception(e, base + vector_offset(e), exception_mode(e),
+                  cur + exception_lr_offset(e));
+}
+
+/* An interrupt (IRQ/FIQ) taken at the instruction boundary in front of `npc`:
+ * "R14_irq = address of next instruction to be executed + 4" (A2.6.8) - so the
+ * handler's `SUBS PC, R14, #4` lands on `npc`, the instruction that has not run
+ * yet, and the guest resumes exactly where it was going to.  Both states use the
+ * same +4: the two-byte Thumb encoding changes where the *next* instruction is,
+ * not the delta the return instruction assumes. */
+void Cpu::take_interrupt(u32 e) {
+  const u32 base = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
+  enter_exception(e, base + vector_offset(e), exception_mode(e), npc + 4u);
 }
 
 void Cpu::raise_undef(u32 i) { insn = i; exc = EXC_UNDEF; exectrap = EXC_UNDEF; }
@@ -351,10 +390,10 @@ void Cpu::raise_pabort(u32 fs) {
 }
 
 bool Cpu::check_interrupts() {
-  if (BRAIN_UNLIKELY(fiq_line && !(cpsr & CPSR_F))) { take_exception(EXC_FIQ); return true; }
+  if (BRAIN_UNLIKELY(fiq_line && !(cpsr & CPSR_F))) { take_interrupt(EXC_FIQ); return true; }
   if (BRAIN_UNLIKELY(irq_line && !(cpsr & CPSR_I))) {
     halted = 0;
-    take_exception(EXC_IRQ);
+    take_interrupt(EXC_IRQ);
     return true;
   }
   return false;

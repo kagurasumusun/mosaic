@@ -22,6 +22,7 @@ const char* module_kind_name(ModuleKind k) {
     case ModuleKind::Device: return "device";
     case ModuleKind::Loader: return "loader";
     case ModuleKind::Monitor: return "monitor";
+    case ModuleKind::Board: return "board";
     default: return "?";
   }
 }
@@ -113,8 +114,28 @@ const MonitorModule* ModuleRegistry::monitor_by_index(u32 i) const {
 
 u32 ModuleRegistry::monitor_count() const { return nmonitors_; }
 
+void ModuleRegistry::add_board(const BoardModule* b) {
+  if (!b || nboards_ >= kMaxBoards) return;
+  if (board_by_id(b->info().id)) return;
+  boards_[nboards_++] = b;
+}
+
+const BoardModule* ModuleRegistry::board_by_id(const char* id) const {
+  if (!id || !*id) return nullptr;
+  for (u32 i = 0; i < nboards_; ++i)
+    if (boards_[i]->info().id && !std::strcmp(boards_[i]->info().id, id))
+      return boards_[i];
+  return nullptr;
+}
+
+const BoardModule* ModuleRegistry::board_by_index(u32 i) const {
+  return i < nboards_ ? boards_[i] : nullptr;
+}
+
+u32 ModuleRegistry::board_count() const { return nboards_; }
+
 u32 ModuleRegistry::count() const {
-  return ncpus_ + nloaders_ + ndevices_ + nmonitors_;
+  return ncpus_ + nloaders_ + ndevices_ + nmonitors_ + nboards_;
 }
 
 const ModuleInfo* ModuleRegistry::info(u32 i) const {
@@ -125,6 +146,8 @@ const ModuleInfo* ModuleRegistry::info(u32 i) const {
   if (i < ndevices_) return &devices_[i]->info();
   i -= ndevices_;
   if (i < nmonitors_) return &monitors_[i]->info();
+  i -= nmonitors_;
+  if (i < nboards_) return &boards_[i]->info();
   return nullptr;
 }
 

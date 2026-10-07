@@ -35,14 +35,16 @@ src/modules/exit/                  a device module: a store that stops the run
 | `loader` | an image format | `Machine::load_image`, by content | `elf32`, `raw` |
 | `device` | something mapped into the address space | the bus, per access | `exit`, `console`, a UART |
 | `monitor` | an observer of a running machine | the run loop, per slice | none built in; the tests declare one |
+| `board` | a named machine preset: CPU, devices, wires | `Machine::init`, once | `minimal`, `timer` |
 
-All four kinds are *registry* modules and all four are created through a factory
-(`CpuModule`, `Loader`, `DeviceModule`, `MonitorModule` in
+All five kinds are *registry* modules and all five are created through a factory
+(`CpuModule`, `Loader`, `DeviceModule`, `MonitorModule`, `BoardModule` in
 `include/brainemu/core/module.h`), so a machine can be assembled out of ids:
-`MachineConfig::cpu_id`, `devices[]` and `monitors[]`, or
-`Machine::add_device_by_id` / `add_monitor_by_id` after the fact. The C API
-mirrors the latter (`brain_add_device_module`, `brain_add_monitor_module`) and
-`brain_module_*` lists every kind the build contains.
+`MachineConfig::cpu_id`, `devices[]`, `monitors[]`, `wires[]` and `board`, or
+`Machine::add_device_by_id` / `add_monitor_by_id` / `add_wire` after the fact.
+The C API mirrors the latter (`brain_add_device_module`,
+`brain_add_monitor_module`, `brain_add_wire`) and `brain_module_*` lists every
+kind the build contains.
 
 Only a CPU module is *driven*; the others are called. A CPU module is therefore
 the only one with an execution contract, and it is the one this document is
@@ -200,6 +202,14 @@ needs one (the exit port does: it calls `Machine::stop`), attaches it to the bus
 and resets it. `--device uart@0x80000000` is the CLI spelling; the C API's is
 `brain_add_device_module`.
 
+A device that can interrupt declares its outputs - `irq_count()` names how many,
+`irq_name(i)` names them - and drives them with `drive_irq(i, level)`.  It does
+not know, and cannot know, where they go: a *board* wires each one to a CPU input
+by name (below).  Driving a line nothing is wired to is fine and does nothing,
+which is what lets a device be used on its own in a test.  `drive_irq` is
+level-sensitive and reports only *changes*, so a peripheral that re-asserts an
+already-high line costs nothing.
+
 Two rules the shipped ones follow:
 
 * **A device reports its own state.** `field_count()` / `field_name(i)` /
@@ -215,6 +225,102 @@ Two rules the shipped ones follow:
   region then routes by address, and an access outside every window still reaches
   the device that owns the page. Unmapping a shared page takes the whole group
   with it.
+
+### Wiring a device to a CPU
+
+Neither end knows the other's type.  A device has outputs (`irq_count`,
+`irq_name`, `drive_irq`); a CPU has named inputs (`CpuCore::input_count`,
+`input_name`, `set_input` - whose default maps input 0 to IRQ and 1 to FIQ, so
+an ARM-shaped CPU needs no code for it); and a machine carries the level from one
+to the other:
+
+```cpp
+MachineConfig cfg;
+cfg.add_device(ModuleSpec("timer"));            /* 0x10001000 by default     */
+cfg.add_wire("timer", "irq", "irq");            /* device.out -> cpu.in      */
+Machine m;
+if (!m.init(cfg)) { /* last_error() names the end that is missing */ }
+```
+
+The wire is resolved by name at the moment a level changes, not when it is
+declared, which is what makes the order above irrelevant - a board may name a
+device the machine has not built yet - and what makes `brain_add_wire` work on a
+machine that is already running:
+
+```c
+brain_add_wire(e, "timer", "irq", "irq");       /* 0 unless an end is missing */
+```
+
+Refusals are specific: an unknown device, an output the device does not have, an
+input the CPU does not have - each says what *does* exist.  A missing wire is not
+an error at run time, though: an unwired output is simply dropped, so the same
+device works in a machine, in a unit test and in a debugger without a flag.
+
+### Adding a board
+
+A board is the answer to "what machine is this?".  It owns no behaviour - it
+fills in the same `MachineConfig` a caller would, and the machine then builds it
+exactly as if the caller had written it out by hand:
+
+```cpp
+class MyBoard final : public BoardModule {
+ public:
+  const ModuleInfo& info() const override {
+    static const ModuleInfo k = [] {
+      ModuleInfo i;
+      i.id = "my-board";
+      i.name = "my machine";
+      i.kind = ModuleKind::Board;
+      i.description = "a CPU, a UART and a timer, with the timer on IRQ";
+      return i;
+    }();
+    return k;
+  }
+  void configure(MachineConfig& cfg) const override {
+    cfg.cpu_id = "arm926";
+    cfg.add_device(ModuleSpec("console"));
+    cfg.add_device(ModuleSpec("timer"));
+    cfg.add_wire("timer", "irq", "irq");
+  }
+};
+```
+
+Register it (`ModuleRegistry::instance().add_board(&mod)`) and it appears in
+`--list-modules` and works as `--board my-board`.  `Machine::init` applies the
+board's layout first and then the caller's own additions on top, so
+`--board my-board --device exit` is the board plus one peripheral, and a board
+never takes away an explicit choice.
+
+Boards are also the natural place for a *machine* to be described without writing
+any code at all: `MachineConfig` is a plain struct, so a table of them (an array
+of `{id, description, devices, wires}`) is a fine board registry for a build that
+wants many machines.  What a board must *not* do is reach into a CPU or a device:
+it only names them.
+
+### The timer, as the reference device
+
+`src/modules/timer/timer_module.cpp` is the smallest device that exercises the
+whole path a real peripheral needs, and is meant to be copied:
+
+* a window in the address space (`base()`, `size()`, byte-addressable registers,
+  reads and writes at their natural size through `read`/`write`);
+* a **clock**: `tick(cycles)` is called by the machine once per slice with the
+  cycles that slice charged, which is how a device observes time passing at all;
+* an **interrupt output**: `irq_count() == 1`, `irq_name(0) == "irq"`, driven
+  high when the counter expires and low when the guest acknowledges - a level,
+  latched, so an expiry the CPU could not take is not lost;
+* **self-description**: `field_count()`/`field_name()`/`field_value()` give a
+  tool `period`, `ticks`, `pending` and `running` without the core knowing what a
+  timer is.
+
+Its registers are `0x00` period (writing it restarts the counter), `0x04` count
+(read-only), `0x08` control (bit 0 enable), `0x0C` status (bit 0 pending, bit 1
+running) and `0x10` acknowledge (write anything).  The acknowledge is its own
+register on purpose: a bit inside the control register would make "acknowledge"
+and "keep running" the same write, so a guest that acknowledges without
+repeating the enable bit would silently stop its own timer.  A device that
+models a real chip is this file with that chip's register map; the board that
+wires it is ten lines.
 
 ### Adding a monitor
 

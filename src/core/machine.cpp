@@ -47,9 +47,50 @@ Machine::~Machine() {
 bool Machine::init(const MachineConfig& cfg) {
   cfg_ = cfg;
   err_.clear();
+  wires_.clear();
   /* A module in a static archive is only linked in if something references it,
    * so the list of modules this build contains is a function the core calls. */
   register_builtin_modules();
+
+  /* A board is a *preset*: it fills the layout first (devices, monitors, wires)
+   * and whatever the caller set itself is applied on top below, so a board never
+   * takes away an explicit choice.  The module *lists* are emptied before the
+   * board fills them: copying the caller's config wholesale would leave its own
+   * devices and wires in front of the board's (a device the board also has would
+   * then lose its window to the caller's copy, and a wire would be added twice -
+   * once by the copy, once by the merge below). */
+  MachineConfig eff = cfg;
+  eff.device_count = 0;
+  eff.monitor_count = 0;
+  eff.wire_count = 0;
+  if (cfg.board && *cfg.board && !apply_board(cfg.board, &eff)) return false;
+  if (cfg.cpu_id && *cfg.cpu_id) eff.cpu_id = cfg.cpu_id;
+  if (cfg.ram_base) eff.ram_base = cfg.ram_base;
+  if (cfg.ram_size != MachineConfig{}.ram_size) eff.ram_size = cfg.ram_size;
+  /* The caller's own modules, after the board's.  The lists are fixed-size and
+   * drop silently when full, so the count is checked *before* anything is
+   * appended: a machine that quietly lacks the peripheral a caller asked for is
+   * the kind of failure that shows up as a mysterious hang much later. */
+  if (eff.device_count + cfg.device_count > MachineConfig::kMaxModules) {
+    err_ = "too many device modules in the configuration (limit " +
+           std::to_string(MachineConfig::kMaxModules) + ")";
+    return false;
+  }
+  if (eff.monitor_count + cfg.monitor_count > MachineConfig::kMaxModules) {
+    err_ = "too many monitor modules in the configuration (limit " +
+           std::to_string(MachineConfig::kMaxModules) + ")";
+    return false;
+  }
+  if (eff.wire_count + cfg.wire_count > MachineConfig::kMaxWires) {
+    err_ = "too many wires in the configuration (limit " +
+           std::to_string(MachineConfig::kMaxWires) + ")";
+    return false;
+  }
+  for (u32 i = 0; i < cfg.device_count; ++i) eff.add_device(cfg.devices[i]);
+  for (u32 i = 0; i < cfg.monitor_count; ++i) eff.add_monitor(cfg.monitors[i]);
+  for (u32 i = 0; i < cfg.wire_count; ++i) eff.add_wire(cfg.wires[i]);
+  cfg_ = eff;
+  for (u32 i = 0; i < cfg_.wire_count; ++i) wires_.push_back(intern_wire(cfg_.wires[i]));
 
   if (cfg_.ram_size && !bus_.map_ram(cfg_.ram_base, cfg_.ram_size,
                                      cfg_.ram_name ? cfg_.ram_name : "ram")) {
@@ -64,7 +105,33 @@ bool Machine::init(const MachineConfig& cfg) {
     if (!add_device_by_id(cfg_.devices[i])) return false;
   for (u32 i = 0; i < cfg_.monitor_count; ++i)
     if (!add_monitor_by_id(cfg_.monitors[i].id)) return false;
+  /* Every wire is checked once now that the modules exist, so a typo is reported
+   * at construction instead of at the first interrupt - and it stays *live*
+   * afterwards (a device added later is picked up on the next level change, and
+   * `add_wire` validates on the spot). */
+  for (const WireSpec& w : wires_) {
+    std::string why;
+    u32 input = 0;
+    if (!resolve_wire(w, &input, &why)) {
+      err_ = why;
+      return false;
+    }
+  }
   reset();
+  return true;
+}
+
+bool Machine::apply_board(const char* id, MachineConfig* eff) {
+  const BoardModule* b = ModuleRegistry::instance().board_by_id(id);
+  if (!b) {
+    err_ = std::string("no board module named '") + id + "' (have: " +
+           ModuleRegistry::instance().ids(ModuleKind::Board) + ")";
+    return false;
+  }
+  /* The board configures a fresh config; the caller's own choices are merged in
+   * by `init` afterwards.  Options are never part of a preset. */
+  b->configure(*eff);
+  eff->board = b->info().id;      /* so the machine can say where it came from */
   return true;
 }
 
@@ -133,6 +200,9 @@ void Machine::reset() {
 }
 
 bool Machine::add_device(Device& d) {
+  /* The wiring hook goes on first: a device that drives a line from `on_attach`
+   * (or during `attach`'s reset) is already connected. */
+  install_wiring(d);
   d.on_attach(*this);
   if (!d.attach(bus_)) {
     err_ = std::string("device '") + d.info().id +
@@ -164,6 +234,126 @@ Device* Machine::add_device_by_id(const char* id, u32 base, bool has_base) {
   return raw;
 }
 
+/* ------------------------------------------------------------- wiring --- */
+
+namespace {
+
+/* The index of an interrupt output by name: null/"" is "the first one", which is
+ * what `--wire DEV=irq` means for a device with a single line. */
+int output_index(const Device& d, const char* name) {
+  if (!name || !*name) return d.irq_count() ? 0 : -1;
+  for (u32 i = 0; i < d.irq_count(); ++i) {
+    const char* n = d.irq_name(i);
+    if (n && !std::strcmp(n, name)) return (int)i;
+  }
+  return -1;
+}
+
+}  // namespace
+
+void Machine::install_wiring(Device& d) { d.set_irq_notify(&Machine::deliver_irq, this); }
+
+bool Machine::resolve_wire(const WireSpec& w, u32* input_index, std::string* why) {
+  if (!w.device || !*w.device) {
+    if (why) *why = "a wire needs a device id";
+    return false;
+  }
+  Device* d = device_by_id(w.device);
+  if (!d) {
+    if (why)
+      *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
+             " -> " + (w.input ? w.input : "") + "': no device named '" + w.device +
+             "' on this machine (have:";
+      for (const Device* d : devices_)
+        if (d->info().id) *why += std::string(" ") + d->info().id;
+      *why += ")";
+    return false;
+  }
+  if (output_index(*d, w.output) < 0) {
+    if (why) {
+      *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
+             " -> " + (w.input ? w.input : "") + "': device '" + w.device +
+             "' has no interrupt output named '" + (w.output ? w.output : "") +
+             "' (have:";
+      for (u32 i = 0; i < d->irq_count(); ++i) *why += std::string(" ") + d->irq_name(i);
+      *why += ")";
+    }
+    return false;
+  }
+  if (!cpu_) {
+    if (why) *why = "no CPU to wire to";
+    return false;
+  }
+  const char* want = w.input && *w.input ? w.input : "irq";
+  for (u32 i = 0; i < cpu_->input_count(); ++i) {
+    const char* n = cpu_->input_name(i);
+    if (n && !std::strcmp(n, want)) {
+      if (input_index) *input_index = i;
+      return true;
+    }
+  }
+  if (why) {
+    *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
+           " -> " + want + "': the CPU module has no input named '" + want + "' (have:";
+    for (u32 i = 0; i < cpu_->input_count(); ++i)
+      *why += std::string(" ") + cpu_->input_name(i);
+    *why += ")";
+  }
+  return false;
+}
+
+/* A copy of the wire whose names live in the machine.  Every entry point goes
+ * through here (`init` for the config's wires, `add_wire` for the live ones), so
+ * nothing in `wires_` ever points into a caller's temporary. */
+WireSpec Machine::intern_wire(const WireSpec& w) {
+  WireSpec out;
+  wire_names_.push_back(w.device ? w.device : "");
+  out.device = wire_names_.back().c_str();
+  wire_names_.push_back(w.output ? w.output : "");
+  out.output = wire_names_.back().c_str();
+  wire_names_.push_back(w.input ? w.input : "");
+  out.input = wire_names_.back().c_str();
+  return out;
+}
+
+bool Machine::add_wire(const WireSpec& w) {
+  std::string why;
+  u32 input = 0;
+  if (!resolve_wire(w, &input, &why)) {
+    err_ = why;
+    return false;
+  }
+  wires_.push_back(intern_wire(w));
+  return true;
+}
+
+int Machine::wire_level(u32 i) const {
+  if (i >= wires_.size()) return 0;
+  const WireSpec& w = wires_[i];
+  for (const Device* d : devices_) {
+    if (d->info().id && w.device && !std::strcmp(d->info().id, w.device))
+      return d->irq_level((u32)output_index(*d, w.output));
+  }
+  return 0;
+}
+
+void Machine::deliver_irq(void* user, Device& d, u32 output, int level) {
+  Machine* m = static_cast<Machine*>(user);
+  if (!m || !m->cpu_ || !d.info().id) return;
+  for (const WireSpec& w : m->wires_) {
+    if (!w.device || std::strcmp(w.device, d.info().id)) continue;
+    if (output_index(d, w.output) != (int)output) continue;
+    for (u32 i = 0; i < m->cpu_->input_count(); ++i) {
+      const char* n = m->cpu_->input_name(i);
+      const char* want = w.input && *w.input ? w.input : "irq";
+      if (n && !std::strcmp(n, want)) {
+        m->cpu_->set_input(i, level);
+        break;
+      }
+    }
+  }
+}
+
 void Machine::end_slice(u64 retired) {
   const u64 cyc = cpu_->cycles() - device_cycles_;
   device_cycles_ = cpu_->cycles();
@@ -173,24 +363,50 @@ void Machine::end_slice(u64 retired) {
   for (Monitor* m : monitors_) m->on_slice(*this, retired);
 }
 
+/* One `run` is a sequence of slices, not one call.  A device is ticked - and a
+ * monitor told - at every slice boundary, so a timer that expires 200 cycles
+ * into a 10000-cycle run raises its line at the right moment: a machine that
+ * only ticked devices when the run *ended* would deliver every interrupt at
+ * once, at the end, and a run that never ends would deliver none.  The
+ * granularity is what a device sees as "now": small enough that a peripheral
+ * observes time move, large enough that the per-slice virtual call is noise. */
+static constexpr u64 kSliceInsns = 1024;
+static constexpr u64 kSliceCycles = 2048;
+
 u64 Machine::run_insns(u64 n) {
-  if (!cpu_) return 0;
-  cpu_->sync();
+  if (!cpu_ || n == 0) return 0;
   const u64 before = cpu_->insns();
-  cpu_->run_insns(n);
-  const u64 retired = cpu_->insns() - before;
-  end_slice(retired);
-  return retired;
+  while (cpu_->insns() - before < n) {
+    const u64 left = n - (cpu_->insns() - before);
+    const u64 slice = left < kSliceInsns ? left : kSliceInsns;
+    const u64 insns_before = cpu_->insns();
+    cpu_->sync();
+    cpu_->run_insns(slice);
+    const u64 retired_slice = cpu_->insns() - insns_before;
+    end_slice(retired_slice);
+    /* The CPU retires fewer instructions than it was asked for only when it
+     * stopped (`Machine::stop`, a device's request, a debugger): stop slicing. */
+    if (retired_slice < slice) break;
+  }
+  return cpu_->insns() - before;
 }
 
 u64 Machine::run_cycles(u64 max_cycles) {
   if (!cpu_) return 0;
-  cpu_->sync();
   const u64 before = cpu_->insns();
-  cpu_->run_cycles(max_cycles);
-  const u64 retired = cpu_->insns() - before;
-  end_slice(retired);
-  return retired;
+  const u64 target = cpu_->cycles() + max_cycles;
+  for (;;) {
+    const u64 now = cpu_->cycles();
+    if (max_cycles && now >= target) break;
+    const u64 slice = max_cycles && target - now < kSliceCycles ? target - now
+                                                                : kSliceCycles;
+    const u64 insns_before = cpu_->insns();
+    cpu_->sync();
+    cpu_->run_cycles(slice);
+    end_slice(cpu_->insns() - insns_before);
+    if (cpu_->cycles() - now < slice) break;      /* the CPU stopped */
+  }
+  return cpu_->insns() - before;
 }
 
 void Machine::step() {

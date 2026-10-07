@@ -63,6 +63,9 @@ typedef struct {
   uint32_t ram_size;      /* bytes; 0 = 32 MiB                                */
   const char* cpu_id;     /* CPU module id, e.g. "arm926"; NULL = the default */
   const char* cpu_options;/* "key=value;key=value" handed to the CPU module   */
+  const char* board_id;   /* board module id, e.g. "timer"; NULL = no preset
+                           * (a board fills in devices/monitors/wires, and the
+                           * caller's own choices below are applied on top)    */
   int use_jit;            /* ask the JIT for blocks (falls back if no backend)*/
   int big_endian_data;    /* BE8 data accesses                                */
   int high_vectors;       /* CP15 c1 V at reset: 0xFFFF0000 vectors           */
@@ -158,6 +161,24 @@ int brain_load_elf32(brain_emu_t* e, const void* image, size_t size,
 int brain_add_device_module(brain_emu_t* e, const char* id, uint32_t base,
                             int has_base);
 int brain_add_monitor_module(brain_emu_t* e, const char* id);
+
+/* Wiring: connect a device's interrupt output to one of the CPU's interrupt
+ * inputs, both by name ("timer", "irq", "irq").  A device and a CPU never learn
+ * about each other - this call is the whole connection, and it works before or
+ * after the machine starts running.  Refused (with the names that exist in
+ * brain_last_error) when either end is missing. */
+int brain_add_wire(brain_emu_t* e, const char* device_id, const char* output,
+                   const char* cpu_input);
+/* The board a machine was built from ("" when it was assembled by hand), and the
+ * wires it carries.  `brain_wire_info` writes back the two ends by name; pass
+ * NULL for a name you do not want. */
+const char* brain_board_id(const brain_emu_t* e);
+uint32_t brain_wire_count(const brain_emu_t* e);
+int brain_wire_info(const brain_emu_t* e, uint32_t index, const char** device_id,
+                    const char** output, const char** cpu_input);
+/* The level a wire's device output is driving right now (0 when it is not
+ * wired): what a --stats line shows, and what a test asserts on. */
+int brain_wire_level(const brain_emu_t* e, uint32_t index);
 
 /* What the machine's devices and monitors are, and what they have to say.  The
  * core does not know any field: a device or monitor describes itself (see

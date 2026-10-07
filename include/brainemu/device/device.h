@@ -42,6 +42,28 @@ class Device {
   virtual void write(u32 offset, u32 value, u32 size) = 0;
   virtual void tick(u64 cycles) { (void)cycles; }
 
+  /* Interrupt outputs - a device's "pins".  A device declares the lines it can
+   * drive (`irq_count`/`irq_name`) and raises or lowers them with `drive_irq`;
+   * the *board* decides where each line goes (MachineConfig::wires, or
+   * `--wire DEV.OUT=INPUT`), so neither end has to know the other's type.  The
+   * machine reports every change to whoever is wired - and drops it when nothing
+   * is, which is what lets the same device run in a machine that ignores its
+   * interrupts.  Levels are what a line carries: a device that wants an edge
+   * drives high and then low (see `pulse_irq`). */
+  virtual u32 irq_count() const { return 0; }
+  virtual const char* irq_name(u32 i) const { (void)i; return ""; }
+
+  static constexpr u32 kMaxIrq = 8;
+  void drive_irq(u32 i, int level);
+  void pulse_irq(u32 i) { drive_irq(i, 1); drive_irq(i, 0); }
+  int irq_level(u32 i) const { return i < kMaxIrq ? irq_level_[i] : 0; }
+
+  /* Where the machine installs itself: a device never needs the machine's type,
+   * and a device used outside a machine (a unit test, a GUI) simply has no
+   * notifier and drives its levels into the void. */
+  using IrqNotify = void (*)(void* user, Device& d, u32 output, int level);
+  void set_irq_notify(IrqNotify fn, void* user) { irq_fn_ = fn; irq_user_ = user; }
+
   /* Called once, by `Machine::add_device`, before `attach`: a device that has
    * to *do* something to the machine around it - stop the run loop, raise an
    * interrupt line, read the CPU's counters - keeps the pointer.  A plain
@@ -74,6 +96,9 @@ class Device {
 
  private:
   bool attached_ = false;
+  int irq_level_[kMaxIrq] = {};
+  IrqNotify irq_fn_ = nullptr;
+  void* irq_user_ = nullptr;
 };
 
 /* Adapters for the two shapes a caller usually already has: free functions with

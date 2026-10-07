@@ -133,9 +133,29 @@ class CpuCore {
   virtual u32 guest_read(u32 addr, u32 size) = 0;
   virtual void guest_write(u32 addr, u32 value, u32 size) = 0;
 
-  /* Level-sensitive interrupt inputs, sampled at instruction boundaries. */
+  /* Interrupt inputs, sampled at instruction boundaries.  IRQ and FIQ are the
+   * ARM names for the two every core in this tree has so far, and they are what
+   * `input 0` and `input 1` below mean; the generic surface is what a *board*
+   * uses, because a board should not have to know whether the CPU it wired is an
+   * ARM.  A CPU with a different interrupt model (a vector of 32 lines, a
+   * priority controller, an NMI) overrides the generic three and leaves the
+   * ARM-shaped pair as the alias a caller that knows it has an ARM still uses. */
   virtual void set_irq(int level) = 0;
   virtual void set_fiq(int level) = 0;
+
+  /* The generic view of the same thing: `input_name(i)` is the name a board
+   * wires to ("irq", "fiq"), and `set_input` drives one.  Returns false for an
+   * input the CPU does not have, so a mis-wired board can be reported instead of
+   * silently ignored. */
+  virtual u32 input_count() const { return 2; }
+  virtual const char* input_name(u32 i) const {
+    return i == 0 ? "irq" : i == 1 ? "fiq" : "";
+  }
+  virtual bool set_input(u32 i, int level) {
+    if (i == 0) { set_irq(level); return true; }
+    if (i == 1) { set_fiq(level); return true; }
+    return false;
+  }
 
   /* Non-zero when an exception is being taken (the exception ids are the
    * module's; the C API maps the ones it knows). */

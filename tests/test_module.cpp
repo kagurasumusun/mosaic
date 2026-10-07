@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -667,6 +668,335 @@ void test_device_modules() {
   CHECK(std::strstr(m2.last_error(), "no monitor module named 'nope'") != nullptr);
 }
 
+/* --------------------------------------------------------- the timer ---- */
+
+namespace {
+
+/* What a wire carries, and how often: the notify hook a machine installs is
+ * `Device::set_irq_notify`, so a test can stand in for the machine and count.
+ * The count is the whole point - a device that re-drives its line on every tick
+ * while a peripheral stays pending would make a machine's delivery path (and any
+ * CPU's edge logic) see traffic that is not there. */
+struct LevelLog {
+  int calls = 0;
+  int levels[16] = {};
+  u32 outputs[16] = {};
+};
+
+void log_irq(void* user, Device&, u32 output, int level) {
+  LevelLog* l = static_cast<LevelLog*>(user);
+  if (l->calls < 16) {
+    l->levels[l->calls] = level;
+    l->outputs[l->calls] = output;
+  }
+  ++l->calls;
+}
+
+/* The device register file through the bus, one byte at a time - the only
+ * accessor the bus publishes (a device's registers are not necessarily four
+ * bytes wide, which is why the bus does not guess). */
+u32 reg32(Bus& bus, u32 addr) {
+  u32 v = 0;
+  for (u32 i = 0; i < 4; ++i) {
+    u8 b = 0;
+    bus.read_byte(addr + i, &b);
+    v |= (u32)b << (8 * i);
+  }
+  return v;
+}
+
+void put32(Bus& bus, u32 addr, u32 v) {
+  for (u32 i = 0; i < 4; ++i) bus.write_byte(addr + i, (u8)(v >> (8 * i)));
+}
+
+}  // namespace
+
+/* The timer module, on its own bus, with the clocks driven by hand: this is the
+ * device contract every peripheral in the tree will follow - a window in the
+ * address space, registers with read/write semantics, a latched level on an
+ * interrupt output, and a `tick` that only ever moves it forward. */
+void test_timer_device() {
+  std::printf("[timer device]\n");
+  const DeviceModule* mod = ModuleRegistry::instance().device_by_id("timer");
+  CHECK(mod != nullptr);
+  if (!mod) return;
+  CHECK(mod->default_base() == 0x10001000u);
+  CHECK(mod->info().kind == ModuleKind::Device);
+
+  Bus bus;
+  CHECK(bus.map_ram(0x8000, 1u << 16, "ram"));
+  std::unique_ptr<Device> dev = mod->create(mod->default_base());
+  CHECK(dev != nullptr);
+  if (!dev) return;
+  CHECK(dev->attach(bus));                 /* attach() resets the device */
+  CHECK(dev->base() == 0x10001000u);
+  CHECK(dev->size() == 0x10u);
+  CHECK(dev->irq_count() == 1);
+  CHECK(std::strcmp(dev->irq_name(0), "irq") == 0);
+
+  LevelLog log;
+  dev->set_irq_notify(&log_irq, &log);
+
+  /* Reading a register the device does not have is zero, not a fault: the whole
+   * covering page is the window. */
+  CHECK(reg32(bus, 0x10001000u) == 0u);          /* PERIOD             */
+  CHECK(reg32(bus, 0x10001004u) == 0u);          /* COUNT              */
+  CHECK(reg32(bus, 0x1000100Cu) == 0u);          /* STATUS: idle       */
+
+  /* A period alone arms nothing: the counter does not move until CTRL[0]. */
+  put32(bus, 0x10001000u, 100u);
+  CHECK(reg32(bus, 0x10001004u) == 100u);
+  dev->tick(500);
+  CHECK(reg32(bus, 0x10001004u) == 100u);
+  CHECK(dev->irq_level(0) == 0);
+  CHECK(log.calls == 0);
+  CHECK(std::strcmp(dev->field_value(0), "100") == 0);   /* period */
+  CHECK(std::strcmp(dev->field_value(2), "no") == 0);    /* pending */
+
+  /* Enabled: the counter is the clock, and an expiry latches the line. */
+  put32(bus, 0x10001008u, 1u);                   /* CTRL[0] = enable   */
+  dev->tick(60);
+  CHECK(reg32(bus, 0x10001004u) == 40u);
+  CHECK((reg32(bus, 0x1000100Cu) & 3u) == 2u);    /* running, not pending */
+  CHECK(dev->irq_level(0) == 0);
+  dev->tick(40);
+  CHECK((reg32(bus, 0x1000100Cu) & 1u) == 1u);    /* pending            */
+  CHECK(dev->irq_level(0) == 1);
+  CHECK(log.calls == 1 && log.levels[0] == 1 && log.outputs[0] == 0);
+
+  /* The level *is* level-sensitive: further expiries while the guest has not
+   * acknowledged produce no new level and no new notification, and `ticks` says
+   * how many were swallowed - the count a test uses to see a missed interrupt. */
+  dev->tick(300);
+  CHECK(dev->irq_level(0) == 1);
+  check(log.calls == 1, "a level that is already high is not re-notified");
+  /* Four expiries by now: the one at 60+40, then three more inside the 300.  A
+   * device that counts the expiry it is passing from the whole clock delta would
+   * say five, and a guest would take an interrupt that never happened. */
+  CHECK(std::strcmp(dev->field_value(1), "4") == 0);     /* ticks  */
+  CHECK(std::strcmp(dev->field_value(2), "yes") == 0);   /* pending */
+  CHECK(std::strcmp(dev->field_value(3), "yes") == 0);   /* running */
+
+  /* Acknowledge: the latch clears and the line drops, once. */
+  put32(bus, 0x10001010u, 1u);
+  CHECK(dev->irq_level(0) == 0);
+  CHECK((reg32(bus, 0x1000100Cu) & 1u) == 0u);
+  CHECK(log.calls == 2 && log.levels[1] == 0);
+  put32(bus, 0x10001010u, 1u);                   /* a second ack does nothing */
+  CHECK(log.calls == 2);
+
+  /* Writing CTRL cannot acknowledge and cannot perturb the pending latch, and a
+   * write to COUNT is ignored: the only way to move any of this is the register
+   * that means it. */
+  put32(bus, 0x10001008u, 1u);
+  CHECK(dev->irq_level(0) == 0 && log.calls == 2);
+  dev->tick(100);
+  CHECK(dev->irq_level(0) == 1 && log.calls == 3);
+  put32(bus, 0x10001004u, 5u);
+  CHECK(reg32(bus, 0x10001004u) == 100u);         /* COUNT is read-only */
+  put32(bus, 0x10001008u, 1u);                   /* re-writing enable keeps pending */
+  CHECK(dev->irq_level(0) == 1 && log.calls == 3);
+  /* Disabling stops the countdown but keeps a pending interrupt pending. */
+  put32(bus, 0x10001008u, 0u);
+  dev->tick(500);
+  CHECK(dev->irq_level(0) == 1 && log.calls == 3);
+  CHECK(std::strcmp(dev->field_value(2), "yes") == 0);
+  put32(bus, 0x10001010u, 0u);                  /* ack value is "anything" */
+  CHECK(dev->irq_level(0) == 0 && log.calls == 4);
+
+  /* A fresh period restarts the counter, and reset() puts everything back. */
+  put32(bus, 0x10001008u, 1u);
+  put32(bus, 0x10001000u, 7u);
+  CHECK(reg32(bus, 0x10001004u) == 7u);
+  dev->tick(6);
+  CHECK(reg32(bus, 0x10001004u) == 1u);
+  dev->tick(1);
+  CHECK(dev->irq_level(0) == 1);
+  dev->reset();
+  CHECK(dev->irq_level(0) == 0);
+  CHECK(reg32(bus, 0x10001000u) == 0u && reg32(bus, 0x10001004u) == 0u);
+  CHECK(reg32(bus, 0x10001008u) == 0u && reg32(bus, 0x1000100Cu) == 0u);
+  CHECK(std::strcmp(dev->field_value(1), "0") == 0);      /* ticks back to 0 */
+  check(log.calls == 6, "reset drops the line it had raised");
+}
+
+/* ------------------------------------------------------------- boards ---- */
+
+/* A board is a *preset*, not a special kind of machine: it fills a config with
+ * devices, monitors and wires, and `Machine::init` applies it before the
+ * caller's own choices, so `board + one peripheral` works and a board can never
+ * take an explicit choice away.  This is the seam the whole "start from a named
+ * machine" idea rests on, and the reason the registry carries kinds other than
+ * CPU. */
+void test_boards_and_wiring() {
+  std::printf("[boards and wiring]\n");
+  const ModuleRegistry& reg = ModuleRegistry::instance();
+  CHECK(std::strcmp(module_kind_name(ModuleKind::Board), "board") == 0);
+  CHECK((u32)ModuleKind::Board < (u32)ModuleKind::Count);
+
+  const BoardModule* minimal = reg.board_by_id("minimal");
+  const BoardModule* timer = reg.board_by_id("timer");
+  CHECK(minimal && timer);
+  CHECK(minimal && minimal->info().kind == ModuleKind::Board);
+  CHECK(timer && timer->info().kind == ModuleKind::Board);
+  CHECK(reg.board_by_id("no-such-board") == nullptr);
+  CHECK(reg.board_by_id(nullptr) == nullptr);
+  CHECK(reg.board_count() >= 2);
+  bool saw_timer = false;
+  for (u32 i = 0; i < reg.board_count(); ++i) {
+    const BoardModule* b = reg.board_by_index(i);
+    CHECK(b != nullptr);
+    if (b && !std::strcmp(b->info().id, "timer")) saw_timer = true;
+  }
+  CHECK(saw_timer);
+  CHECK(std::strstr(reg.ids(ModuleKind::Board), "minimal") != nullptr);
+  CHECK(std::strstr(reg.ids(ModuleKind::Board), "timer") != nullptr);
+
+  /* Building from a board: the layout comes from the preset, and the machine
+   * says which one it was.  The preset itself is *not* applied to a config the
+   * caller hands over - the caller hands the id to `init`, which is what keeps
+   * one board's devices out of another's config. */
+  MachineConfig c;
+  c.ram_size = 1u << 20;
+  c.cpu_id = "toy8";
+  c.board = "timer";
+  Machine m;
+  CHECK(m.init(c));
+  CHECK(m.device_count() == 3);
+  CHECK(m.device_by_id("timer") != nullptr);
+  CHECK(m.device_by_id("console") != nullptr);
+  CHECK(m.device_by_id("exit") != nullptr);
+  CHECK(m.config().board && std::strcmp(m.config().board, "timer") == 0);
+  CHECK(m.wire_count() == 1);
+  CHECK(std::strcmp(m.wire(0).device, "timer") == 0);
+  CHECK(std::strcmp(m.wire(0).output, "irq") == 0);
+  CHECK(std::strcmp(m.wire(0).input, "irq") == 0);
+  CHECK(m.wire_level(0) == 0);
+
+  /* The board's wire drives the machine's device: tick the timer past its period
+   * and the wire the board declared reads high.  No CPU involvement - this is
+   * the wiring path on its own. */
+  Device* t = m.device_by_id("timer");
+  CHECK(t != nullptr && t->irq_count() == 1);
+  if (t) {
+    put32(m.bus(), t->base() + 0x00u, 10u);          /* PERIOD */
+    put32(m.bus(), t->base() + 0x08u, 1u);           /* enable */
+    t->tick(10);
+    CHECK(t->irq_level(0) == 1);
+    CHECK(m.wire_level(0) == 1);
+    put32(m.bus(), t->base() + 0x10u, 1u);           /* ack    */
+    CHECK(m.wire_level(0) == 0);
+  }
+
+  /* Caller's choices on top of the board: a second wire (a *second* device's
+   * line), a device, and an explicit CPU id.  The board's own wire survives. */
+  MachineConfig c2;
+  c2.ram_size = 1u << 20;
+  c2.cpu_id = "toy8";
+  c2.board = "timer";
+  c2.add_device(ModuleSpec("console", 0x10002000u, true));  /* a second one */
+  c2.add_wire("timer", "irq", "fiq");
+  Machine m2;
+  CHECK(m2.init(c2));
+  CHECK(m2.wire_count() == 2);
+  CHECK(std::strcmp(m2.wire(1).input, "fiq") == 0);
+  CHECK(std::strcmp(m2.wire(1).device, "timer") == 0);
+  CHECK(m2.device_count() == 4);                    /* the board's three + one */
+  /* The names are copied into the machine: a caller (the C API, a CLI option
+   * parser) may hand a temporary, and the wire has to keep working after the
+   * temporary dies - a `const char*` kept as-is leaves the stats print reading
+   * freed memory, which is exactly how this was found. */
+  {
+    std::string out = "irq", in = "fiq";
+    CHECK(m2.add_wire("timer", out.c_str(), in.c_str()));
+    out.assign("changed");
+    in.assign("changed");
+  }
+  CHECK(m2.wire_count() == 3);
+  CHECK(std::strcmp(m2.wire(2).output, "irq") == 0);
+  CHECK(std::strcmp(m2.wire(2).input, "fiq") == 0);
+  CHECK(m2.add_wire("timer", "irq", "nonsense") == false);
+  CHECK(std::strstr(m2.last_error(), "no input named 'nonsense'") != nullptr);
+  CHECK(std::strstr(m2.last_error(), "irq") != nullptr);   /* the ones it has */
+  CHECK(m2.wire_count() == 3);                      /* a refused wire is not kept */
+  CHECK(std::strcmp(m2.wire(2).output, "irq") == 0);  /* still not dangling */
+  CHECK(m2.add_wire("nope", "irq", "irq") == false);
+  CHECK(std::strstr(m2.last_error(), "no device named 'nope'") != nullptr);
+  CHECK(m2.add_wire("timer", "nope", "irq") == false);
+  CHECK(std::strstr(m2.last_error(), "no interrupt output named 'nope'") != nullptr);
+
+  /* An unknown board fails the whole machine, and the message lists the boards
+   * this build has - the same courtesy the CPU and device registries extend. */
+  Machine m3;
+  MachineConfig c3;
+  c3.ram_size = 1u << 16;
+  c3.cpu_id = "toy8";
+  c3.board = "nope";
+  CHECK(!m3.init(c3));
+  CHECK(std::strstr(m3.last_error(), "no board module named 'nope'") != nullptr);
+  CHECK(std::strstr(m3.last_error(), "timer") != nullptr);
+
+  /* A wire that names something that exists but cannot be wired fails at
+   * construction too, so a typo is reported before the first interrupt rather
+   * than at it. */
+  Machine m4;
+  MachineConfig c4;
+  c4.ram_size = 1u << 16;
+  c4.cpu_id = "toy8";
+  c4.board = "minimal";
+  c4.add_wire("console", "irq", "irq");             /* the console has no output */
+  CHECK(!m4.init(c4));
+  CHECK(std::strstr(m4.last_error(), "no interrupt output named 'irq'") != nullptr);
+  m4.last_error();                                   /* (readable after a failure) */
+  CHECK(std::strcmp(m4.last_error(), "no error") == 0 ||
+        std::strlen(m4.last_error()) > 0);
+
+  /* The same seam through the C API, which is how a tool sees it: the board id,
+   * the wires that came with it, and a wire added to a *live* machine.  Adding a
+   * peripheral and wiring it has to work after the machine started, because that
+   * is the only shape a debugger or a test harness can use. */
+  brain_config_t bc;
+  std::memset(&bc, 0, sizeof bc);
+  bc.ram_size = 1u << 20;
+  bc.cpu_id = nullptr;               /* this build's default CPU (first module) */
+  bc.board_id = "minimal";
+  brain_emu_t* e = brain_emu_create(&bc);
+  CHECK(e != nullptr);
+  if (e) {
+    CHECK(std::strcmp(brain_board_id(e), "minimal") == 0);
+    CHECK(brain_wire_count(e) == 0);
+    CHECK(brain_add_wire(e, "console", "", "irq") != 0);   /* no output to wire */
+    CHECK(brain_wire_count(e) == 0);
+    CHECK(brain_add_device_module(e, "timer", 0, 0) == 0); /* default base     */
+    CHECK(brain_add_wire(e, "timer", "irq", "irq") == 0);
+    CHECK(brain_wire_count(e) == 1);
+    const char* wd = nullptr;
+    const char* wo = nullptr;
+    const char* wi = nullptr;
+    CHECK(brain_wire_info(e, 0, &wd, &wo, &wi) == 0);
+    CHECK(wd && std::strcmp(wd, "timer") == 0);
+    CHECK(wo && std::strcmp(wo, "irq") == 0);
+    CHECK(wi && std::strcmp(wi, "irq") == 0);
+    CHECK(brain_wire_info(e, 1, &wd, &wo, &wi) != 0);
+    CHECK(brain_wire_level(e, 0) == 0);
+    CHECK(brain_wire_level(e, 9) == 0);
+    /* Drive the timer through its window and the wire reports the level its
+     * device output carries - the end a tool shows. */
+    /* Three ways to touch an address, and the differences matter: `brain_poke32`
+     * and `brain_write_mem` are a debugger's bulk path into *RAM* (a poke
+     * deliberately does not perturb a device hook, and neither reaches a
+     * peripheral window at all), while `brain_write32` is the *guest's* access -
+     * it goes through the CPU, so it is the one a device sees, and it is also
+     * the one that respects the CPU's own address width (a 16-bit toy8 could not
+     * address 0x10001000 even though the bus can). */
+    brain_write32(e, 0x10001000u, 4u);          /* PERIOD */
+    brain_write32(e, 0x10001008u, 1u);          /* enable */
+    brain_run_cycles(e, 8);                     /* let the device clock move   */
+    CHECK(brain_wire_level(e, 0) == 1);         /* the timer expired and latched */
+    brain_emu_destroy(e);
+  }
+}
+
 /* Sharing a page: two windows in 0x10000000, disjoint, plus the two ways it is
  * refused (an overlap, and a window that would need a second page). */
 void test_device_page_sharing() {
@@ -806,6 +1136,8 @@ int main() {
   test_monitors();
   test_devices();
   test_device_modules();
+  test_timer_device();
+  test_boards_and_wiring();
   test_device_page_sharing();
   test_monitor_modules();
   test_loader_registry();

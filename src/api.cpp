@@ -183,6 +183,7 @@ brain_emu_t* brain_emu_create(const brain_config_t* cfg) {
     if (cfg->ram_base) c.ram_base = cfg->ram_base;
     if (cfg->ram_size) c.ram_size = cfg->ram_size;
     c.cpu_id = cfg->cpu_id;
+    c.board = cfg->board_id;
     c.use_jit = cfg->use_jit != 0;
     c.big_endian_data = cfg->big_endian_data != 0;
     c.high_vectors = cfg->high_vectors != 0;
@@ -270,6 +271,43 @@ int brain_add_monitor_module(brain_emu_t* e, const char* id) {
     return -1;
   }
   return 0;
+}
+
+/* ---- wiring -------------------------------------------------------------- */
+
+int brain_add_wire(brain_emu_t* e, const char* device_id, const char* output,
+                   const char* cpu_input) {
+  if (!e || !device_id) return -1;
+  e->err.clear();
+  if (!e->m.add_wire(brain::WireSpec(device_id, output, cpu_input))) {
+    set_err(e, e->m.last_error());
+    return -1;
+  }
+  return 0;
+}
+
+const char* brain_board_id(const brain_emu_t* e) {
+  if (!e) return "";
+  const char* b = e->m.config().board;
+  return b ? b : "";
+}
+
+uint32_t brain_wire_count(const brain_emu_t* e) {
+  return e ? e->m.wire_count() : 0;
+}
+
+int brain_wire_info(const brain_emu_t* e, uint32_t index, const char** device_id,
+                    const char** output, const char** cpu_input) {
+  if (!e || index >= e->m.wire_count()) return -1;
+  const brain::WireSpec& w = e->m.wire(index);
+  if (device_id) *device_id = w.device ? w.device : "";
+  if (output) *output = w.output ? w.output : "";
+  if (cpu_input) *cpu_input = w.input ? w.input : "";
+  return 0;
+}
+
+int brain_wire_level(const brain_emu_t* e, uint32_t index) {
+  return e ? e->m.wire_level(index) : 0;
 }
 
 /* ---- what the machine is made of ---------------------------------------- */

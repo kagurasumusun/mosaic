@@ -47,6 +47,8 @@ struct Options {
   bool have_exit_port = false;
   std::vector<std::string> devices;   /* --device ID[@BASE]                    */
   std::vector<std::string> monitors;  /* --monitor ID                          */
+  std::vector<std::string> wires;     /* --wire DEV.OUT=INPUT                  */
+  std::string board;                  /* --board ID                            */
   uint32_t dump_addr = 0, dump_len = 0;
   bool have_dump = false;
 };
@@ -114,6 +116,10 @@ void usage(const char* argv0) {
       "  --steps N        retire at most N instructions (default 1000000)\n"
       "  --cycles N       stop after N cycles instead of at --steps\n"
       "  --ram-mb N       size of the RAM window (default 32)\n"
+      "  --board ID       start from a board module (a named machine preset);\n"
+      "                   its devices are the starting point, --device adds more\n"
+      "  --wire DEV.OUT=I wire a device's interrupt output to a CPU input\n"
+      "                   (e.g. --wire timer.irq=irq; --list-modules names both)\n"
       "  --device ID[@A]  build a device module into the machine, at A or at\n"
       "                   the module's own default address (repeatable;\n"
       "                   --list-modules names them)\n"
@@ -159,6 +165,8 @@ bool parse_args(int argc, char** argv, Options* o) {
     else if (a == "--exit") o->devices.push_back("exit");
     else if (a == "--device") { o->devices.push_back(take("--device")); ++i; }
     else if (a == "--monitor") { o->monitors.push_back(take("--monitor")); ++i; }
+    else if (a == "--board") { o->board = take("--board"); ++i; }
+    else if (a == "--wire") { o->wires.push_back(take("--wire")); ++i; }
     else if (a == "--dump") {
       const char* s = take("--dump");
       const char* colon = std::strchr(s, ':');
@@ -276,6 +284,7 @@ int main(int argc, char** argv) {
   std::memset(&cfg, 0, sizeof(cfg));
   cfg.ram_size = o.ram_size;
   cfg.cpu_id = o.cpu.empty() ? nullptr : o.cpu.c_str();
+  cfg.board_id = o.board.empty() ? nullptr : o.board.c_str();
   cfg.cpu_options = o.cpu_opts.empty() ? nullptr : o.cpu_opts.c_str();
   cfg.use_jit = o.jit ? 1 : 0;
   cfg.trace = o.trace ? 1 : 0;
@@ -287,6 +296,7 @@ int main(int argc, char** argv) {
   g_emu = e;
   std::printf("cpu: %s (%s), %s\n", brain_cpu_id(e), brain_cpu_name(e),
               brain_cpu_isa(e));
+  if (*brain_board_id(e)) std::printf("board: %s\n", brain_board_id(e));
 
   uint32_t entry = 0;
   if (o.elf) {
@@ -347,6 +357,29 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
+  /* Wiring, after the devices exist (the ids are looked up now): "DEV[.OUT]=IN",
+   * with the output name optional for a device that has only one. */
+  for (const std::string& spec : o.wires) {
+    const size_t eq = spec.find('=');
+    if (eq == std::string::npos) {
+      std::fprintf(stderr, "brainemu: --wire wants DEV[.OUT]=INPUT, got %s\n",
+                   spec.c_str());
+      brain_emu_destroy(e);
+      return 2;
+    }
+    const std::string lhs = spec.substr(0, eq);
+    const std::string input = spec.substr(eq + 1);
+    const size_t dot = lhs.find('.');
+    const std::string dev = lhs.substr(0, dot);
+    const std::string out = dot == std::string::npos ? "" : lhs.substr(dot + 1);
+    if (brain_add_wire(e, dev.c_str(), out.c_str(), input.c_str())) {
+      std::fprintf(stderr, "brainemu: %s\n", brain_last_error(e));
+      brain_emu_destroy(e);
+      return 2;
+    }
+    std::printf("wire %s.%s -> %s\n", dev.c_str(), out.empty() ? "(out)" : out.c_str(),
+                input.c_str());
+  }
 
   const uint64_t retired =
       o.cycles ? brain_run_cycles(e, o.cycles) : brain_run_insns(e, o.steps);
@@ -402,6 +435,14 @@ int main(int argc, char** argv) {
         std::printf(" %s=%s", brain_monitor_field_name(e, i, f),
                     brain_monitor_field_value(e, i, f));
       std::printf("\n");
+    }
+    /* The wiring, with the level each line is driving right now: "is the timer
+     * still asserting?" is the first question about a machine that will not run. */
+    for (uint32_t i = 0; i < brain_wire_count(e); ++i) {
+      const char *dev = nullptr, *out = nullptr, *in = nullptr;
+      brain_wire_info(e, i, &dev, &out, &in);
+      std::printf("  wire %s.%s -> %s (level %d)\n", dev, *out ? out : "(out)", in,
+                  brain_wire_level(e, i));
     }
   }
 

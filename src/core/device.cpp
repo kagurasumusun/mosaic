@@ -31,6 +31,18 @@ void device_write(void* user, u32 addr, u32 value, u32 size) {
 
 }  // namespace
 
+/* A level change is the *only* event an interrupt line has: driving the level a
+ * line already has must not produce a second notification, or a device that
+ * writes its status register per byte would raise a storm of interrupts out of
+ * one. */
+void Device::drive_irq(u32 i, int level) {
+  if (i >= kMaxIrq) return;
+  const int l = level ? 1 : 0;
+  if (irq_level_[i] == l) return;
+  irq_level_[i] = l;
+  if (irq_fn_) irq_fn_(irq_user_, *this, i, l);
+}
+
 bool Device::attach(Bus& bus) {
   if (attached_) return true;
   if (!size()) return false;

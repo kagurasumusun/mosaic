@@ -45,6 +45,7 @@ enum class ModuleKind : u32 {
   Device,
   Loader,
   Monitor,
+  Board,
   Count,
 };
 
@@ -98,6 +99,28 @@ class MonitorModule {
  * has to pull the loader interface in. */
 class Loader;
 
+/* A board module: a named *machine preset* - which CPU, which devices, which
+ * monitors, and how their interrupt lines are wired to each other.  A board has
+ * no behaviour of its own: it fills the same `MachineConfig` a caller would, so
+ * `--board X` and a hand-built machine run the identical code path, and a board
+ * a caller writes is a first-class one (register it, select it by id).  This is
+ * the kind that makes "many emulators" additive: a new system is a board plus
+ * the modules it names, and no core file changes.
+ *
+ * `MachineConfig` lives in core/machine.h, which includes this header, so the
+ * type is only forward-declared here; a board's implementation includes
+ * machine.h. */
+class MachineConfig;
+class BoardModule {
+ public:
+  virtual ~BoardModule() = default;
+  virtual const ModuleInfo& info() const = 0;
+  /* Fill in the layout: cpu_id, devices[]/monitors[]/wires[].  The caller's own
+   * choices (its cpu_id, its RAM, anything it adds itself) are applied on top -
+   * see Machine::init. */
+  virtual void configure(MachineConfig& cfg) const = 0;
+};
+
 /* The process-wide registry.  Not thread-safe by design: modules register
  * during start-up, before any machine exists. */
 class ModuleRegistry {
@@ -126,6 +149,11 @@ class ModuleRegistry {
   const MonitorModule* monitor_by_index(u32 i) const;
   u32 monitor_count() const;
 
+  void add_board(const BoardModule* b);
+  const BoardModule* board_by_id(const char* id) const;
+  const BoardModule* board_by_index(u32 i) const;
+  u32 board_count() const;
+
   /* Every module kind, for a `--list-modules` in a tool or a GUI picker.  The
    * order is the kind order above (all CPUs, then loaders, devices, monitors),
    * so a listing groups itself. */
@@ -141,6 +169,7 @@ class ModuleRegistry {
   static constexpr u32 kMaxLoaders = 16;
   static constexpr u32 kMaxDevices = 16;
   static constexpr u32 kMaxMonitors = 16;
+  static constexpr u32 kMaxBoards = 16;
   const CpuModule* cpus_[kMaxCpus] = {};
   u32 ncpus_ = 0;
   const Loader* loaders_[kMaxLoaders] = {};
@@ -149,6 +178,8 @@ class ModuleRegistry {
   u32 ndevices_ = 0;
   const MonitorModule* monitors_[kMaxMonitors] = {};
   u32 nmonitors_ = 0;
+  const BoardModule* boards_[kMaxBoards] = {};
+  u32 nboards_ = 0;
   /* The last `ids()` answer, so the accessor can return a `const char*`.  One
    * buffer per instance and single-threaded by design, like the registry. */
   mutable char idbuf_[256] = {};

@@ -14,6 +14,7 @@
 #include "arm926/jit/jit.h"   /* BRAIN_JIT_BACKEND (which host generator is in) */
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -628,104 +629,138 @@ void test_push_pop_return() {
  * LDR from outside the RAM window is an external data abort.
  */
 static void test_interrupt_inputs() {
-  /* Level inputs on nIRQ/nFIQ, exercised through the exact retirement order
-   * `Cpu::step_one` samples them at.  ARM rows: the program is `mov r0,#0x13`,
-   * `msr cpsr_c,r0` (0xE121F000 - Capstone-verified field encoding), then a spin
-   * `b .` in slot [2] and two more spins - 0xEAFFFFFE x3.  The load defers the
-   * first instruction into the step where the line is sampled, so with the line
-   * high from the start, slot [0] retires *masked* (phase 1) and the `msr` in
-   * slot [1] commits as it retires; the line is then taken at the boundary in
-   * front of slot [2] at 0x8008, which is the deferred instruction - R14 must
-   * equal 0x800C (`SUBS PC,R14,#4` returns to the deferred spin exactly).
+  /* Level inputs on nIRQ/nFIQ, and the one exception whose link register is
+   * specified against a *different* address than the traps': an interrupt is
+   * taken at an instruction boundary, so `R14_irq = address of next instruction
+   * to be executed + 4` (DDI 0100I A2.6.8) and the handler's `SUBS PC, R14, #4`
+   * resumes the instruction that has not run yet.  In this core that address is
+   * `npc`, because `Cpu::step_one` samples the lines *before* the fetch.
    *
-   * Thumb rows reach Thumb through a *taken* BX - the case the deferral interacts
-   * with: [0] `mov r0,#0x13`, [1] `add r1,pc,#1`, [2] `bx r1`, [3]/[4] halfword
-   * pairs (0x2007 `movs r0,#7` + 0xE7FE `b .`).  With the line low the `add` and
-   * the BX retire (CPSR 0xb3: T set by the taken branch, I still masked by the
-   * seed); the test then pokes the masks open through the debugger register API -
-   * which is the `msr` equivalent at a *known* boundary - and the entry happens in
-   * front of the halfword at 0x8010: R14 = 0x8012, the ARMv5 "R14 = old-style PC
-   * + 4" for a Thumb IRQ, and SPSR carries T so a `BX`/`MOVS` return restores
-   * Thumb.  FIQ rows assert the 0x1C vector, the F mask, and R14_FIQ - all in
-   * both states.  Nothing lowers the line automatically: dropping it is what lets
-   * the handler's own spin run instead of re-entering, which the last rows pin. */
-  static const uint32_t arm_prog[5] = {0xE3A00013u, 0xE121F000u, 0xEAFFFFFEu,
-                                      0xEAFFFFFEu, 0xEAFFFFFEu};
-  static const uint32_t th_prog[5] = {0xE3A00013u, 0xE28F1001u, 0xE12FFF11u,
-                                     0xE7FE2007u, 0xE7FE2007u};
+   * A row is built so that the last instruction retired before the entry is a
+   * *taken branch*: that is the only shape where the boundary-relative rule
+   * (`npc + 4`) differs from an instruction-relative one (`cur + 8`), and the
+   * difference is exactly one instruction - invisible in a `mov`-only loop,
+   * catastrophic in a loop whose body has effects.  Both readings are made
+   * to leave a *different byte pattern* in memory, so the assertions below name
+   * which one happened:
+   *
+   *   ARM  (words)                 Thumb (halfwords)     runs
+   *   0x8000 str r1,[r2]  0xE5821000   0x6011  str r1,[r2]   phase 1, writes 0xAA
+   *   0x8004 b 0x8010     0xEA000001   0xE003  b 0x800C      phase 1, the branch
+   *   0x8008 str r3,[r2]  0xE5823000   0x6013  str r3,[r2]   only a wrong link
+   *   0x800C b .          0xEAFFFFFE   0xE7FE  b .           lands here (0x55)
+   *   0x8010 str r0,[r2]  0xE5820000   0x6010  str r0,[r2]   the correct resume
+   *   0x8014 b .          0xEAFFFFFE   0xE7FE  b .           (writes 0x13)
+   *
+   * with R0 = 0x13, R1 = 0xAA, R2 = 0x9000, R3 = 0x55 seeded through the
+   * debugger register API (stores, so no row can perturb the flags the SPSR
+   * check compares).  The vector slot the row's exception owns gets
+   * `mov r4, r14` then `subs pc, lr, #4`: R4 is where the link value can be read
+   * before the return overwrites the bank, and the return must land on 0x8010
+   * (ARM) / 0x800C (Thumb) so the *next* retired instruction is the one that
+   * writes 0x13 - the byte pattern is what proves "no instruction was skipped".
+   *
+   * The masking half of the row: phase 1 runs with I (and F for the FIQ rows)
+   * set and the line already high, so nothing may be taken; the debugger then
+   * clears the mask at a known boundary, which is where the entry must happen. */
+  const uint32_t arm_prog[] = {0xE5821000u, 0xEA000001u, 0xE5823000u,
+                               0xEAFFFFFEu, 0xE5820000u, 0xEAFFFFFEu};
+  const uint16_t th_prog[] = {0x6011u, 0xE003u, 0x6013u,
+                              0xE7FEu, 0xE7FEu, 0xE7FEu, 0x6010u, 0xE7FEu};
+  const uint32_t resume_arm = 0x8010u, resume_th = 0x800Cu;
   for (int fiq = 0; fiq < 2; ++fiq) {
     for (int thumb = 0; thumb < 2; ++thumb) {
       const uint32_t vec = fiq ? 0x1Cu : 0x18u;
-      const int mode = fiq ? 0x11 : 0x12;
-      const uint32_t marker = 0x22u;
+      const uint32_t mode = fiq ? 0x11u : 0x12u;
+      const int exc = fiq ? BRAIN_EXC_FIQ : BRAIN_EXC_IRQ;
+      /* SVC, with I set (and F set for the FIQ rows) plus the state's T bit:
+       * phase 1 runs with the line up and must not enter. */
+      const uint32_t masked = 0x93u | (fiq ? 0x40u : 0u) | (thumb ? 0x20u : 0u);
+      const uint32_t clear = 0x13u | (thumb ? 0x20u : 0u);
+      const uint32_t at = thumb ? resume_th : resume_arm;
       char nm[64];
       std::snprintf(nm, sizeof nm, "%s entry from %s state", fiq ? "FIQ" : "IRQ",
                     thumb ? "thumb" : "arm");
+
       brain_emu_t* e = brain_emu_create(nullptr);
       CHECK(e != nullptr);
       if (!e) continue;
-      /* All nine vector slots: FIQ lives at 0x1C, and poking only through 0x18
-       * would leave the FIQ slot holding whatever the IRQ entry installed. */
+      /* Nine vector slots of `b .`; the row's two words are the handler. */
       for (int i = 0; i < 9; ++i) brain_poke32(e, (uint32_t)(i * 4u), 0xEAFFFFFEu);
-      /* `mov r4,r14` then `mov r12,#marker`: R14 is sampled *inside* the handler
-       * because it is banked; both instructions are flag-free, so no state the
-       * assertions compare against is perturbed by the handler itself. */
-      brain_poke32(e, vec, 0xE1A0400Eu);
-      brain_poke32(e, vec + 4u, 0xE3A0C000u + marker);
-
-      /* SVC with I (and F for FIQ) masked; the load only forces T, and T=0 here -
-       * both programs start in ARM and the Thumb rows *arrive* in Thumb. */
-      CHECK(brain_set_reg(e, BRAIN_REG_CPSR, 0x00000093u | (fiq ? 0x40u : 0u)) == 0);
+      brain_poke32(e, vec, 0xE1A0400Eu);           /* mov  r4, r14   */
+      brain_poke32(e, vec + 4u, 0xE25EF004u);      /* subs pc, lr, #4 */
+      CHECK(brain_set_reg(e, 0, 0x13u) == 0);
+      CHECK(brain_set_reg(e, 1, 0xAAu) == 0);
+      CHECK(brain_set_reg(e, 2, 0x9000u) == 0);
+      CHECK(brain_set_reg(e, 3, 0x55u) == 0);
+      CHECK(brain_set_reg(e, BRAIN_REG_CPSR, masked) == 0);
       CHECK(brain_load_raw(e, thumb ? (const void*)th_prog : (const void*)arm_prog,
-                           20, 0x8000u, 0) == 0);
-
-      /* Phase 1: the line is high while the masks hold it - the deferred first
-       * instruction retires and the core parks, no entry taken. */
+                           thumb ? (uint32_t)sizeof th_prog
+                                 : (uint32_t)sizeof arm_prog,
+                           0x8000u, thumb) == 0);
       if (fiq) brain_set_fiq(e, 1); else brain_set_irq(e, 1);
-      if (thumb) {
-        /* [0] `mov`, [1] `add r1,pc,#1`, [2] `bx r1`, [3] the deferred halfword
-         * all retire while masked - the line cannot be taken while I (and F for
-         * FIQ) hide it; the BX's own T-setting is what the poke below mimics. */
-        CHECK(brain_run_insns(e, 4) == 4u);
-        CHECK(brain_get_reg(e, 12) == 0u);    /* masked: no entry yet                  */
-        CHECK(brain_get_reg(e, BRAIN_REG_CPSR)
-              == (uint32_t)(0x93u | 0x20u | (fiq ? 0x40u : 0u)));  /* T from the BX   */
-        CHECK(brain_set_reg(e, BRAIN_REG_CPSR, 0x00000033u) == 0);
-      } else {
-        CHECK(brain_run_insns(e, 2) == 2u);   /* [0] masked, [1] `msr` commits unmask  */
-      }
-      check(brain_get_reg(e, 12) == 0u, "no entry while the interrupt is masked");
 
-      /* The entry at the next step boundary retires nothing itself; the two handler
-       * instructions follow.  Both states fit the same budget here. */
-      CHECK(brain_run_insns(e, 2) == 2u);              /* entry + `mov r4,r14`         */
-      if (brain_get_reg(e, 12) != marker) CHECK(brain_run_insns(e, 2) <= 2u);  /* `mov r12,#0x22` */
-      const uint32_t in = brain_get_reg(e, BRAIN_REG_CPSR);
-      const uint32_t spsr = brain_get_reg(e, BRAIN_REG_SPSR);
-      check(brain_get_reg(e, 12) == marker, "the handler ran");
-      check((in & 0x1Fu) == (uint32_t)mode, nm);
-      CHECK(in & 0x80u);                      /* I is always set on entry              */
-      check((in & 0x40u) == (uint32_t)(fiq ? 0x40u : 0u), "F is set by FIQ entry only");
-      CHECK((in & 0x20u) == 0u);               /* entry forces ARM state               */
-      if (thumb) {
-        check(spsr == 0x00000033u, "SPSR keeps T so the handler can return to Thumb");
-        check(brain_get_reg(e, 4) == 0x8012u,
-              "R14 = old-style PC + 4 for a Thumb IRQ (deferred halfword + 2)");
-      } else {
-        check(spsr == 0x00000013u, "SPSR_<mode> gets the whole pre-entry CPSR");
-        check(brain_get_reg(e, 4) == 0x800Cu,
-              "R14 = the deferred instruction + 4 in ARM state");
-      }
+      /* Phase 1: setup + branch, line high, interrupt masked - no entry, and the
+       * branch is taken (the decoy store never runs). */
+      check(brain_run_insns(e, 2) == 2u, nm);
       brain_stats_t st;
       brain_get_stats(e, &st);
-      CHECK(st.exc[fiq ? BRAIN_EXC_FIQ : BRAIN_EXC_IRQ] >= 1u);
+      check(st.exc[exc] == 0u, "no entry while the interrupt is masked");
+      check(brain_read32(e, 0x9000u) == 0xAAu, "phase 1 ran the setup store only");
 
-      /* Level semantics: with the line dropped, the handler's spin runs instead of
-       * re-entering; raising it again re-enters on the next boundary.  */
+      /* Phase 2: unmask.  The entry happens at the next boundary - in front of
+       * the store at `at`, i.e. with the branch as the last retired instruction -
+       * and retires nothing; `mov r4, r14` then shows the link value, which must
+       * be `at + 4` (that is the ARM ARM's "next instruction + 4"). */
+      CHECK(brain_set_reg(e, BRAIN_REG_CPSR, clear) == 0);
+      check(brain_run_insns(e, 1) == 1u, nm);
+      check(brain_get_reg(e, 4) == at + 4u,
+            "R14 = next instruction to execute + 4");
+      brain_get_stats(e, &st);
+      check(st.exc[exc] == 1u, "the interrupt was taken once");
+      const uint32_t in = brain_get_reg(e, BRAIN_REG_CPSR);
+      check((in & 0x1Fu) == mode, nm);
+      check((in & 0x80u) != 0u, "I is set on entry");
+      check((in & 0x40u) == (uint32_t)(fiq ? 0x40u : 0u), "F is set by FIQ only");
+      check((in & 0x20u) == 0u, "the handler runs in ARM state");
+      check(brain_get_reg(e, BRAIN_REG_SPSR) == clear,
+            "SPSR_<mode> gets the whole pre-entry CPSR");
+
+      /* The line is a level, so the handler (as a real one would with its
+       * device) drops it before returning - otherwise the restored I bit lets
+       * the still-asserted line in again at the very next boundary, and the
+       * phases below would be measuring the second entry instead of the first. */
       if (fiq) brain_set_fiq(e, 0); else brain_set_irq(e, 0);
+
+      /* Phase 3: the standard return.  It must restore the state and land on
+       * `at`; phase 4 executes the instruction there, and which pattern reaches
+       * memory says where the return went - 0x13 is the only correct answer.
+       * (A link of `last + 8` returns to the decoy and writes 0x55; `last + 4`
+       * returns to the new store and writes 0xAA; skipping past writes nothing.) */
       CHECK(brain_run_insns(e, 1) == 1u);
-      check((brain_get_reg(e, BRAIN_REG_CPSR) & 0x1Fu) == (uint32_t)mode,
-            "no re-entry while the line is low");
+      check((brain_get_reg(e, BRAIN_REG_CPSR) & 0x3Fu) == (clear & 0x3Fu),
+            "SUBS PC,LR,#4 restores the CPSR the interrupt interrupted");
+      CHECK(brain_run_insns(e, 1) == 1u);
+      check(brain_read32(e, 0x9000u) == 0x13u,
+            "the resume point at `next instruction` ran (0x13, not 0x55/0xAA)");
+      CHECK(brain_get_reg(e, 15) == at + (thumb ? 4u : 8u));
+
+      /* Phase 5: the spin retires, and with the line low no second entry
+       * happens; asserting it again enters at the next boundary, which is the
+       * level semantics the CPU input promises.  The second entry is in front of
+       * the spin at `at + 2` / `at + 4`, and its link follows the same rule. */
+      check(brain_run_insns(e, 1) == 1u, nm);
+      brain_get_stats(e, &st);
+      check(st.exc[exc] == 1u, "no re-entry while the line is low");
+      if (fiq) brain_set_fiq(e, 1); else brain_set_irq(e, 1);
+      CHECK(brain_run_insns(e, 1) == 1u);
+      brain_get_stats(e, &st);
+      check(st.exc[exc] == 2u, "a line held high enters again at the next boundary");
+      /* The spin is what has not run this time, and the same rule applies to it:
+       * the link is the address of the instruction about to execute, + 4. */
+      const uint32_t spin = at + (thumb ? 2u : 4u);
+      check(brain_get_reg(e, 4) == spin + 4u,
+            "the second entry links to the instruction it interrupted");
       brain_emu_destroy(e);
     }
   }
@@ -1406,6 +1441,148 @@ void test_self_modifying_code() {
   }
 }
 
+/* The whole foundation, end to end: a board, a device with an interrupt output,
+ * a wire, a CPU input, and a guest that services the interrupt and stops the run
+ * itself.  Nothing in the core knows what a timer, an interrupt controller or a
+ * UART is - the board is a preset, the wire is a name pair, and this is the
+ * proof that the chain carries a real level to a real handler and back.
+ *
+ * The image (hand-assembled words, verified with keystone) is a flat 0x9000-byte
+ * ROM image: the eight vector words at 0 and the code at 0x8000, so the guest
+ * boots at address 0 with the vector table where the CPU expects it (this is
+ * what the `--addr 0 --board timer` command line runs):
+ *
+ *   0x0000  b 0x8000                       reset -> the program
+ *   0x0018  b 0x8100                       IRQ   -> the handler
+ *   0x8000  mov r9, #0x10000000 / add r9, r9, #0x1000   the timer's window
+ *   0x8008  mov r0, #1 ; str r0, [r9, #8]  CTRL = enable
+ *   0x8010  mov r0, #200 ; str r0, [r9]    PERIOD = 200 cycles
+ *   0x8018  mrs r0, cpsr ; bic r0, r0, #0x80 ; msr cpsr_c, r0   unmask IRQ
+ *   0x8024  mov r11, #0                    interrupt counter
+ *   0x8028  b 0x8028                       spin until the timer interrupts
+ *   0x8100  add r11, r11, #1               count the interrupt
+ *   0x8104  cmp r11, #3 ; bne 0x8114
+ *   0x810C  mov r0, #3 ; mov r12, #0x10000010 ; str r0, [r12]   exit(3)
+ *   0x8114  mov r8, #1 ; str r8, [r9, #16]  acknowledge the timer
+ *   0x811C  subs pc, lr, #4                 the standard IRQ return
+ *
+ * The guest stops the run itself through the board's exit port after the third
+ * interrupt, so what this test asserts is not "the run ended" but *how*: three
+ * IRQ exceptions, the exit code the guest chose, and a timer whose line is still
+ * high because the guest left the handler through the exit port without
+ * acknowledging - the level semantics a real peripheral has.  It runs on both
+ * engines: an interrupt is delivered at a block boundary by the same rule the
+ * interpreter's step boundary uses, or the JIT would count a different number of
+ * them. */
+static const uint32_t kBoardVectors[] = {
+    /* reset, undef, svc, pabort, dabort, reserved, irq, fiq */
+    0xEA001FFEu, 0xEAFFFFFEu, 0xEAFFFFFEu, 0xEAFFFFFEu,
+    0xEAFFFFFEu, 0xEAFFFFFEu, 0xEA002038u, 0xEAFFFFFEu,
+};
+static const uint32_t kBoardProg[] = {
+    0xE3A09201u,  /* mov r9, #0x10000000  */
+    0xE2899A01u,  /* add r9, r9, #0x1000  */
+    0xE3A00001u,  /* mov r0, #1           */
+    0xE5890008u,  /* str r0, [r9, #8]     */
+    0xE3A000C8u,  /* mov r0, #200         */
+    0xE5890000u,  /* str r0, [r9]         */
+    0xE10F0000u,  /* mrs r0, cpsr         */
+    0xE3C00080u,  /* bic r0, r0, #0x80    */
+    0xE121F000u,  /* msr cpsr_c, r0       */
+    0xE3A0B000u,  /* mov r11, #0          */
+    0xEAFFFFFEu,  /* b .      (0x8028)    */
+};
+static const uint32_t kBoardHandler[] = {
+    0xE28BB001u,  /* add r11, r11, #1     */
+    0xE35B0003u,  /* cmp r11, #3          */
+    0x1A000001u,  /* bne 0x8114           */
+    0xE3A00003u,  /* mov r0, #3           */
+    0xE3A0C201u,  /* mov r12, #0x10000000 */
+    0xE28CC010u,  /* add r12, r12, #0x10  */
+    0xE58C0000u,  /* str r0, [r12]        */
+    0xEAFFFFFFu,  /* b .                  */
+    0xE3A08001u,  /* mov r8, #1           */
+    0xE5898010u,  /* str r8, [r9, #16]    */
+    0xE25EF004u,  /* subs pc, lr, #4      */
+};
+
+/* The three segments at the addresses they belong at. */
+static std::vector<uint8_t> board_image() {
+  std::vector<uint8_t> img(0x9000u, 0);
+  auto put = [&](uint32_t at, const uint32_t* w, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+      img[at + i * 4 + 0] = (uint8_t)w[i];
+      img[at + i * 4 + 1] = (uint8_t)(w[i] >> 8);
+      img[at + i * 4 + 2] = (uint8_t)(w[i] >> 16);
+      img[at + i * 4 + 3] = (uint8_t)(w[i] >> 24);
+    }
+  };
+  put(0x0000u, kBoardVectors, sizeof kBoardVectors / 4);
+  put(0x8000u, kBoardProg, sizeof kBoardProg / 4);
+  put(0x8100u, kBoardHandler, sizeof kBoardHandler / 4);
+  return img;
+}
+
+static void test_board_timer_irq() {
+  std::printf("[board: timer -> IRQ -> guest]\n");
+  const std::vector<uint8_t> img = board_image();
+  for (int jit = 0; jit < 2; ++jit) {
+    brain_config_t cfg;
+    std::memset(&cfg, 0, sizeof cfg);
+    cfg.ram_size = 1u << 20;
+    cfg.board_id = "timer";                 /* console + exit + timer, wired */
+    cfg.use_jit = jit;
+    brain_emu_t* e = brain_emu_create(&cfg);
+    CHECK(e != nullptr);
+    if (!e) continue;
+    CHECK(std::strcmp(brain_board_id(e), "timer") == 0);
+    CHECK(brain_wire_count(e) == 1);
+    CHECK(brain_add_wire(e, "timer", "irq", "fiq") == 0);   /* a second wire */
+    CHECK(brain_wire_count(e) == 2);
+    CHECK(brain_wire_level(e, 0) == 0);
+    CHECK(brain_wire_level(e, 1) == 0);
+    CHECK(brain_load_raw(e, img.data(), img.size(), 0, 0) == 0);
+
+    const uint64_t ran = brain_run_insns(e, 200000);
+    check(ran > 100u && ran < 200000u, "the guest stopped the run itself");
+
+    brain_stats_t st;
+    brain_get_stats(e, &st);
+    check(st.exc[BRAIN_EXC_IRQ] == 3u, "one IRQ per expiry the guest serviced");
+    check(st.exc[BRAIN_EXC_DABORT] == 0u && st.exc[BRAIN_EXC_PABORT] == 0u,
+          "no abort on the way to the timer's window");
+
+    /* The exit device's own fields: the guest wrote 3 there.  A tool reads a
+     * device through exactly this self-description. */
+    uint32_t exit_dev = brain_device_count(e);
+    for (uint32_t i = 0; i < brain_device_count(e); ++i)
+      if (!std::strcmp(brain_device_id(e, i), "exit")) exit_dev = i;
+    CHECK(exit_dev < brain_device_count(e));
+    if (exit_dev < brain_device_count(e)) {
+      CHECK(std::strcmp(brain_device_field_value(e, exit_dev, 0), "0x00000003") == 0);
+      CHECK(std::strcmp(brain_device_field_value(e, exit_dev, 2), "1") == 0);
+    }
+
+    /* The timer expired on its own clock while the CPU ran (a device only
+     * advanced when the run *ends* would show one expiry here, and a machine
+     * that never ticked it would show none), and the third interrupt is still
+     * pending: the guest left through the exit port from inside the handler,
+     * before acknowledging. */
+    uint32_t timer_dev = brain_device_count(e);
+    for (uint32_t i = 0; i < brain_device_count(e); ++i)
+      if (!std::strcmp(brain_device_id(e, i), "timer")) timer_dev = i;
+    CHECK(timer_dev < brain_device_count(e));
+    if (timer_dev < brain_device_count(e)) {
+      CHECK(std::strcmp(brain_device_field_name(e, timer_dev, 1), "ticks") == 0);
+      CHECK(std::atoi(brain_device_field_value(e, timer_dev, 1)) >= 3);
+      CHECK(std::strcmp(brain_device_field_value(e, timer_dev, 2), "yes") == 0);
+    }
+    CHECK(brain_wire_level(e, 0) == 1);
+    CHECK(brain_wire_level(e, 1) == 1);          /* the caller's wire too */
+    brain_emu_destroy(e);
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -1421,6 +1598,7 @@ int main() {
   test_exception_entry();
   test_jit_cache();
   test_interrupt_inputs();
+  test_board_timer_irq();
   test_shifter_primitive();
   test_branch_counters();
   test_self_modifying_code();

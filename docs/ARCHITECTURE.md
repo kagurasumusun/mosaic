@@ -16,8 +16,9 @@ ARM926EJ-S is the first CPU module, not the shape of the emulator
 include/brainemu/brainemu.h        public C API: create/load/run/state/stats
 include/brainemu/core/bus.h        Bus: regions, per-page descriptors, byte access
 include/brainemu/core/module.h     ModuleInfo, CpuModule, Loader, DeviceModule,
-                                   MonitorModule, ModuleRegistry
-include/brainemu/core/machine.h    MachineConfig, Machine (bus + CPU + devices)
+                                   MonitorModule, BoardModule, ModuleRegistry
+include/brainemu/core/machine.h    MachineConfig, WireSpec, Machine
+                                   (bus + CPU + devices + wires)
 include/brainemu/cpu/cpu.h         CpuCore: the whole CPU contract
 include/brainemu/device/device.h   Device, FuncDevice, BufferDevice, ConsoleDevice
 include/brainemu/core/monitor.h    Monitor: an observer the run loop reports to
@@ -28,6 +29,8 @@ src/core/module.cpp                the registry
 src/core/machine.cpp               build, run, reset, load
 src/loader/elf.cpp                 the elf32 + raw loader modules
 src/modules/builtin.cpp            the list of modules this build contains
+src/modules/timer/                 a device module with an interrupt output
+src/modules/boards/                board modules: named machine presets
 src/api.cpp                        the C API over the Machine
 
 src/modules/arm926/arm926.cpp      the ARM926 module: its CPU module + adapter
@@ -145,6 +148,51 @@ is how a tracer, a profiler or a watchpoint layer observes the machine without
 the core growing a feature for it; a hook may call `Machine::stop()`, which is a
 stop at the next slice boundary like any other.
 
+A run is a *sequence* of slices, not one call: `run_insns` asks the CPU for at
+most 1024 instructions at a time and `run_cycles` for at most 2048 cycles, and
+**a device is ticked once per slice**, with the cycles that slice actually
+charged.  The granularity is what a device sees as "now": a timer that expires
+200 cycles into a million-cycle run raises its line during the run - a machine
+that only ticked its devices when the run *ended* would deliver every interrupt
+at once, at the end, and a guest in a loop would never see one at all.  (That is
+also why a device never invents a cycle: `tick(cycles)` is told how much time
+passed, and the machine is the only thing that knows.)  A slice also ends early
+when the CPU retired fewer instructions than it was asked for, which is what a
+`stop()` - from a monitor, a device or the exit port - looks like from here.
+
+## Wiring: how a device reaches a CPU
+
+Two modules never know each other's type.  A device that can interrupt declares
+its outputs (`Device::irq_count()`/`irq_name(i)`) and drives them
+(`Device::drive_irq(i, level)`); a CPU declares its inputs (`CpuCore::input_count()`,
+`input_name(i)`, `set_input(i, level)`, whose default maps input 0 to IRQ and 1 to
+FIQ); and a **board** - a named machine preset, or simply the `MachineConfig` a
+caller builds - names the pair:
+
+```cpp
+MachineConfig cfg;
+cfg.board = "timer";                    /* a preset: CPU + devices + wires  */
+cfg.add_wire("timer", "irq", "irq");    /* or a wire of the caller's own    */
+```
+
+`Machine` is the only thing that resolves a wire.  It looks both ends up by name
+*when a level changes* rather than when the wire is declared, so a board may name
+a device or an input that does not exist yet - which is also the order `init`
+builds things in (RAM, CPU, devices, then the wires) - and a wire added to a
+running machine takes effect at the next level change.  The machine *owns* the
+names it is given (they are copied when the wire is declared), because a caller
+may hand a temporary and the wire outlives the call.  A level that no wire
+carries is dropped: a device is usable on its own, in a test, with nothing wired
+to it, and the device never knows the difference.
+
+Nothing here is ARM-shaped.  `set_input` is the generic surface; the ARM-shaped
+`set_irq`/`set_fiq` are the default implementation of inputs 0 and 1, and a CPU
+with a different interrupt model (a bank of 32 lines, a priority controller)
+overrides the three generic calls and keeps those two as conveniences.  The same
+split runs through the device side: `irq_count`/`irq_name`/`drive_irq` know
+nothing about the machine, and the delivery itself is one static callback
+(`Machine::deliver_irq`) that the machine installs on every device it attaches.
+
 ## Bus and devices
 
 `Bus` keeps a two-level page table (1024 × 1024 × 4 KiB = the whole 32-bit
@@ -169,16 +217,27 @@ peripheral map looks like (the i.MX28's test ports are four words inside the
 region with `nsubs == 0` keeps its own callbacks, and the router exists only when
 something actually shares. A shared page is unmapped as a unit.
 
-## Modules: four kinds, one registry
+## Modules: five kinds, one registry
 
 `include/brainemu/core/module.h` is the whole extension point. A CPU module is a
 `CpuCore` factory; a *device* module is a `Device` factory with a default window;
 a *monitor* module is a `Monitor` factory; a loader module claims an image by
-content. All four register in `ModuleRegistry` under an id, and a `Machine` can be
-assembled out of those ids — `MachineConfig::cpu_id`/`devices[]`/`monitors[]`,
+content; a *board* module is a named machine preset - the whole set of devices,
+monitors and wires a machine starts from, as data. All five register in
+`ModuleRegistry` under an id, and a `Machine` can be assembled out of those ids — `MachineConfig::cpu_id`/`devices[]`/`monitors[]`,
 `Machine::add_device_by_id`/`add_monitor_by_id`, or the C API's
 `brain_add_device_module`/`brain_add_monitor_module`. An unknown id is refused
 with the ids that exist, never silently ignored.
+
+A board owns no behaviour: it fills a `MachineConfig` (`BoardModule::configure`),
+which is the same structure a caller fills by hand, so `--board X`, the C API's
+`board` field and a hand-built machine are one code path with three spellings.
+`Machine::init` applies the board's layout first and then the caller's own
+additions on top (its `cpu_id` if it set one, its RAM, and every device, monitor
+and wire it adds), so `--board timer --device exit` is the board *plus* a
+peripheral; that is also why the caller's module lists are merged rather than
+copied (a board and a caller naming the same device would otherwise take the same
+window twice).
 
 The machine owns what it creates and calls `Device::on_attach(*this)` before
 `attach`, which is how a device reaches the machine it is part of (the exit port

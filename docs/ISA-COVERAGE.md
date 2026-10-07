@@ -4,12 +4,12 @@ Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
 `src/modules/arm926/decode_arm.cpp`, `src/modules/arm926/decode_thumb.cpp` and the single execution
 engine in `src/modules/arm926/interp_arm.cpp`. "Checked" below means a case in
 `tests/data/corpus.txt` compares this core against a golden emulator for that
-encoding; 350 cases exist today (248 in ARM state, 102 in Thumb: single
+encoding; 577 cases exist today (410 in ARM state, 167 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
-into the next, 59 randomised multi-instruction sequences, and three
-self-modifying programs). The same corpus is replayed a second time through the
-JIT when a backend is compiled in (`test_instr --jit`), so every "checked" below
-is checked on both execution paths.
+into the next, 175 multi-instruction sequences, and three self-modifying
+programs). The same corpus is replayed a second time through the JIT when a
+backend is compiled in (`test_instr --jit`), so every "checked" below is checked
+on both execution paths.
 
 The design rule for anything not on this list: an unimplemented *encoding* must
 decode to `AOP_UNDEF` and take the undefined-instruction exception. Nothing may
@@ -33,7 +33,42 @@ machine.
 | Branch | `B BL`, `BX`, `BLX` (immediate and register), condition codes | implemented, checked (`BL` links `cur+4`, Thumb-entering `BLX` sets T) |
 | Coprocessor | `MRC MCR` for p15, `LDC/STC` (any coprocessor), `CDP` | p15 `MRC/MCR` implemented and checked (decode *must not* turn them into undefined); `CDP` and `LDC`/`STC` for *every* number - p15's interface is MRC/MCR only - decode as UNDEF, matching a core with no coprocessor, pinned by the `LDC`/`STC` rows of `test_exception_entry()` |
 | Software interrupt / debug | `SWI`, `BKPT` | implemented, checked |
-| Hardware interrupts | `nIRQ`/`nFIQ` level inputs driving entry (0x18/0x1C vectors, I/F masking, SPSR, link adjustment, forced ARM state) | implemented (`brain_set_irq`/`brain_set_fiq`), checked by `test_interrupt_inputs()` in both states, including entry from Thumb reached through a taken `BX` |
+| Hardware interrupts | `nIRQ`/`nFIQ` level inputs driving entry (0x18/0x1C vectors, I/F masking, SPSR, link value, forced ARM state) | implemented, checked by `test_interrupt_inputs()` in both states and on both engines |
+
+### The exception link value, and why it is easy to get wrong
+
+Every exception has to leave a return address in the mode's R14 that makes the
+handler's return instruction land where the ARM ARM says it does (DDI 0100I
+A2.6.3-A2.6.10; A6.1.2 with table A6-1 for Thumb state). Two of them are
+specified against *different instructions*, and mixing the two is a silent,
+one-instruction error:
+
+* an exception **raised by an instruction** (undefined, `SWI`, aborts) is
+  reported against that instruction's address, which is what `cur` holds while
+  the trap is taken: undefined and `SWI` are `+4` in ARM state and `+2` in Thumb
+  (so `MOVS PC, R14` resumes after the instruction), a prefetch abort is `+4` in
+  both (so `SUBS PC, R14, #4` re-fetches it), and a data abort is `+8` in both
+  (so `SUBS PC, R14, #8` re-executes it);
+* an interrupt (**IRQ/FIQ**) is taken *between* instructions, at an instruction
+  boundary, and the ARM ARM specifies it against the instruction that has not
+  run yet: `R14_irq = address of next instruction to be executed + 4` (A2.6.8) -
+  `npc` in this core, because the line is sampled before the fetch. The `+4` is
+  the same in both states (a Thumb guest uses the same `SUBS PC, R14, #4`
+  return), so what moves between the two families is the base address, not the
+  offset.
+
+For a fall-through the two readings coincide (`npc + 4 == cur + 8` in ARM state,
+`npc + 4 == cur + 6` in Thumb), so a test that interrupts a straight-line program
+cannot tell them apart. They differ exactly when the last retired instruction was
+a *taken branch*, which is why `test_interrupt_inputs()` spends each of its four
+rows on that shape: the branch is retired, the line goes high, and the rows then
+assert the link value itself *and* which instruction the return actually runs
+(each reading of the address leaves a different pattern in memory, so the check
+names the bug instead of just failing). A handler whose link is one instruction
+too high resumes past the instruction the interrupt interrupted - harmless in a
+`mov`-only loop, and silent until the guest depends on the instruction that was
+skipped. The same rule applies at a JIT block boundary, which is why the four
+rows run on both engines.
 
 ## Thumb state
 
@@ -342,15 +377,44 @@ A block therefore ends at MRS/MSR, at the multiply space, at a *conditional* dat
 processing, load or store (predication belongs to the dispatcher, which is also
 where the branch counters see it - Thumb has exactly one predicated instruction, its
 `B<cond>`, and that one the block does perform), at a load or store naming R13-R15
-or an operand outside R0-R12, at a shift amount taken from a register, at a 32-bit
-shift (which is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift
-field only reaches 31), at LDM/STM/SWP (a register list is a second addressing mode
-and a bank-switch hazard, and real code has few of them in a hot loop), at
-ADCS/SBCS (whose carry-in has to be the C of *before* the operation - a snapshot
-per instruction, which is exactly what RSC does *not* need, because RSC is the
-platform's own reversed form) and at a shift by a register - there the amount is a
-runtime value, and ARM wants its carry-out in C with V left exactly as it was,
-which no host shift implements.
+or an operand outside R0-R12, at LDM/STM/SWP (a register list is a second addressing
+mode and a bank-switch hazard, and real code has few of them in a hot loop), at a
+shift *specified by a register*, and at the ADC/SBC operand shapes whose carry-in
+would come from the shifter rather than from C.
+
+Three of those refusals are rules rather than host limits, and each is pinned by
+its own test so a future widening cannot step over them silently:
+
+* **A shift by an immediate is accepted for every amount the encoding can
+  produce** - 1..31 for LSL, 1..31 for LSR/ASR, 1..31 and RRX for ROR - because
+  that is the whole of ARMv5's barrel shifter and both hosts can express it (an
+  `LSL #0` is a no-op move and legal; `LSR #0`/`ASR #0` are the *32-bit* shifts in
+  disguise, which AArch64's five-bit shift field cannot reach, and they stay with
+  the dispatcher).  The front end also has to be careful about *which field* it
+  validates for each operand shape: for an immediate operand the decoder's `rm`
+  carries bits of the immediate itself (so `and r2, r1, #0x0F` has `rm == 15`) and
+  for an immediate shift its `rs` carries the shift amount (so a blanket window
+  check refuses every shift by 13..31).  `rm` is a register only for
+  `OP2_REG`/`OP2_REG_SHIFT` and `rs` only for `OP2_REG_RS`; checking them anywhere
+  else silently sends working encodings down the interpreter path, which shows up
+  as a *performance* regression rather than a wrong answer - which is why
+  `test_jit_x64`'s shift-amount sweep exists (`jit_emit --sweep` counts what is
+  emitted at all);
+* **`ADCS`/`SBCS` are accepted only where the carry-in is C** - a plain register
+  operand, or an immediate with a zero rotate field.  When the shifter itself
+  produces a carry (a rotated immediate, or a register-specified shift with a
+  non-zero amount), ARMv5 feeds *that* to the operation instead of C, and no host
+  instruction has a second carry input: on x86-64 that shape would need a snapshot
+  of C per instruction, so it ends the block and the interpreter (which has the
+  flag register as a variable) performs it.  The flag-free forms translate with the
+  host's own `adc`/`sbb`, and a chain of them - `adcs r0, r0, r1` then
+  `adcs r1, r1, r2` - keeps the carry between instructions through the flagged path;
+* **`RSC` takes every operand shape `RSB` takes**, including the flag-setting
+  ones, because it is the platform's own reversed form: `sbb` computes
+  `minuend - subtrahend - CF`, which is exactly `Op2 - Rn - NOT(C)` with the
+  operands exchanged, so there is no snapshot to take - and the AArch64 backend
+  refuses the immediate-with-S form for its own reason (the folded operand cannot
+  carry the borrow into the flag patch).
 
 Flag-setting operations with an immediate operand are accepted, arithmetic and
 logical alike.  For `ADD/SUB/RSB/RSC/CMN/CMP` the C comes out of the adder wherever

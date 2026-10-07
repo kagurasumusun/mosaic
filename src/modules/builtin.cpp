@@ -15,10 +15,12 @@
  *   3. the directory in the Makefile's module list (it globs, so usually
  *      nothing at all).
  *
- * The same three steps add a *device* or a *monitor* module; the only difference
- * is which `add_*` the module calls on the registry and which factory it
- * implements (DeviceModule / MonitorModule).  The two the core used to build
- * itself - the exit port and the console - are here for exactly that reason.
+ * The same three steps add a *device*, *monitor* or *board* module; the only
+ * difference is which `add_*` the module calls on the registry and which factory
+ * it implements (DeviceModule / MonitorModule / BoardModule).  The modules the
+ * core itself ships - the console, the exit port, the timer and the two boards -
+ * are here for exactly that reason: they are the worked examples that keep the
+ * four extension points honest.
  */
 #include "brainemu/core/module.h"
 
@@ -31,6 +33,8 @@ void register_arm926_module();
 void register_toy8_module();
 void register_exit_module();
 void register_console_module();
+void register_timer_module();
+void register_builtin_boards();
 
 void register_builtin_modules() {
   static bool done = false;
@@ -39,8 +43,10 @@ void register_builtin_modules() {
   register_arm926_module();     /* the primary target: ARM926EJ-S (ARMv5TEJ) */
   register_toy8_module();       /* the worked example of a CPU module        */
   register_builtin_loaders();   /* elf32 + raw                               */
-  register_exit_module();       /* devices: the two adapters this build ships */
+  register_exit_module();       /* devices: the adapters this build ships     */
   register_console_module();
+  register_timer_module();      /* ...and one with an interrupt output        */
+  register_builtin_boards();    /* boards: named presets of the above         */
 }
 
 }  // namespace brain

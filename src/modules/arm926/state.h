@@ -425,7 +425,8 @@ struct Cpu {
   ALWAYS_INLINE u32 fetch32(GAddr a);
 
   /* exceptions */
-  void take_exception(u32 e);
+  void take_exception(u32 e);          /* raised by the instruction at `cur` */
+  void take_interrupt(u32 e);          /* taken in front of `npc`            */
   u32 exception_lr_offset(u32 e) const;
   void raise_undef(u32 insn);
   void raise_swi(u32 imm);
@@ -439,7 +440,7 @@ struct Cpu {
   void flush_bank();
   void load_bank(u32 idx);
   u32 bank_for_mode(u32 mode) const;
-  void enter_exception(u32 e, u32 vector, u32 mode, u32 lr_adjust);
+  void enter_exception(u32 e, u32 vector, u32 mode, u32 lr);
 
   /* memory (MMU-aware; also used by JIT helper calls) */
   u32 read8(u32 a) { return mem_read(a, 1, MF_SZ8); }
