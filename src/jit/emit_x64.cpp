@@ -47,7 +47,7 @@ namespace brain {
 bool jit_x64_accepts(const IrInsn& in) {
   switch (in.op) {
     case IR_MOV: case IR_MOVI: case IR_ADD: case IR_SUB: case IR_RSB:
-    case IR_ADC: case IR_SBC: case IR_AND: case IR_ORR: case IR_EOR:
+    case IR_ADC: case IR_SBC: case IR_RSC: case IR_AND: case IR_ORR: case IR_EOR:
     case IR_BIC: case IR_MVN: case IR_NEG: case IR_RRX:
       break;
     case IR_LSL:
@@ -117,6 +117,7 @@ Shape shape_of(const IrInsn& in) {
       s.reads_a = true; s.reads_b = true; s.logical = true;
       break;
     case IR_ADD: case IR_SUB: case IR_RSB: case IR_ADC: case IR_SBC:
+    case IR_RSC:
       s.reads_a = true; s.reads_b = true; s.arith = true;
       break;
     default:
@@ -131,7 +132,8 @@ Shape shape_of(const IrInsn& in) {
  * whatever the operation is - `add r0, r1, r2, ror #0` is an addition that
  * still reads the carry, and the host `rcr` gets it from the flag register. */
 bool reads_carry_for_value(const IrInsn& in) {
-  return in.op == IR_ADC || in.op == IR_SBC || in.op == IR_RRX ||
+  return in.op == IR_ADC || in.op == IR_SBC || in.op == IR_RSC ||
+         in.op == IR_RRX ||
          (!in.b_is_imm && in.shift_type == SH_RRX);
 }
 
@@ -442,6 +444,20 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
   const bool pe_op = pres && op_clobbers;
   if (ps_shift) body_.pushfq();
 
+  /* --- the borrow-in, for RSC ------------------------------------------- */
+  /* `sbb` subtracts the *host* CF, and at this point CF holds the guest's carry
+   * as it came in - but ARM's RSC subtracts NOT(C), so the complement has to be
+   * in place when the subtraction runs (the same `cmc` the SBC path does, and
+   * the mirrored `sub` form does not need).  The only thing between here and
+   * there that can destroy CF is the materialisation of a shifted operand, so
+   * for those shapes the guest's carry is stashed first, flag-free, in the
+   * emitter's own scratch register; `bt` puts it back below. */
+  bool rsc_restore_cf = false;
+  if (ins.op == IR_RSC && op_shift && !shift_flag_free) {
+    body_.setcc(C_B, kScratch);
+    rsc_restore_cf = true;
+  }
+
   /* --- operand 2 -------------------------------------------------------- */
   int op2 = imm_op ? -1 : gb;
   int op2_temp = -1;
@@ -470,6 +486,10 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
   }
   if (pe_shift) body_.popfq();
   if (ps_op) body_.pushfq();
+  if (ins.op == IR_RSC) {
+    if (rsc_restore_cf) body_.bt_ri(kScratch, 0);   /* CF = the guest's C  */
+    body_.cmc();                                    /* CF = NOT(C)         */
+  }
 
   /* The one ARM flag rule with no x86 instruction behind it: a flag-setting
    * logical operation with an unshifted operand leaves C alone, and every host
@@ -638,7 +658,8 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
       break;
     }
 
-    case IR_ADD: case IR_SUB: case IR_ADC: case IR_SBC: case IR_RSB: {
+    case IR_ADD: case IR_SUB: case IR_ADC: case IR_SBC: case IR_RSB:
+    case IR_RSC: {
       const bool wflags = want;
       /* V has to be computed even when nothing reads the flags, if a later
        * instruction passes it on to the block's exit (see Liveness::v_live_out).
@@ -646,11 +667,15 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
        * carry-looking bits of OF stale, and `seto` reads OF. */
       const bool v_only = def && !wflags && lv.v_live_out;
       const int aop = ins.op == IR_ADD ? A_ADD : ins.op == IR_SUB ? A_SUB
-                    : ins.op == IR_ADC ? A_ADC : ins.op == IR_SBC ? A_SBB : A_SUB;
-      /* ARM's SBC subtracts `NOT C`, x86's SBB subtracts `CF`: the borrow-in
-       * has to be complemented first.  (ADC needs no such care - both add C.)
-       * A shifted operand cannot be in flight here: the front end refuses
-       * ADC/SBC with a shift, because ARMv5's own rule for them is different. */
+                    : ins.op == IR_ADC ? A_ADC
+                    : (ins.op == IR_SBC || ins.op == IR_RSC) ? A_SBB : A_SUB;
+      /* ARM's SBC and RSC subtract `NOT C`, x86's SBB subtracts `CF`: the
+       * borrow-in has to be complemented first.  (ADC needs no such care - both
+       * add C.)  RSC is the same subtraction with the minuend in the *second*
+       * operand, so it takes the same `sbb` and only swaps which register is
+       * the destination - see the reversed-operand branches below.
+       * A shifted operand cannot be in flight for SBC: the front end refuses it,
+       * because ARMv5's own rule for the pair is different. */
       if (ins.op == IR_SBC) body_.cmc();
       /* Flag-free encodings first: `lea` for addition and subtraction by an
        * immediate in one instruction, which is what keeps `add rd, rn, rm` out
@@ -668,16 +693,16 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
       } else if (ins.op == IR_RSB && imm_op && ins.imm == 0) {
         if (dv != ga) body_.mov_rr(dv, ga);
         body_.neg(dv);
-      } else if (ins.op == IR_RSB && dv != ga) {
+      } else if ((ins.op == IR_RSB || ins.op == IR_RSC) && dv != ga) {
         if (imm_op) body_.mov_ri(dv, ins.imm);
         else if (al_b && op2_is_gb) { /* dv already holds R(b) */ }
         else body_.mov_rr(dv, op2);
-        body_.alu_rr(A_SUB, dv, ga);
-      } else if (ins.op == IR_RSB) {
+        body_.alu_rr(aop, dv, ga);
+      } else if (ins.op == IR_RSB || ins.op == IR_RSC) {
         const int t = take(pins, npins, idx);
         if (t < 0) return false;
         if (imm_op) body_.mov_ri(t, ins.imm); else body_.mov_rr(t, op2);
-        body_.alu_rr(A_SUB, t, ga);
+        body_.alu_rr(aop, t, ga);
         body_.mov_rr(dv, t);
         release_temp(t);
       } else if (al_b && commutative && op2_is_gb) {
@@ -701,7 +726,8 @@ bool Emitter::op(int idx, const Liveness& lv, const Shape& sh) {
          * `cmp` is a subtraction.  ADD/ADC (and NEG, which x86 defines as
          * "CF = operand != 0" - exactly ARM's NOT-borrow of 0 - x) already
          * agree, and `cmc` leaves SF, ZF and OF alone, so V is still `seto`. */
-        if (wflags && (ins.op == IR_SUB || ins.op == IR_SBC || ins.op == IR_RSB))
+        if (wflags && (ins.op == IR_SUB || ins.op == IR_SBC ||
+                       ins.op == IR_RSB || ins.op == IR_RSC))
           body_.cmc();
         body_.setcc(C_O, kVreg);
       }

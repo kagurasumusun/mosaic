@@ -152,8 +152,14 @@ class Buf {
   void adc(uint32_t rd, uint32_t rn, uint32_t rm) {
     emit(0x1A000000u | (rm << 16) | (rn << 5) | rd);
   }
-  void sbc(uint32_t rd, uint32_t rn, uint32_t rm) {
-    emit(0x5A000000u | (rm << 16) | (rn << 5) | rd);
+  /* Subtract with carry.  Unlike the shifted-register group, add/subtract
+   * *with carry* has no shift field - an operand that needs one is shifted
+   * separately - so this takes plain registers, and the flag-setting form
+   * (`SBCS`, which is what makes RSC one instruction on this host) is the only
+   * variation.  AArch64's SBC is also already the reversed form ARM's RSC
+   * wants: `SBCS Wd, Wm, Wn` is Wm - Wn - NOT(C) with N, Z, C and V. */
+  void sbc(uint32_t rd, uint32_t rn, uint32_t rm, bool flags = false) {
+    emit((flags ? 0x7A000000u : 0x5A000000u) | (rm << 16) | (rn << 5) | rd);
   }
 
   /* ---- flags ------------------------------------------------------------ */

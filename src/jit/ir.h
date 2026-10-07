@@ -43,6 +43,11 @@ enum IrOp : uint8_t {
   IR_RRX,               /* dst = (C << 31) | (src >> 1): ARM's rotate-right
                          * through the carry, which is what a shift field of
                          * ROR #0 or LSR #0 means. */
+  /* Appended at the end so the codes above keep the numbers a debugging session
+   * has already printed: RSC is the one data-processing operation whose second
+   * operand is the *minuend* (`dst = Op2 - Rn - NOT(C)`), i.e. SBC with the two
+   * register operands exchanged - which is exactly how both backends spell it. */
+  IR_RSC,
   IR_COUNT
 };
 
@@ -98,6 +103,7 @@ inline const char* ir_op_name(IrOp op) {
     case IR_RSB: return "rsb";
     case IR_ADC: return "adc";
     case IR_SBC: return "sbc";
+    case IR_RSC: return "rsc";
     case IR_AND: return "and";
     case IR_ORR: return "orr";
     case IR_EOR: return "eor";

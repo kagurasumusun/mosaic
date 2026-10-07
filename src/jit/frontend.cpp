@@ -131,6 +131,11 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
       if (d.op2 != OP2_REG || d.s) return false;
       in.op = IR_SBC;
       break;
+    /* RSC is the same operation with the shifter operand as the minuend
+     * (`Rd = Op2 - Rn - NOT(C)`, A4.1.61), so it takes any operand shape RSB
+     * takes - and, like RSB, is *not* limited to the flag-free forms: C and V
+     * come out of the sum on AArch64 exactly as ARM defines them. */
+    case DP_RSC: in.op = IR_RSC; break;
     case DP_ORR: in.op = IR_ORR; break;
     case DP_BIC: in.op = IR_BIC; break;
     case DP_MOV:
@@ -155,7 +160,7 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
     case DP_TEQ: in.op = IR_EOR; in.dst = IR_NO_DST; in.setflags = true; break;
     case DP_CMP: in.op = IR_SUB; in.dst = IR_NO_DST; in.setflags = true; break;
     case DP_CMN: in.op = IR_ADD; in.dst = IR_NO_DST; in.setflags = true; break;
-    default: return false;                /* RSC: a carry-invert we do not emit */
+    default: return false;
   }
   /* A MOV of a shifted register is a shift of one operand, not a two-operand op. */
   /* MVN with a shifted register is fine: `ORN Wd, WZR, Rm, <sh>` is the value and
@@ -418,6 +423,23 @@ bool jit_emit_arm64(const IrBlock& blk, bool with_entry_exit,
       case IR_SBC:
         if (in.setflags) return false;
         b.sbc(rd, ra, operand);
+        break;
+      case IR_RSC:
+        /* Rd = Op2 - Rn - NOT(C): AArch64's SBC with the operands exchanged, and
+         * it wants no flag repair at all - N, Z, C and V come out of the sum the
+         * same way ARM defines them, with S or without.  SBC takes plain
+         * registers, so an immediate or a shifted Op2 is materialised first, the
+         * same move the RSB case makes just above. */
+        if (in.b_is_imm && in.setflags) return false;   /* front end refuses too */
+        if (in.b_is_imm) {
+          b.mov_imm(rd, in.imm);
+          b.sbc(rd, rd, ra);
+        } else if (rrx || amt == 0) {
+          b.sbc(rd, operand, ra, in.setflags);
+        } else {
+          b.shift(arm64::SCR1, operand_orig, st, amt);
+          b.sbc(rd, arm64::SCR1, ra, in.setflags);
+        }
         break;
       case IR_LSL:
       case IR_LSR:

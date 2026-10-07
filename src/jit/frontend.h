@@ -21,9 +21,12 @@
  * MSR, the multiply space, anything touching R13-R15 (banked, or the PC itself), a
  * shift amount taken from a register, and a 32-bit shift - what ARM state spells
  * `LSR #0` and `ASR #0`, and which AArch64's five-bit shift field cannot say.
- * ADCS, SBCS and RSC are refused as a matter of policy: chaining a carry correctly
- * needs the flags as of *before* the operation, which costs a snapshot per
- * instruction and is not worth it while the interpreter is close behind.
+ * ADCS and SBCS are refused as a matter of policy: chaining a carry correctly needs
+ * the flags as of *before* the operation, which costs a snapshot per instruction and
+ * is not worth it while the interpreter is close behind.  RSC is not: it is the
+ * reversed subtraction, so the host's own subtract-with-borrow is already it (x86-64
+ * `cmc` + `sbb` with the operands swapped, AArch64 a plain `SBC`), with nothing to
+ * snapshot beyond the borrow-in a materialised shift would otherwise destroy.
  *
  * tests/test_jit_arm64.py is what keeps all of this honest: every emitted encoding
  * is disassembled and every accepted shape is executed on an AArch64 model and

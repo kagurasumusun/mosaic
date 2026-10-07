@@ -229,8 +229,11 @@ bool compare_block(const uint32_t* code, uint32_t n, const uint32_t* regs,
 
 /* One random data-processing word.  Deliberately includes encodings the front
  * end refuses (conditional forms, register-specified shifts, SP/PC operands,
- * RSC, ADC with a shift, flag-setting immediates): those must end the block,
- * and the *prefix* that does translate has to stay correct. */
+ * ADC with a shift, flag-setting immediates): those must end the block, and the
+ * *prefix* that does translate has to stay correct.  RSC was one of them until
+ * the backend learned it, which is why it is worth having both: the words keep
+ * being generated either way, so the day it became translatable it was covered
+ * by a battery that had been running against it for as long as it existed. */
 uint32_t random_dp(Rng* r) {
   uint32_t w = (r->one_in(16) ? r->below(15) : 0xEu) << 28;
   w |= r->below(16) << 21;                                  /* opcode */

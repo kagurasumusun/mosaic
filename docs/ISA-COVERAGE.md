@@ -242,16 +242,18 @@ so the accepted *instruction* set below is a property of the front end and is
 the same for both - what differs is how each machine spells the result.
 
 The accepted set is unconditional ARM-state data processing with every operand in
-R0-R12: the four barrel shifts by an immediate (including RRX, which the emitter
-spells as a shift-and-insert because `ROR #0` in an AArch64 shift field means "rotate
-by zero" to a model), rotated immediates, and the S forms.  A block ends at a
-branch, a load or a store (they need the MMU and the abort path, and a compiled block
-must not grow a second copy of them), at MRS/MSR, at the multiply space, at anything
-naming R13-R15, at a shift amount taken from a register, at a 32-bit shift (which
-is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's shift field only
-reaches 31), and at a flag-setting rotated immediate or ADCS/SBCS - the
-last because a carry-in needs the flags as of *before* the operation, which is not
-worth a snapshot per instruction while the interpreter is one step behind.
+R0-R12 - all sixteen opcodes, RSC included - with the four barrel shifts by an
+immediate (including RRX, which the emitters spell out because `ROR #0` in an AArch64
+shift field means "rotate by zero" to a model), rotated immediates, and the S forms.
+A block ends at a branch, a load or a store (they need the MMU and the abort path, and
+a compiled block must not grow a second copy of them), at MRS/MSR, at the multiply
+space, at anything naming R13-R15, at a shift amount taken from a register, at a
+32-bit shift (which is what ARM state spells `LSR #0` and `ASR #0`, and AArch64's
+shift field only reaches 31), and at the three shapes whose flags the host cannot
+produce for free: a flag-setting rotated immediate (ARM takes C from the rotator,
+where `ADDS #imm` takes it from the sum), ADCS/SBCS (whose carry-in has to be the C
+of *before* the operation - a snapshot per instruction, which is exactly what RSC
+does *not* need, because RSC is the platform's own reversed form), and a multiply.
 
 The flags are the interesting part.  AArch64 has no flag-setting `ORR`/`EOR`, so
 those become a value plus `TST Wd, Wd`; the 64-bit shift inside a shifted logical
@@ -285,6 +287,15 @@ Four x86 rules do not match ARM's, and each costs at most one instruction:
 * **Logical operations clear CF**, where ARM leaves C alone for an unshifted
   operand and takes it from the shifter otherwise: one `setcc`/`bt` pair, and
   `bt <operand>, n` for the shifter's bit, read from the *unmodified* source.
+* **RSC's borrow-in has to survive a materialised shift.**  `SBC` is one `cmc`
+  plus one `sbb`; RSC is the same pair with the operands exchanged, because `sbb`
+  already computes `minuend - subtrahend - CF` and ARM's RSC *is* the reversed form
+  (`Op2 - Rn - NOT(C)`, A4.1.61).  The wrinkle is that a shifted operand is
+  materialised with a host shift before the subtraction, and a host shift destroys
+  CF - the only thing the operation reads out of the flag register - so for those
+  shapes the guest's carry is stashed flag-free in the emitter's scratch and put
+  back with `bt`, `cmc` before the `sbb`.  `LSL #1..#3` materialises through `lea`,
+  which leaves CF alone and skips the stash.
 * **V has to be tracked separately.**  Since V lives in a register rather than in
   the flag register, "the flags are dead here" is not the same as "V is dead":
   an `ands` preserves V by not touching R15, so the V a later instruction passes

@@ -79,8 +79,9 @@ LICENSE             the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.m
   2-11 bit map, reset value 0x00050078), FCSE, coarse/fine page tables, section
   and page permissions, XN, domains, and the ARM926EJ-S fault-status encoding.
 * JIT: two execution paths over one interpreter, covering ARM-state data
-  processing for now (a block also ends at a branch, a load or a store, which
-  the interpreter then retires - see `docs/ISA-COVERAGE.md`). The block layer (hash cache,
+  processing for now - all sixteen opcodes, RSC included (a block still ends at
+  a branch, a load or a store, which the interpreter then retires - see
+  `docs/ISA-COVERAGE.md`). The block layer (hash cache,
   `trans_gen` invalidation, self-modification watch, negative cache for refused
   starts), the IR and the front end are shared; the host picks the code
   generator. On x86-64 the x86-64 backend is compiled in and executes blocks

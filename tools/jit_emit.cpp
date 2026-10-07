@@ -63,6 +63,12 @@ static void print_forms() {
   { Buf b; b.neg_shifted(1, 2); v.push_back({"neg", b}); }
   { Buf b; b.adc(1, 2, 3); v.push_back({"adc", b}); }
   { Buf b; b.sbc(1, 2, 3); v.push_back({"sbc", b}); }
+  /* RSC: the same SBC with the operands exchanged, and its flag-setting form -
+   * the pair the x86-64 backend builds out of `cmc` + `sbb`.  (There is no
+   * shifted SBC to pin: the with-carry group has no shift field, which is why
+   * the emitter shifts the operand separately instead.) */
+  { Buf b; b.sbc(1, 3, 2); v.push_back({"rsc", b}); }
+  { Buf b; b.sbc(1, 3, 2, true); v.push_back({"rscs", b}); }
   { Buf b; b.shift(1, 2, brain::arm64::SH_LSL, 4); v.push_back({"lsl_imm", b}); }
   { Buf b; b.shift(1, 2, brain::arm64::SH_LSR, 3); v.push_back({"lsr_imm", b}); }
   { Buf b; b.shift(1, 2, brain::arm64::SH_ASR, 2); v.push_back({"asr_imm", b}); }
