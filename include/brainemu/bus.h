@@ -1,4 +1,5 @@
 /* brain-emu: memory bus / address space.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * The bus is byte-addressable and endianness-agnostic: the ARM926EJ-S core
  * performs BE8 data swapping itself, so the bus only ever sees byte

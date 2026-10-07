@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-brain-emu-1.0
 """Barrel-shifter differential test: the shifter in src/core/ops.h and its encodings.
 
 `MOV{S} Rd, Rm, <shift>` is the purest probe of the shifter there is: the result is

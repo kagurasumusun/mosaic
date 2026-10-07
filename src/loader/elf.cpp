@@ -1,5 +1,5 @@
 /* brain-emu -- ELF32 / raw image loading.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  */
 #include "loader/loader.h"
 

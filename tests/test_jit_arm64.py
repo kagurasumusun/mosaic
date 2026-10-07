@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-brain-emu-1.0
 """Verify the JIT's AArch64 output, on a host that is not AArch64.
 
 Two layers, both cheap and both able to fail on their own:

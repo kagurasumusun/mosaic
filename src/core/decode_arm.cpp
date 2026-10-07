@@ -1,4 +1,5 @@
 /* brain-emu: ARM (32-bit, ARMv5TEJ) decoder.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * One decoder serves both engines: the interpreter executes what it returns,
  * the JIT translates it (and falls back to "run the interpreter for this

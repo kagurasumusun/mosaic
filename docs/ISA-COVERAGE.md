@@ -94,17 +94,14 @@ machine.
 
 ## Gaps to close next
 
-1. A code generator for *this* host.  The AArch64 backend now has the block
-   cache and dispatcher it was waiting for (`jit/cache.h` + `jit/cache.cpp`):
-   on an AArch64 host `Stats::insns_jit` is non-zero, the corpus replays
-   through generated blocks, and `test_instr --jit` *fails* if the backend
-   retires nothing - so a green `--jit` run there proves the JIT end to end.
-   The cache's contract itself - translate/enter/retire, the budget and stale-
-   generation gates, SMC-range unlink - is pinned on every host by
-   `test_unit.cpp::test_jit_cache` through an exec hook that stands in for the
-   one arena call.  What remains is an x86-64 emitter, without which every
-   number in this file is still an interpreter number on CI; `--jit` reports
-   the engine that actually retired the instructions rather than the flag.
+1. ~~A code generator for *this* host.~~  Closed: `src/jit/emit_x64.cpp` is the
+   x86-64 backend, selected by `BRAIN_JIT_BACKEND` on an x86-64 host, so
+   `Stats::insns_jit` is non-zero and the corpus replays through generated
+   blocks natively; `test_instr --jit` *fails* if the backend retires nothing,
+   and `make check` runs the same corpus both ways.  What is left of this item
+   is *coverage* rather than existence: the accepted set below is data
+   processing only, so a loop with a load or a branch still runs partly in the
+   interpreter (which is what `bench --jit`'s engine split reports).
 2. Unaligned device accesses.  (`LDC/STC` for p15 is closed and was based on a
    wrong reading: neither the TRM nor the Microchip SAM9G15 datasheet gives CP15
    a load/store interface - "other instructions like CDP, LDC, STC can cause an
@@ -228,17 +225,17 @@ corpus case that only proves the core does not crash.
   check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
   target show up as a register write (`MOV Rn, R14`) instead.
 
-## The AArch64 JIT backend
+## The JIT backends
 
-`src/jit/emit_arm64.h` and `src/jit/frontend.cpp` generate AArch64 for the subset
-the front end accepts, are driven through a block cache and dispatcher
-(`jit/cache.cpp`) whenever `BRAIN_JIT_BACKEND` is 1 - which today means an
-AArch64 host, and only there does `Cpu::run_insns` enter generated code.  On
-x86 CI no x64 emitter exists, the backend stays 0, and every coverage number
-in this file is an interpreter number; what `--jit` reports there
-(`insns_jit 0`) is that fact, not a failure - while on AArch64 a `--jit` run
-that retired *nothing* through the cache is a hard failure of this file's
-number-one claim.
+One interpreter, two code generators, one translation layer.  `BRAIN_JIT_BACKEND`
+(`jit/jit.h`) picks the backend from the *host*: 1 is AArch64
+(`src/jit/emit_arm64.h`), 2 is x86-64 (`src/jit/emit_x64.cpp`), 0 means neither
+is compiled in and `use_jit` degrades to the interpreter, which is what `--jit`
+reports as `insns_jit 0` rather than pretending to have run anything.  On a
+given host exactly one backend can run, because a block is host machine code.
+Both are fed by the same `jit/frontend.cpp` and see only the IR of `jit/ir.h`,
+so the accepted *instruction* set below is a property of the front end and is
+the same for both - what differs is how each machine spells the result.
 
 The accepted set is unconditional ARM-state data processing with every operand in
 R0-R12: the four barrel shifts by an immediate (including RRX, which the emitter
@@ -259,7 +256,53 @@ writes V on a logical operation at all.  So the emitter snapshots `NZCV` with `M
 and patches the bits back with `UBFX`/`ORR`/`MSR` - and for "unchanged" it needs the
 value from *before* the instruction, which is why the snapshot is taken first.
 
-`tests/test_jit_arm64.py` checks all of that, and runs as part of `make check`:
+### The x86-64 backend
+
+Same front end, same IR, different machine to satisfy.  The shadow pointer lives
+in RBP, twelve host registers (RAX RCX RDX RSI RDI R8 R9 R10 RBX R12-R14) hold
+guest R0-R12 across the block, R11 is the scratch the operand barrel-shifter and
+the carry repair use, and R15 holds the guest's V - because x86 writes SF, ZF and
+CF cheaply but has no cheap writer for OF.  The dispatcher therefore hands the
+block an *EFLAGS image* it can load with one `popfq` (`SH_EFLAGS`) and merges the
+image back into `Cpu::cpsr` afterwards, keeping V in `SH_VFLAG`; `JitBlock::meta`
+says which halves a given block touches.
+
+Four x86 rules do not match ARM's, and each costs at most one instruction:
+
+* **CF is a borrow, not a carry.**  `sub`/`sbb` leave CF inverted relative to
+  ARM's C, so a flag-setting `SUB`/`SBC`/`RSB` inverts it with `cmc` before the
+  exit image is built (`cmc` touches only CF, so V is still `seto`'s); an `sbb`
+  *reading* the guest's carry needs the same complement first.
+* **Rotates do not set SF or ZF.**  `shl`/`shr`/`sar` do - so those two costs
+  nothing - but `ror`/`rcr` set CF alone, which silently loses N and Z.  The
+  rotate's carry (exactly ARM's) is stashed with `setcc`, the result gets its N
+  and Z from a `test`, and `bt` puts the carry back; `setcc` and `bt` touch only
+  CF, so the repair cannot disturb what it is repairing.
+* **Logical operations clear CF**, where ARM leaves C alone for an unshifted
+  operand and takes it from the shifter otherwise: one `setcc`/`bt` pair, and
+  `bt <operand>, n` for the shifter's bit, read from the *unmodified* source.
+* **V has to be tracked separately.**  Since V lives in a register rather than in
+  the flag register, "the flags are dead here" is not the same as "V is dead":
+  an `ands` preserves V by not touching R15, so the V a later instruction passes
+  to the exit can be the one a *previous* arithmetic instruction computed - the
+  emitter keeps a second liveness variable (`v_live_out`) and emits `seto` for
+  the arithmetic instruction whenever either variable wants it.
+
+`tests/test_jit_x64.cpp` is the check, and it is the strongest one available:
+the machine the blocks run on is the machine they were translated for, so there
+is no model in the loop.  It pins the encoder byte by byte, hands a block a
+sentinel-filled shadow buffer and looks at what it wrote (an offset the emitter
+and `jit/abi.h` disagree about shows up as a clobbered word), sweeps every
+data-processing opcode with both S settings, immediates (rotated and not), plain
+registers, all four shifts and RRX across three entry flag words, then compares
+thousands of random multi-instruction blocks and a register-pressure block
+against the interpreter instruction by instruction.  A disagreement prints the
+guest words, the entry state and the differing register, which is how the bugs
+this section describes were found - the sweep found the rotate/MVN-immediate
+rules, and the random blocks found the operand-swap and carry-fixup hazards the
+sequential tests never reach.
+
+`tests/test_jit_arm64.py` checks the other backend, and runs as part of `make check`:
 every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
 is supposed to produce (42 forms, 81 words, 0 wrong); every ARM block the corpus
 contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, CPSR

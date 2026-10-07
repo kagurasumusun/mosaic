@@ -1,0 +1,220 @@
+brain-emu License, Version 1.0
+==============================
+
+Copyright (c) 2026 the brain-emu authors.  All rights reserved except as
+expressly granted below.
+
+This license was written for this project.  It is not copied from, and does not
+incorporate the text of, any other license.  It is intended to be read as plain
+language, and the permission it gives is the whole of the permission you get for
+the Work: there is no promise here that is not written here.
+
+
+1. Definitions
+--------------
+
+"Work" means the software this license is attached to: the source files,
+headers, scripts, build files, documentation and tests of brain-emu, together
+with anything else the copyright holder marks as covered by this license.
+
+"You" means any person or organization exercising a permission granted by this
+license.  "Your" has the corresponding meaning.
+
+"Modification" means any copy of the Work in which anything is added, removed
+or changed - including a translation, a port, a rebranded fork, and a file that
+merely links the Work into a larger program, where that larger program is
+distributed as one product.
+
+"Distribute" means to give a copy of the Work or of a Modification to anybody
+else, by any means - shipping source, shipping a binary, publishing a patch, or
+making it available over a network so that it can be downloaded.
+
+"Contribution" means anything that You deliberately send to the copyright
+holder for inclusion in the Work.  It does not include an issue report, a
+question, or a bug reproduction that carries no code or documentation change.
+
+
+2. Permission
+-------------
+
+Subject to the conditions in section 3, the copyright holder grants You a
+worldwide, royalty-free, non-exclusive, perpetual and irrevocable permission to:
+
+  a. use, run, study and test the Work for any purpose, including commercial
+     purposes;
+  b. copy the Work in whole or in part;
+  c. modify the Work and create Modifications from it;
+  d. distribute the Work and Modifications, in source or binary form, with or
+     without charge;
+  e. sublicense the rights in this section to the recipients of what You
+     distribute.
+
+This permission includes the right to combine the Work with other software, and
+to license the combination as a whole under terms of Your choosing - provided
+the conditions in section 3 are met for the parts of the combination that are
+the Work or are derived from it.
+
+
+3. Conditions
+-------------
+
+If You distribute the Work or a Modification, all of the following apply:
+
+  a. Attribution.  Keep the copyright notice above, or a notice of equivalent
+     effect, in every copy of the Work.  Keep the identifier
+     "SPDX-License-Identifier: LicenseRef-brain-emu-1.0" (or an equivalent
+     statement that the file is under the brain-emu License, version 1.0) in
+     every source file that carried one.
+  b. License text.  Give every recipient a copy of this license.  A source
+     distribution can satisfy this by including the LICENSE file; a binary-only
+     distribution has to include the text of this license somewhere it can be
+     read (an about box, a documentation file, or a directory the program ships
+     is enough).
+  c. Changes.  State that You changed the Work, and do not misrepresent the
+     origin of the Work as a whole.  Marking the affected files, a ChangeLog,
+     a commit history or a note in the accompanying documentation all satisfy
+     this; the point is that a reader can tell Your version is not the original.
+  d. No endorsement.  Do not use the names of the copyright holder or of the
+     project in a way that suggests the original authors endorse, sponsor or
+     maintain Your version.  Referring to the project by name as the origin of
+     the code ("based on brain-emu") is use, not endorsement, and is allowed.
+  e. Notices.  Do not remove or obscure any other copyright, license or
+     disclaimer notice that is in the Work.
+
+You may not use any right in section 2 for a purpose that a competent court has
+already forbidden You from pursuing with this Work; the permission is granted
+for lawful use, and nothing here is a promise that a particular use is lawful in
+a particular country.
+
+
+4. Patents
+----------
+
+Each contributor to the Work grants You a worldwide, royalty-free,
+non-exclusive patent license to make, use, sell, offer for sale, import and
+otherwise transfer the Work and modifications of it, limited to those patent
+claims the contributor holds or controls that are necessarily infringed by the
+Work as the contributor submitted it.  If You (or an organization You act for)
+start a patent suit alleging that the Work, or a Contribution inside it,
+infringes a patent, the permissions granted to You by this license, including
+the patent license in this section, end as of the date the suit is filed.
+
+
+5. Contributions
+----------------
+
+Unless You say otherwise in writing when You send a Contribution, that
+Contribution is licensed to the copyright holder under this license, on the same
+terms as the Work, and You confirm that You have the right to grant that
+permission.
+
+
+6. What this license does not cover
+-----------------------------------
+
+This license covers only what the copyright holder wrote.  In particular:
+
+  a. The documents in the reference/ directory (ARM and NXP/Freescale manuals)
+     are separate works under their own terms.  They are not licensed to You by
+     this license, they are not needed to build or run the Work, and a
+     distribution of the Work should not include them unless the distributor has
+     the right to include them.
+  b. Third-party development tools and libraries (for example Unicorn,
+     Keystone, Capstone, or a compiler) are separate works under their own
+     terms.  Using them to build or test the Work does not put them under this
+     license, and does not put the Work under theirs.
+  c. The names, trademarks and documentation formats of ARM Limited, NXP
+     Semiconductors and other companies are their property.  Section 2 grants
+     rights in copyright and patents only; it grants no right in any trademark.
+
+
+7. No warranty
+--------------
+
+THE WORK IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE, TITLE, ACCURACY AND NON-INFRINGEMENT.  THE ENTIRE RISK AS TO
+THE QUALITY AND PERFORMANCE OF THE WORK IS WITH YOU.  THE COPYRIGHT HOLDER DOES
+NOT WARRANT THAT THE WORK WILL RUN WITHOUT INTERRUPTION OR ERROR, AND DOES NOT
+UNDERTAKE TO SUPPORT, UPDATE OR CORRECT IT.
+
+Nothing in this license excludes or limits any warranty or liability that the
+law applicable to You does not allow to be excluded or limited.  If an
+exclusion here cannot be given effect, it does not reduce the permission granted
+in section 2; it only means the disclaimer does not apply to that warranty.
+
+
+8. Limitation of liability
+--------------------------
+
+IN NO EVENT AND UNDER NO LEGAL THEORY, WHETHER IN TORT (INCLUDING NEGLIGENCE),
+CONTRACT OR OTHERWISE, AND EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE,
+WILL THE COPYRIGHT HOLDER OR ANY CONTRIBUTOR BE LIABLE TO YOU FOR ANY DIRECT,
+INDIRECT, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES OF ANY KIND ARISING OUT
+OF THIS LICENSE OR OUT OF THE USE OR INABILITY TO USE THE WORK - INCLUDING,
+WITHOUT LIMITATION, DAMAGES FOR LOSS OF GOODWILL, WORK STOPPAGE, COMPUTER
+FAILURE OR MALFUNCTION, OR ANY OTHER COMMERCIAL DAMAGES OR LOSSES.
+
+As in section 7, this does not limit any liability that the law applicable to
+You does not allow to be limited.
+
+
+9. Termination and reinstatement
+--------------------------------
+
+Your permission under this license ends automatically if You breach any of its
+conditions and do not cure the breach within thirty days of becoming aware of
+it - or, for a breach that cannot be cured, immediately.
+
+If the copyright holder notifies You in writing that You have breached this
+license, and You cure the breach within thirty days of that notice, Your
+permission is reinstated.  If You cure a first breach and later breach the same
+condition again, the copyright holder is not obliged to reinstate it a second
+time.
+
+Ending of Your permission does not end the permission of anybody who received
+the Work from You in compliance with this license while Your permission was in
+force.  Sections 6, 7 and 8 survive any termination.
+
+
+10. Miscellaneous
+-----------------
+
+  a. Entire agreement.  This license is the whole agreement between You and the
+     copyright holder about the Work.  It replaces anything else said about it,
+     including any "understandings" that are not written down here.
+  b. No waiver.  If the copyright holder does not enforce a condition on one
+     occasion, that is not a waiver of the condition, and does not stop anyone
+     from enforcing it later.
+  c. Severability.  If a provision of this license is unenforceable, it is
+     reduced to the minimum extent needed to make it enforceable, and the
+     remaining provisions stay in force.  If it cannot be reduced, it is
+     severed, and the rest of the license continues to apply.
+  d. No obligation.  Nothing in this license obliges the copyright holder to
+     distribute the Work at all, to accept a Contribution, or to provide any
+     service in connection with it.
+  e. Headings and summaries.  The headings are for reading.  The preamble and
+     the paraphrases in the sections are not separate permissions - sections 2
+     and 3 are what binds You.
+  f. Copyright holder.  Where this license refers to the copyright holder, it
+     means the person or organization that holds the copyright in the Work, or
+     that has been authorized by that holder to act for it.  Where there is
+     more than one, each of them may act on their own.
+
+
+How to apply this license to a file
+-----------------------------------
+
+Put these two lines at the top of the file with the other header comments, and
+ship this LICENSE file with the source:
+
+    SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+    Copyright (c) 2026 the brain-emu authors.  See LICENSE.
+
+"LicenseRef-brain-emu-1.0" is the identifier to use for this license text.  The
+license is not an SPDX-listed license; the "LicenseRef-" prefix is how SPDX
+names a license whose text ships with the work, and it is what makes a scan tell
+You to read this file rather than to assume some other terms.
+
+This notice is part of the license, and is itself covered by it.
+END OF TERMS

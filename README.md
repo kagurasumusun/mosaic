@@ -50,6 +50,11 @@ that ends with `B .` and no exit port simply runs until `--steps` runs out.
   (raw and ELF32), device mapping and one-hook-call-per-access behaviour,
   MMIO above 32 MB with the MMU off, register access with the PC aliases,
   and the counters.
+* `tests/test_jit_x64.cpp` (x86-64 hosts; skips elsewhere) — the emitted host
+  code, executed in-process: encoder byte pins, the shadow-buffer ABI (a
+  sentinel-filled buffer, so a wrong offset shows up as a clobbered word), a
+  sweep over every data-processing opcode and operand shape, random multi-
+  instruction blocks, and a block that forces the register allocator to spill.
 
 ## Layout
 
@@ -63,6 +68,7 @@ tools/              brainemu (runner), bench (throughput)
 tests/              the corpus generator, corpus-driven and unit tests
 reference/          the ARM documents this code is written against
 docs/               ARCHITECTURE.md, ISA-COVERAGE.md, LICENSE-NOTES.md
+LICENSE             the brain-emu License, version 1.0 (see docs/LICENSE-NOTES.md)
 ```
 
 ## Status
@@ -72,9 +78,15 @@ docs/               ARCHITECTURE.md, ISA-COVERAGE.md, LICENSE-NOTES.md
   coprocessor groups, with the exceptions, banked registers, CP15 c1 (Table
   2-11 bit map, reset value 0x00050078), FCSE, coarse/fine page tables, section
   and page permissions, XN, domains, and the ARM926EJ-S fault-status encoding.
-* JIT: the block layer, invalidation and self-modification watch are wired up,
-  **no host code generator yet** — `build/bench --jit` therefore falls back to
-  the interpreter and says so in its counters.
+* JIT: two execution paths over one interpreter. The block layer (hash cache,
+  `trans_gen` invalidation, self-modification watch, negative cache for refused
+  starts), the IR and the front end are shared; the host picks the code
+  generator. On x86-64 the x86-64 backend is compiled in and executes blocks
+  natively — `build/bench --jit` runs *faster* than `build/bench`, and
+  `tests/test_jit_x64.cpp` diffs emitted blocks against the interpreter
+  instruction by instruction. On AArch64 the AArch64 backend is selected and
+  checked against a model by `tests/test_jit_arm64.py`; on any other host
+  `use_jit` degrades to the interpreter (the counters show `interp N jit 0`).
 * Not implemented on purpose: Jazelle, Vectored FIQ, TCM, cache-line semantics,
   32-bit Thumb encodings (ARMv6+), `MCR2/MRC2` (ARMv7), `IT`, `CBZ/CBB`,
   `MOVW/MOVT`, `REV/SXTH`. These decode as undefined instructions.
@@ -83,3 +95,13 @@ docs/               ARCHITECTURE.md, ISA-COVERAGE.md, LICENSE-NOTES.md
 
 See `docs/ARCHITECTURE.md` for the invariants the core relies on, and
 `docs/ISA-COVERAGE.md` for the instruction-by-instruction status.
+
+## License
+
+The brain-emu License, version 1.0 (`SPDX-License-Identifier:
+LicenseRef-brain-emu-1.0`) - the project's own license, written for it rather
+than adopted: use, modify, redistribute and sell, keep the notices, ship the
+text, say what you changed, and no warranty.  The full text is in `LICENSE`, and
+`docs/LICENSE-NOTES.md` explains the choices, what the license does *not* cover
+(the ARM/NXP manuals in `reference/`, and the development-time tools), and where
+the corpus comes from.

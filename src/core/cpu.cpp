@@ -1,4 +1,5 @@
 /* brain-emu: ARM926EJ-S core -- lifecycle, mode banking, exceptions, run loop.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Behaviour sources:
  *   - ARM DDI 0100I A2.6 (exception model; LR values are per tables in

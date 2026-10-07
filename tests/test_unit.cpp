@@ -1,5 +1,5 @@
 /* brain-emu -- unit tests for the API surface around the core.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * These cover the parts a golden-instruction corpus cannot: the image loaders,
  * the device bus, register access with the pipeline aliasing, and the counters.
@@ -986,14 +986,15 @@ static void test_shifter_primitive() {
 }
 
 
-/* ---- block cache: bookkeeping + the dispatcher, with no host code executed.
+/* ---- block cache: bookkeeping + the dispatcher, with the arena call stubbed.
  *
  * The one step a real backend owns - calling into the arena - is replaced by
  * `jit_cache_exec_hook`, which lets this test drive translate/enter/retire on
- * a host without AArch64 execution.  What the generated code itself computes
- * is the business of tests/test_jit_arm64.py (AArch64 model); here we pin the
- * contract around it: what a block is, when it may run, when it must not, and
- * exactly what state crosses the shadow-register boundary. */
+ * any host, with or without a code generator.  What the generated code itself
+ * computes is the business of tests/test_jit_arm64.py (AArch64 model) and
+ * tests/test_jit_x64.cpp (native x86-64); here we pin the contract around it:
+ * what a block is, when it may run, when it must not, and exactly what state
+ * crosses the shadow-register boundary. */
 static int g_hook_calls = 0;
 
 static void jit_cache_test_hook(uint32_t* s) {
@@ -1005,7 +1006,16 @@ static void jit_cache_test_hook(uint32_t* s) {
 
 static void test_jit_cache() {
   std::printf("[jit cache]\n");
-  CHECK(BRAIN_JIT_BACKEND == 0);            /* no arena execution here        */
+  /* The backend id is a property of the *host*: on x86-64 this test runs with
+   * a real code generator compiled in, on other hosts without one.  Everything
+   * below is backend-agnostic because the hook stands in for the arena call. */
+#if BRAIN_JIT_BACKEND == 2
+  CHECK(BRAIN_JIT_BACKEND == 2);
+#elif BRAIN_JIT_BACKEND == 1
+  CHECK(BRAIN_JIT_BACKEND == 1);
+#else
+  CHECK(BRAIN_JIT_BACKEND == 0);
+#endif
 
   brain::Cpu cpu;
   brain::CpuConfig cfg;
@@ -1082,10 +1092,10 @@ static void test_jit_cache() {
   CHECK(brain::jit_cache_lookup(jc, 0x8000) == nullptr);
 
   /* The core's SMC plumbing (`write_mem -> invalidate_code -> Jit::invalidate_
-   * range`) runs only when the control plane owns a Jit, which on this host
-   * `Jit::init()` refuses by design; the cache-side contract it calls into is
-   * the invalidate() already pinned above, and `test_instr --jit` on aarch64
-   * exercises the whole path under the real backend. */
+   * range`) runs only when the control plane owns a Jit; the cache-side contract
+   * it calls into is the invalidate() already pinned above, and the full path is
+   * exercised end to end by `test_instr --jit` (x86-64 and AArch64) and by
+   * tests/test_jit_x64.cpp, which runs the emitted bytes for real. */
 
   brain::jit_cache_exec_hook = nullptr;
   brain::jit_cache_destroy(jc);

@@ -1,4 +1,6 @@
-/* brain-emu JIT: the block cache.  See jit/cache.h for the invariants. */
+/* brain-emu JIT: the block cache.  See jit/cache.h for the invariants.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ */
 #include "jit/cache.h"
 
 #include <cstring>
@@ -6,6 +8,8 @@
 #include <unistd.h>
 
 #include "core/ops.h"       /* CycleModel */
+#include "jit/abi.h"        /* SH_*: the shadow layout both sides agree on */
+#include "jit/emit_x64.h"   /* the x86-64 backend's entry point + meta      */
 #include "jit/frontend.h"
 #include "jit/jit.h"        /* BRAIN_JIT_BACKEND, JITSLOW_* */
 
@@ -72,21 +76,48 @@ JitBlock* jit_cache_lookup(JitCache* jc, u32 pc) {
   return nullptr;
 }
 
+/* The one place that knows which host code generator is compiled in.
+ *
+ * AArch64's emitter writes 32-bit words and returns false only when the *host*
+ * is not one it can be executed on (its words are still produced, and on a host
+ * where nothing runs them the cache is never entered anyway); x86-64's emitter
+ * returns false when it cannot emit the block, and says so through `meta`.
+ * Keeping the difference here means the rest of the cache - and every test that
+ * drives it with `jit_cache_exec_hook` - is backend-agnostic. */
+bool backend_emit(const IrBlock& blk, std::vector<u8>* out, u8* meta) {
+  *meta = 0;
+#if BRAIN_JIT_BACKEND == 2
+  JitBlockMeta m;
+  if (!jit_emit_x64(blk, /*with_entry_exit=*/true, out, &m)) return false;
+  *meta = (u8)(m.entry_flags | (m.exit_flags << 1));
+  return true;
+#elif BRAIN_JIT_BACKEND == 1
+  std::vector<uint32_t> words;
+  jit_emit_arm64(blk, /*with_entry_exit=*/true, &words);
+  out->assign((const u8*)words.data(), (const u8*)words.data() + words.size() * 4);
+  return !words.empty();
+#else
+  (void)blk; (void)out; (void)meta;
+  return false;
+#endif
+}
+
 bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   Cpu* c = jc->cpu;
   if (jc->blocks.size() >= kBlockCap) jit_cache_flush(jc);
   IrBlock blk;
   if (!jit_translate_arm_block(*c, pc & ~3u, c->cfg.max_block_insns, &blk))
     return false;
-  std::vector<uint32_t> words;
-  jit_emit_arm64(blk, /*with_entry_exit=*/true, &words);
-  const u64 bytes = words.size() * sizeof(uint32_t);
+  std::vector<u8> code;
+  u8 meta = 0;
+  if (!backend_emit(blk, &code, &meta)) return false;
+  const u64 bytes = code.size();
   if (bytes == 0 || bytes > jc->cap) return false;
   if (jc->used + bytes > jc->cap) {
     jit_cache_flush(jc);           /* arena exhausted: drop everything and refill */
     if (jc->used + bytes > jc->cap) return false;
   }
-  std::memcpy(jc->arena + jc->used, words.data(), bytes);
+  std::memcpy(jc->arena + jc->used, code.data(), bytes);
   JitBlock b;
   b.pc = pc & ~3u;
   b.end_pc = blk.next_pc;
@@ -98,6 +129,7 @@ bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   b.insns = blk.guest_insns;
   b.cycles = blk.guest_insns * (u32)CycleModel::kIssue;
   b.gen = c->trans_gen;
+  b.meta = meta;
   jc->used += bytes;
   jc->blocks.push_back(b);
   JitBlock& installed = jc->blocks.back();
@@ -131,11 +163,70 @@ void jit_cache_invalidate(JitCache* jc, u32 gaddr, u32 size) {
   }
 }
 
+#if BRAIN_JIT_BACKEND == 2
+/* x86-64 keeps N, Z and C in the host flag register and V in a register of its
+ * own, because those are the four operations the host has: SF/ZF/CF fall out of
+ * `add`/`sub`/`and`/shifts exactly where ARM wants them, while OF has no cheap
+ * writer (`seto` sets it, nothing restores it).  So the handoff is an EFLAGS
+ * image - loadable with one `popfq`, readable with one `pushfq` - plus a 0/1 V
+ * word.  Building the image here rather than in the block's prologue is worth
+ * five instructions per entry, and it keeps the layout knowledge in one file. */
+/* True while a guest access may be done inline: RAM straight through, no
+ * alignment check to perform, no halfword lane swap, and no store watch to
+ * call for.  When this is false the block calls the interpreter's helper
+ * instead - which is also what happens whenever the MMU is on, so a translated
+ * block is only fast on the identity-mapped RAM the fast path exists for. */
+static bool jit_fast_mem_ok(const Cpu* c) {
+  return c->cfg.jit_fast_mem && c->ram_fast && !c->align_chk && !c->be_data &&
+         !c->smc_watch;
+}
+
+static u32 eflags_image(const Cpu* c) {
+  u32 f = 0x2;                            /* bit 1 of RFLAGS reads as one    */
+  if (c->cpsr & (1u << 29)) f |= 0x0001;  /* guest C -> CF                   */
+  if (c->cpsr & (1u << 30)) f |= 0x0040;  /* guest Z -> ZF                   */
+  if (c->cpsr & (1u << 31)) f |= 0x0080;  /* guest N -> SF                   */
+  return f;
+}
+
+static void jit_cache_prepare(JitCache* jc, u32* s) {
+  Cpu* c = jc->cpu;
+  s[SH_EFLAGS / 4] = eflags_image(c);
+  s[SH_VFLAG / 4] = (c->cpsr >> 28) & 1;
+  s[SH_ABORT_PC / 4] = 0;
+  s[SH_RETIRED / 4] = 0;
+  /* The Cpu* and the fast-memory verdict: one load each in a block that wants
+   * a helper or a guest access, instead of re-deriving the world per access. */
+  u64 cpu_ptr = (u64)(uintptr_t)c;
+  std::memcpy(&s[SH_CPU / 4], &cpu_ptr, sizeof cpu_ptr);
+  s[SH_MEM_FAST / 4] = jit_fast_mem_ok(c) ? 1u : 0u;
+}
+
+/* Merge what the block left in the shadow back into the CPSR.  The block wrote
+ * neither the CPSR word nor anything but the flag halves, so this is the same
+ * arithmetic `interp_arm.cpp` does when it updates `vflag` after a flag write. */
+static void jit_cache_finish(JitCache* jc, u32* s) {
+  Cpu* c = jc->cpu;
+  const u32 f = s[SH_EFLAGS / 4];
+  u32 cpsr = s[SH_CPSR / 4] & ~0xF0000000u;
+  if (f & 0x0080) cpsr |= 0x80000000u;
+  if (f & 0x0040) cpsr |= 0x40000000u;
+  if (f & 0x0001) cpsr |= 0x20000000u;
+  if (s[SH_VFLAG / 4] & 1) cpsr |= 0x10000000u;
+  s[SH_CPSR / 4] = cpsr;
+}
+#endif
+
 void jit_cache_enter(JitCache* jc, JitBlock* b) {
   Cpu* c = jc->cpu;
   u32* s = jc->shadow;
   for (u32 i = 0; i < 13; ++i) s[i] = c->regs[i];
   s[16] = c->cpsr;                       /* CPSR_OFF: the shadow's 17th word   */
+#if BRAIN_JIT_BACKEND == 2
+  /* meta&1: the block reads the entry flags; meta&2: it writes the flag halves
+   * at exit (and so needs the entry V even if it never reads a flag). */
+  if (b->meta & 3) jit_cache_prepare(jc, s);
+#endif
   if (jit_cache_exec_hook) {
     jit_cache_exec_hook(s);
   } else if (BRAIN_JIT_BACKEND && jc->arena_exec) {
@@ -143,9 +234,12 @@ void jit_cache_enter(JitCache* jc, JitBlock* b) {
     fn(s);
   }
   for (u32 i = 0; i < 13; ++i) c->regs[i] = s[i];
+#if BRAIN_JIT_BACKEND == 2
   /* Same merge the epilogue documents: NZCV from the host flags, everything
    * else already in the word the prologue loaded, and vflag kept in step with
    * the copy `interp_arm.cpp` maintains (`vflag = (cpsr >> 28) & 1`). */
+  if (b->meta & 2) jit_cache_finish(jc, s);
+#endif
   c->cpsr = s[16];
   c->vflag = (s[16] >> 28) & 1;
   c->cur = b->end_pc - 4;
@@ -176,18 +270,24 @@ u32 jit_block_boundary(JitCache* jc, u64 max_insns, u64 until_cycles) {
    * nobody can observe one, so a pending line keeps the dispatcher honest. */
   if (BRAIN_UNLIKELY(c->irq_line || c->fiq_line)) return 0;
   if (c->insns >= max_insns) return 0;
-  JitBlock* b = jit_cache_lookup(jc, c->npc & ~3u);
+  const u32 pc = c->npc & ~3u;
+  if (BRAIN_LIKELY(pc == jc->bad_pc && jc->bad_gen == c->trans_gen)) return 0;
+  JitBlock* b = jit_cache_lookup(jc, pc);
   if (b && b->gen != c->trans_gen) {
     jit_cache_flush(jc);
     c->jit_slow = JITSLOW_STALE;
     return 0;
   }
   if (!b) {
-    if (!jit_cache_translate(jc, c->npc & ~3u)) {
+    if (!jit_cache_translate(jc, pc)) {
+      /* Remember the refusal: the next iteration of this loop will ask again,
+       * and the answer cannot change until the translation regime does. */
+      jc->bad_pc = pc;
+      jc->bad_gen = c->trans_gen;
       c->jit_slow = JITSLOW_INTERPRET;
       return 0;
     }
-    b = jit_cache_lookup(jc, c->npc & ~3u);
+    b = jit_cache_lookup(jc, pc);
     if (!b) return 0;
   }
   if (c->insns + b->insns > max_insns ||

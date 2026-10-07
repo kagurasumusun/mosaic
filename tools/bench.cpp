@@ -1,5 +1,5 @@
 /* brain-emu -- throughput benchmark.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Builds its own guest program (a counted add/cmp/branch loop, hand encoded --
  * no assembler is needed to measure dispatch), runs it under the interpreter or

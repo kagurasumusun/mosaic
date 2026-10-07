@@ -1,4 +1,5 @@
 /* Thumb state decoder -- see core/decode_thumb.h for the contract.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Format numbers follow ARM DDI 0100I chapter A6, and the switch is on
  * bits[15:11] (each case therefore covers a 0x800-wide slice of the space):

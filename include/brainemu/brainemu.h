@@ -1,6 +1,6 @@
 /* brain-emu -- ARM926EJ-S (ARMv5TEJ) core emulator
  * Public C API: an embeddable, allocation-light interface to the core.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * The API is deliberately small and C-compatible: everything the core can do
  * that an embedder needs (load an image, poke registers, run for a while, read

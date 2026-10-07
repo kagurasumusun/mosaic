@@ -1,4 +1,5 @@
 /* Instruction formatting for the trace/log output.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Both formatters drive the *real* decoders (decode_arm.cpp / decode_thumb.cpp)
  * and print from the ArmDec record.  That keeps the trace honest -- if the

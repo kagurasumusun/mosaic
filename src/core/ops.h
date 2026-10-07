@@ -1,7 +1,9 @@
-/* brain-emu: ARMv5TE datapath primitives shared by the interpreter and the
- * JIT front end.  Both engines MUST use these so that the flag semantics of
- * the two paths are provably identical (a divergence here is the single most
- * likely source of "the JIT disagrees with the interpreter" bugs).
+/* brain-emu: ARMv5TE datapath primitives shared by the interpreter and the JIT.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ *
+ * Both engines MUST use these so that the flag semantics of the two paths are
+ * provably identical (a divergence here is the single most likely source of
+ * "the JIT disagrees with the interpreter" bugs).
  *
  * Reference: ARM DDI 0100I chapter B2 (Barrel shifter B2.2.3, conditions
  * B2.2.2, saturating arithmetic B2.2.6).

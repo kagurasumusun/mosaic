@@ -1,4 +1,5 @@
 /* brain-emu ISA conformance harness.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Replays the corpus produced by tests/gen_instr_tests.py (encodings from
  * Keystone, expected state from Unicorn) through the interpreter and diffs the

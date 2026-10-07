@@ -1,4 +1,5 @@
 /* Thumb state decoder (ARMv5T: the 16-bit set plus the 32-bit BL/BLX pair).
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Semantics/encoding source: ARM DDI 0100I chapter A6 (formats) and A7
  * (per-instruction descriptions), plus the ARM926EJ-S TRM.  Every Thumb format

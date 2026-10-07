@@ -17,7 +17,7 @@ src/core/interp_arm.cpp        executes an ArmDec: the one semantic engine
 src/core/helpers.cpp           decoder helpers + the disassembly printer
 src/core/cp15_mmu.cpp          CP15, FCSE, translation, TLB, fault reporting
 src/core/bus.cpp               region lookup, byte/sized access, code watch
-src/jit/                       block cache, links, invalidation (no backend yet)
+src/jit/                       block cache, IR, x86-64 + AArch64 backends
 src/loader/elf.cpp             ELF32 PT_LOAD placement, raw image placement
 src/api.cpp                    the C API over the above
 ```
@@ -26,9 +26,10 @@ src/api.cpp                    the C API over the above
 (comments in `state.h`): `regs[16]`, `npc`, `cur`, `insn`, `cpsr`, `vflag`,
 `thumb`, `halted`, `exit_req`, `cycles`, `insns`, `jit_flags`, `trans_gen`,
 `bus`, `jit`, `ram`, `ram_gbase`, `ram_mask`, `ram_fast`, `exc*`. Keeping them
-adjacent and *not* reordered by the compiler is what lets a future backend
-address them with a base register plus immediate; a new field therefore goes at
-the end of the hot block, not in the middle.
+adjacent and *not* reordered by the compiler is what lets a backend address them
+with a base register plus immediate (the x86-64 one does, for the helpers it
+will call); a new field therefore goes at the end of the hot block, not in the
+middle.
 
 ## Two states, one engine
 
@@ -112,17 +113,43 @@ one hook call at the natural size (`LDR`/`STR` reach `read`/`write` with `size`
 directly). `tests/test_unit.cpp` asserts that count, because a UART FIFO does not
 tolerate being read four times per instruction.
 
-## Adding a JIT backend
+## The JIT: one interpreter, a translation layer, two backends
 
 `src/jit/jit.h` is the contract: `Jit::run/run_insns`, `invalidate_range`,
-`flush_all`, `on_exception`, `on_env_change`. A backend translates an `ArmDec`
-chain into a host block that reads and writes the `Cpu` fields listed above and
-exits back to the driver on anything it does not handle (helper calls are counted
-in `Stats::helper_calls`). The block cache, the links, the code watch and the
-`trans_gen` invalidation already exist; only codegen is missing, so the driver
-currently delegates to `Cpu::fetch_and_execute`. `build/bench --jit` prints
-`interp N jit 0` until that changes — that line is the test that a backend has
-been wired in.
+`flush_all`, `on_exception`, `on_env_change`. Between the guest and a backend sit
+three things that are backend-independent:
+
+* the *block cache* (`cache.cpp`) — one entry per guest basic block, hashed on
+  the pc, with `trans_gen` versioning (a control-register write invalidates every
+  block, which is what makes a stale block unable to retire one instruction too
+  many), a self-modification watch on the code pages, and a negative cache: a pc
+  whose translation was refused is not re-attempted until the generation changes
+  (a loop ending in a branch is refused once, not once per iteration);
+* the *IR* (`ir.h`) — `ArmDec` in, a small flat op list out, with the ARM flag
+  rules (shifter carry, V preservation, `MOVS #imm`) resolved once;
+* the *front end* (`frontend.cpp`) — decides how far a block may run, fetching
+  each word as it goes (identity-mapped RAM straight out of the array, otherwise
+  the TLB exactly as `prepare_fetch` does), and gives up *before* the first
+  instruction it cannot translate.
+
+A backend only ever sees the IR. Two exist, and the host picks one
+(`BRAIN_JIT_BACKEND` in `jit.h`): AArch64 (`emit_arm64.h`), and x86-64
+(`emit_x64.cpp`) which is what runs on the machine this was developed on. The
+x86-64 backend keeps N, Z and C in the host flag register and V in a register
+(`SH_VFLAG`), because x86 has no cheap writer for OF; the dispatcher therefore
+hands it an EFLAGS image in the shadow buffer (`SH_EFLAGS`, loadable with a
+single `popfq`) and merges the image back into `Cpu::cpsr` afterwards
+(`JitBlock::meta` says whether a block touches either half). Every block's exit
+writes R15 = the next pc, so the dispatcher's `cur`/`npc`/pipeline view is
+reconstructed in one place for both engines.
+
+Correctness is checked by running both engines on identical machines and
+comparing: `test_instr --jit` replays the whole ISA corpus through the cache, and
+`tests/test_jit_x64.cpp` executes emitted blocks in-process against the
+interpreter (every data-processing opcode over a spread of operands, entry flag
+sets and rotated immediates, plus thousands of random blocks and a
+register-pressure block) — plus a shadow-buffer sentinel test, because the
+offsets the generated code hard-codes cannot be checked by the compiler.
 
 ## Interworking, the T bit, and branch targets
 

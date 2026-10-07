@@ -1,4 +1,5 @@
 /* JIT control plane.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * With no host backend compiled in (see BRAIN_JIT_BACKEND) this file is the
  * whole JIT: it keeps the invalidation/versioning protocol that the core

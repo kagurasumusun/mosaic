@@ -1,5 +1,5 @@
 /* brain-emu -- public C API implementation.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Thin, checked wrapper around the core.  It owns no state of its own beyond
  * the last error string: the CPU struct here is exactly what the tests and the

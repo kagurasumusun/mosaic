@@ -1,4 +1,5 @@
 /* brain-emu: Thumb state interpreter (ARMv5T, i.e. the 16-bit instruction set).
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Design note: Thumb is not a separate machine here.  decode_thumb() maps every
  * 16-bit format onto the same ArmDec record the ARM decoder produces, and the

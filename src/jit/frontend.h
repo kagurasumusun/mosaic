@@ -1,4 +1,5 @@
 /* Guest ARM -> JIT IR.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * `jit_translate_arm_block` walks guest words from `pc` and appends IR for every
  * instruction that a block is allowed to contain, stopping (successfully) at the

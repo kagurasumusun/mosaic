@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ * Copyright (c) 2026 the brain-emu authors.  See LICENSE. */
 #include "brainemu/bus.h"
 
 #include <cstdlib>

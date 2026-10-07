@@ -1,4 +1,5 @@
 /* AArch64 code generation for the JIT's IR.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * The emitter is a plain function that appends 32-bit words to a buffer, so it can
  * be exercised on any host: tests/test_jit_arm64.py feeds the words to Capstone

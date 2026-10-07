@@ -1,4 +1,5 @@
 /* Guest ARM -> JIT IR, and IR -> AArch64.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * The translation reads the same decoder the interpreter does, so the two cannot
  * disagree about what an encoding means: `decode_arm` fills an `ArmDec`, and this
@@ -7,6 +8,8 @@
  * written once, next to the decoder, and a backend never sees an instruction.
  */
 #include "jit/frontend.h"
+
+#include <cstring>
 
 #include "core/decode.h"
 #include "jit/emit_arm64.h"
@@ -75,6 +78,9 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
                    (d.imm12 >> ((2u * d.rot) & 31u)))
                 : 0u;
   if (d.op2 == OP2_IMM && d.rot == 0) in.imm = d.imm12;
+  /* The rotate field is kept: a backend that can express the rotator's carry
+   * (x86-64 can, as a constant) needs to know whether there *was* one. */
+  in.imm_rot = (d.op2 == OP2_IMM) ? (uint8_t)(d.rot & 0xF) : 0;
   in.shift_type = 0;
   in.shift_amt = 0;
 
@@ -158,7 +164,29 @@ bool translate_dp(const ArmDec& d, IrInsn* out) {
   return true;
 }
 
-uint32_t translate(const uint32_t* words, uint32_t n, uint32_t pc, IrBlock* out) {
+/* One instruction word as the *fetch* would see it: identity-mapped RAM is read
+ * straight out of the array, anything else has to walk the TLB the way
+ * `Cpu::prepare_fetch()` does, and a translation that does not resolve simply
+ * ends the block (the dispatcher runs the instruction, and takes its abort if
+ * that is what the fetch does).  Reading physical memory at `pc` instead would
+ * happily translate bytes the guest never sees.  If `prepare_fetch()` changes,
+ * this has to change with it. */
+bool fetch_word(Cpu& cpu, uint32_t va, uint32_t* out) {
+  if (cpu.ram_fast && ((va - cpu.ram_gbase) & ~cpu.ram_mask) == 0) {
+    std::memcpy(out, cpu.ram + (va & cpu.ram_mask), 4);   /* VA == PA here */
+    return true;
+  }
+  TlbEntry* e = cpu.tlb_lookup(va & ~0xFFFu, MF_FETCH | MF_SZ32);
+  if (!e) return false;
+  *out = cpu.phys_read(e->gpa + (va & 0xFFFu), 4);
+  return true;
+}
+
+/* `words != nullptr` translates a caller-supplied array (a test's); otherwise
+ * the words are fetched from `cpu` one at a time, so a block that ends at its
+ * first instruction costs one fetch and not a whole window of them. */
+uint32_t translate(Cpu* cpu, const uint32_t* words, uint32_t n, uint32_t pc,
+                   IrBlock* out) {
   out->n = 0;
   out->start_pc = pc;
   out->next_pc = pc;
@@ -168,8 +196,15 @@ uint32_t translate(const uint32_t* words, uint32_t n, uint32_t pc, IrBlock* out)
   out->stop = "empty";
   uint32_t i = 0;
   for (; i < n; ++i) {
+    uint32_t word;
+    if (words) {
+      word = words[i];
+    } else if (!fetch_word(*cpu, pc + i * 4u, &word)) {
+      out->stop = i ? "fetch" : "unsupported";
+      break;
+    }
     ArmDec d{};
-    const u32 op = decode_arm(words[i], &d);
+    const u32 op = decode_arm(word, &d);
     if (op != AOP_DP) { out->stop = i ? "not data-processing" : "unsupported"; break; }
     IrInsn in{};
     if (!translate_dp(d, &in)) {
@@ -189,31 +224,14 @@ uint32_t translate(const uint32_t* words, uint32_t n, uint32_t pc, IrBlock* out)
 
 uint32_t jit_translate_arm_words(const uint32_t* words, uint32_t n, uint32_t pc,
                                  IrBlock* out) {
-  return translate(words, n, pc, out);
+  return translate(nullptr, words, n, pc, out);
 }
 
 uint32_t jit_translate_arm_block(Cpu& cpu, uint32_t pc, uint32_t max_words,
                                  IrBlock* out) {
-  uint32_t buf[IR_MAX_INSNS];
-  uint32_t n = max_words < uint32_t(IR_MAX_INSNS) ? max_words
-                       : uint32_t(IR_MAX_INSNS);
-  /* `pc` is a *virtual* address, so the words have to be reached the way the fetch
-   * reaches them - the same two steps Cpu::prepare_fetch() uses, and if either
-   * fails the block simply ends there and the dispatcher takes the instruction
-   * (with its abort, if the fetch would have taken one).  Reading physical memory
-   * at `pc` instead would happily translate bytes the guest never sees.  If
-   * prepare_fetch() changes, this has to change with it. */
-  for (uint32_t i = 0; i < n; ++i) {
-    const uint32_t va = pc + i * 4u;
-    if (cpu.ram_fast && ((va - cpu.ram_gbase) & ~cpu.ram_mask) == 0) {
-      buf[i] = cpu.phys_read(va, 4);          /* identity-mapped RAM: VA == PA */
-      continue;
-    }
-    TlbEntry* e = cpu.tlb_lookup(va & ~0xFFFu, MF_FETCH | MF_SZ32);
-    if (!e) { n = i; break; }
-    buf[i] = cpu.phys_read(e->gpa + (va & 0xFFFu), 4);
-  }
-  return translate(buf, n, pc, out);
+  const uint32_t n = max_words < uint32_t(IR_MAX_INSNS) ? max_words
+                                                       : uint32_t(IR_MAX_INSNS);
+  return translate(&cpu, nullptr, n, pc, out);
 }
 
 /* An operation that sets the guest's flags needs the bits AArch64 got wrong put

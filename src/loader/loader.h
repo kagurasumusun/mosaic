@@ -1,5 +1,5 @@
 /* brain-emu -- ELF32 loader for the ARM926EJ-S core.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Only what a bootable, statically linked armel binary needs: PT_LOAD segments
  * copied to their *physical* address (the core has an MMU but it comes out of

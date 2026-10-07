@@ -1,4 +1,5 @@
 /* brain-emu -- ARM926EJ-S (ARMv5TEJ) core: state layout + hot paths.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * This header is the ABI between the interpreter, the JIT dispatcher, the IR
  * and both code generators.  Generated host code touches guest state only

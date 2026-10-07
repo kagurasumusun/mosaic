@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-brain-emu-1.0
 """Differential oracle: core vs Unicorn's ARM926EJ-S model, both states.
 
 The corpus compares one instruction word against a recorded expectation, which is

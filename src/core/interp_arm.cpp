@@ -1,4 +1,5 @@
 /* brain-emu: ARM state interpreter (ARMv5TEJ / ARM926EJ-S).
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Semantics sources, in order of authority for this core:
  *   - ARM DDI 0100I  (the ARM ARM for ARMv4/v5T/v5E/v6) -- reference/DDI01001.pdf

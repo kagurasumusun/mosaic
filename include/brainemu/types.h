@@ -1,5 +1,5 @@
 /* brain-emu -- ARM926EJ-S (ARMv5TEJ) core emulator
- * SPDX-file-note: see LICENSE (copyright belongs to the project owner).
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  */
 #ifndef BRAINEMU_TYPES_H
 #define BRAINEMU_TYPES_H

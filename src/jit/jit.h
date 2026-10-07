@@ -1,4 +1,5 @@
 /* brain-emu JIT: control surface used by the core.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * The core treats the JIT as an optional accelerator with exactly the six
  * operations below, all cheap enough to call from the interpreter:
@@ -23,28 +24,41 @@
  * ARM-specific logic exists once, in the IR of jit/ir.h, and a backend only ever
  * sees that.
  *
- * The AArch64 code generator (jit/emit_arm64.h, fed by jit/frontend.h) is complete
- * and verified against a real AArch64 model by tests/test_jit_arm64.py; the block
- * cache and dispatcher that give it a home live in jit/cache.h + jit/cache.cpp,
- * driven by exactly the six entry points below.  The one call `jit_cache_enter`
- * makes into host code is the only line that needs a runnable backend; everything
- * else in the cache is plain bookkeeping, which is what tests/test_unit.cpp
- * exercises (via its exec hook) on hosts where no code executes.
+ * Two backends exist and the host picks one (BRAIN_JIT_BACKEND below): the
+ * AArch64 one (jit/emit_arm64.h, checked against a model by
+ * tests/test_jit_arm64.py) and the x86-64 one (jit/emit_x64.cpp, whose bytes
+ * tests/test_jit_x64.cpp executes in-process against the interpreter).  Both are
+ * fed by the same front end and see only the IR of jit/ir.h.  The block cache and
+ * dispatcher live in jit/cache.h + jit/cache.cpp, driven by exactly the six entry
+ * points below; tests/test_unit.cpp exercises them on any host, because its exec
+ * hook stands in for the generated code.
  */
 #ifndef BRAIN_JIT_JIT_H
 #define BRAIN_JIT_JIT_H
 
 #include "core/state.h"
 
-/* 1 on a host for which a code generator is compiled in (see emit_arm64.h; there
- * is no x64 backend).  Without one, Cpu::use_jit degrades to the interpreter - and
- * while the flag is 0 it degrades to the interpreter *with* the flag set, which is
- * what `--jit` reports: "REQUESTED but no backend retired anything".  Do not turn
- * this on for __aarch64__ until the cache above exists: the run path below calls
- * jit_cache_* functions that are only declared. */
+/* Which host code generator is compiled in, and therefore whether the JIT can
+ * retire anything at all:
+ *
+ *   1 = AArch64 (jit/emit_arm64.h, fed by jit/frontend.h; validated with
+ *       tests/test_jit_arm64.py)
+ *   2 = x86-64  (jit/emit_x64.h, fed by the same front end; validated with
+ *       tests/test_jit_x64.cpp, which executes the emitted bytes in-process)
+ *   0 = none of the above: Cpu::use_jit degrades to the interpreter even with
+ *       the flag set, which is what `--jit` reports as "REQUESTED but no
+ *       backend retired anything".
+ *
+ * The backend is picked by the host, not by the guest: a block is host machine
+ * code, so only the machine it runs on can be the machine it is translated to.
+ * Defining BRAIN_JIT_BACKEND yourself overrides the choice (a test compiling
+ * against the emitter of a foreign host does exactly that, to *check* the
+ * bytes without running them). */
 #if !defined(BRAIN_JIT_BACKEND)
 #  if defined(__aarch64__)
 #    define BRAIN_JIT_BACKEND 1
+#  elif defined(__x86_64__)
+#    define BRAIN_JIT_BACKEND 2
 #  else
 #    define BRAIN_JIT_BACKEND 0
 #  endif

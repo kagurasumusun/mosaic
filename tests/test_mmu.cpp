@@ -1,5 +1,5 @@
 /* brain-emu -- MMU, CP15 and FCSE tests for the ARM926EJ-S core.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Everything here goes through the public C API, because that is the only
  * honest way to test a memory map: page tables are poked into RAM as

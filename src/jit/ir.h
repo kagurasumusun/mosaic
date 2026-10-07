@@ -1,4 +1,5 @@
 /* The JIT's intermediate representation.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * A block is a straight-line run of guest instructions translated into ops over
  * a *host* register file that shadows guest R0-R12 while the block runs.  The
@@ -55,9 +56,15 @@ struct IrInsn {
   uint8_t b;
   bool b_is_imm;
   bool setflags;
-  uint8_t shift_type;  /* 0 = lsl, 1 = lsr, 2 = asr, 3 = ror            */
+  uint8_t shift_type;  /* SH_* : 0 = lsl, 1 = lsr, 2 = asr, 3 = ror      */
   uint8_t shift_amt;
   uint32_t imm;
+  /* The rotate field of an ARM immediate operand.  `imm` holds the *value* the
+   * operation sees (already rotated), so this is what tells a backend whether
+   * the rotation still supplies a carry for a flag-setting form: it does when
+   * this is non-zero (and the bit is bit 31 of `imm`), and C is left alone when
+   * it is zero. */
+  uint8_t imm_rot;
 };
 
 enum { IR_NO_DST = 255, IR_MAX_INSNS = 64 };

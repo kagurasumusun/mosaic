@@ -1,5 +1,5 @@
 /* brain-emu -- command line runner for the ARM926EJ-S core.
- * SPDX-file-note: see LICENSE.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * This is the smallest thing that is still useful: load an image, run it for a
  * bounded amount of time, look at the machine afterwards.  It speaks only the

@@ -1,4 +1,5 @@
 /* brain-emu: ARM926EJ-S system control coprocessor (CP15) + MMU.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Models the ARM926EJ-S MMU as documented in ARM DDI 0198E chapter 3:
  *   - CP15 c2: 16 KiB-aligned translation table base,

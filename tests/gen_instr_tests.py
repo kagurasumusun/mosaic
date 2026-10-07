@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-brain-emu-1.0
 """Generate the ISA conformance corpus for brain-emu.
 
 The expected values come from Unicorn (a QEMU-derived ARM core), which we use

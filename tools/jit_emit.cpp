@@ -1,4 +1,5 @@
 /* tools/jit_emit: show what the JIT front end produces, and what the machine does.
+ * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Two modes, both meant to be driven by tests/test_jit_arm64.py:
  *
