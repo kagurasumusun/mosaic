@@ -60,9 +60,9 @@ void Jit::invalidate_range(u32 gaddr, u32 size) {
 }
 
 void Jit::on_exception() {
-  /* Stop block chaining; the handler is fetched through the dispatcher so its
-   * vector (which depends on CP15 c1[V]) is re-read. */
-  pending_link = 0;
+  /* Every block is dropped: the handler is fetched through the dispatcher, so
+   * its vector (which depends on CP15 c1[V]) is re-read, and no block may still
+   * be holding a translation of the code that was interrupted. */
   ++cpu->trans_gen;
 }
 

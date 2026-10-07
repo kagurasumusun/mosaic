@@ -100,7 +100,6 @@ ALWAYS_INLINE void Cpu::load_pc(u32 value, bool from_load) {
     set_thumb(to_thumb ? 1u : 0u);
     cpsr = (cpsr & ~(CPSR_T | CPSR_J)) | (to_thumb ? u32(CPSR_T) : 0u);
   }
-  if (jit) jit->flush_pending_link();
   cycles += CycleModel::kPcLoad;
 }
 
@@ -613,12 +612,10 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
         set_thumb(0);
         cpsr &= ~(CPSR_T | CPSR_J);
         cycles += CycleModel::kBranch + CycleModel::kPcLoad;
-        if (jit) jit->flush_pending_link();
         return;
       }
       npc = target & ~1u;
       cycles += CycleModel::kBranch;
-      if (jit) jit->flush_pending_link();
       return;
     }
     /* Branches read the PC as `cur + 8` (ARM state), which is exactly what
@@ -640,7 +637,6 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
        * two adjacent Thumb instructions. */
       npc = target & ~1u;
       cycles += CycleModel::kBranch + CycleModel::kPcLoad;
-      if (jit) jit->flush_pending_link();
       return;
     }
     /* A Thumb branch target is only halfword aligned: applying the ARM rule here
@@ -648,7 +644,6 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
      * which is how a `b .` looped two bytes early. */
     npc = thumb ? (target & ~1u) : (target & ~3u);
     cycles += CycleModel::kBranch;
-    if (jit) jit->flush_pending_link();
     return;
   }
 
@@ -674,7 +669,6 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
     set_thumb(to_thumb ? 1 : 0);
     cpsr = (cpsr & ~(CPSR_T | CPSR_J)) | (to_thumb ? u32(CPSR_T) : 0u);
     cycles += CycleModel::kBranch;
-    if (jit) jit->flush_pending_link();   /* the link target just changed  */
     return;
   }
 

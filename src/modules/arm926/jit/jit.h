@@ -101,11 +101,6 @@ class Jit {
   void on_exception();
   void request_retranslate() { retranslate = true; }
 
-  /* A conditional branch at the end of a block is only linked once the target
-   * is known to be reachable; the interpreter calls this whenever it changes
-   * the PC outside a branch (LDR PC, MOV PC, exception return). */
-  void flush_pending_link() { pending_link = 0; }
-
   bool available() const { return ready; }
   JitCache* cache() const { return jc; }
 
@@ -116,7 +111,6 @@ class Jit {
   JitCache* jc = nullptr;
   bool ready = false;
   bool retranslate = false;
-  u32 pending_link = 0;
 };
 
 }  // namespace brain::arm926

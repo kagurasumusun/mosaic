@@ -115,7 +115,6 @@ void Cpu::set_reg(u32 n, u32 val) {
       npc = val & ~3u;             /* bits[1:0] ignored in ARM state          */
     }
     /* cur/regs[15] are refreshed by the next fetch: see Cpu::fetch_and_execute */
-    if (jit) jit->flush_pending_link();
     return;
   }
   regs[n] = val;
@@ -506,7 +505,6 @@ void Cpu::h_branch_exchange(Cpu* c, u32 target) {
     c->cpsr &= ~(CPSR_T | CPSR_J);
     c->npc = target & ~3u;
   }
-  if (c->jit) c->jit->flush_pending_link();
 }
 
 void Cpu::h_check_gen(Cpu* c, u32 gen) {
