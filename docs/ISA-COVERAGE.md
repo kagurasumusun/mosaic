@@ -4,7 +4,7 @@ Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
 `src/core/decode_arm.cpp`, `src/core/decode_thumb.cpp` and the single execution
 engine in `src/core/interp_arm.cpp`. "Checked" below means a case in
 `tests/data/corpus.txt` compares this core against a golden emulator for that
-encoding; 341 cases exist today (239 in ARM state, 102 in Thumb: single
+encoding; 347 cases exist today (245 in ARM state, 102 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
 into the next, and 59 randomised multi-instruction sequences). The same corpus
 is replayed a second time through the JIT when a backend is compiled in
@@ -189,7 +189,7 @@ of zero words passes for *any* target, because `movs r0, r0` changes nothing.  T
 `arm_blxi_*` cases were a clean example - three of them, all assembled to the same
 word (the loop variable was never used), all passing, none of them able to notice
 that the BLX offset was being computed at half scale.  Deliberately putting that
-bug back leaves the corpus at 341/341 while `test_unit` fails three checks.
+bug back leaves the corpus at 347/347 while `test_unit` fails three checks.
 
 The reverse also happens: the `encoder` rule above fired on `seq_thumb_0`, and the
 sequence it had been deleting turned out to be the first case in the corpus that

@@ -228,16 +228,25 @@ void Cpu::exec_arm_dec(const ArmDec& d) {
         break;
       }
       case DP_SBC: {
-        const u32 sub = b + (1 - ((cpsr >> 29) & 1));
-        res = a - sub;
-        nc = (a >= sub);
+        /* C is NOT(borrow) over the *whole* expression `a - b - NOT(C)`
+         * (A4.1.61): testing `a >= b + NOT(C)` in 32 bits instead is wrong,
+         * because `b + NOT(C)` wraps for b == 0xFFFFFFFF and C == 0 and the
+         * wrapped 0 makes a borrow look like no borrow.  The carry-in has to
+         * take part in the comparison, so the difference is formed in 64 bits
+         * - the borrow is then simply the sign of the exact difference. */
+        const u32 c = 1 - ((cpsr >> 29) & 1);
+        const u64 t = (u64)a - (u64)b - (u64)c;
+        res = (u32)t;
+        nc = ((t >> 32) == 0);
         nv = (((a ^ b) & (a ^ res)) >> 31);
         break;
       }
       case DP_RSC: {
-        const u32 sub = a + (1 - ((cpsr >> 29) & 1));
-        res = b - sub;
-        nc = (b >= sub);
+        /* Same rule with the operands the other way round: `b - a - NOT(C)`. */
+        const u32 c = 1 - ((cpsr >> 29) & 1);
+        const u64 t = (u64)b - (u64)a - (u64)c;
+        res = (u32)t;
+        nc = ((t >> 32) == 0);
         nv = (((b ^ a) & (b ^ res)) >> 31);
         break;
       }

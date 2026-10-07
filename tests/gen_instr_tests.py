@@ -164,6 +164,21 @@ def arith_cases(rnd, n_each=3):
     for line in ops_thumb:
         out.append(("thumb_" + slug(line), "thumb", [line]))
 
+    # The carry of a subtraction is NOT(borrow) over the *whole* expression
+    # `Rn - shifter_operand - NOT(C)` (SBC) or `shifter_operand - Rn - NOT(C)`
+    # (RSC), A4.1.61 - so `NOT(C)` takes part in the borrow.  Testing it as
+    # `Rn >= shifter_operand + NOT(C)` in 32 bits is the natural way to write
+    # that and it is wrong for exactly one input: when the addend wraps to 0
+    # (R2 = 0xFFFFFFFF, C = 0), the wrapped 0 makes a borrow look like no
+    # borrow.  R2 is 0xFFFFFFFF in DEFAULT_REGS, so these cases pin the corner
+    # both ways: C = 1 wants "no extra borrow-in", C = 0 wants one.
+    out.append(("arm_rscs_imm_c0", "arm", ["RSCS R0, R2, #0x66"], None, 0x40000000))
+    out.append(("arm_rscs_imm_c1", "arm", ["RSCS R0, R2, #0x66"], None, 0x60000000))
+    out.append(("arm_rscs_reg_c0", "arm", ["RSCS R0, R2, R3"], None, 0x40000000))
+    out.append(("arm_rscs_reg_c1", "arm", ["RSCS R0, R2, R3"], None, 0x60000000))
+    out.append(("arm_rscs_shift_c0", "arm", ["RSCS R0, R1, R2, ROR #5"], None, 0x40000000))
+    out.append(("arm_sbcs_imm_c0", "arm", ["SBCS R0, R1, R2"], None, 0x40000000))
+
     # multiply / DSP family, ARM state only
     dsp = [
         "MULS R0, R1, R2", "MUL R0, R1, R2", "MLA R0, R1, R2, R3",
