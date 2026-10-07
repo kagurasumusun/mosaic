@@ -4,12 +4,12 @@ Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
 `src/modules/arm926/decode_arm.cpp`, `src/modules/arm926/decode_thumb.cpp` and the single execution
 engine in `src/modules/arm926/interp_arm.cpp`. "Checked" below means a case in
 `tests/data/corpus.txt` compares this core against a golden emulator for that
-encoding; 347 cases exist today (245 in ARM state, 102 in Thumb: single
+encoding; 350 cases exist today (248 in ARM state, 102 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
-into the next, and 59 randomised multi-instruction sequences). The same corpus
-is replayed a second time through the JIT when a backend is compiled in
-(`test_instr --jit`), so every "checked" below is checked on both execution
-paths.
+into the next, 59 randomised multi-instruction sequences, and three
+self-modifying programs). The same corpus is replayed a second time through the
+JIT when a backend is compiled in (`test_instr --jit`), so every "checked" below
+is checked on both execution paths.
 
 The design rule for anything not on this list: an unimplemented *encoding* must
 decode to `AOP_UNDEF` and take the undefined-instruction exception. Nothing may
@@ -48,6 +48,51 @@ machine.
 | Stack operations | `PUSH POP` (with and without `LR`), `LDMIA STMIA` | implemented, checked. `POP` never restores CPSR — only the T bit follows the branch, as on hardware |
 | Conditional branch, SWI | `BEQ..BVC`, `SWI` | implemented, checked: all 14 conditions, each with a target that is word aligned and one that is only halfword aligned, so a wrongly scaled offset or a target masked to 4 bytes shows up as a different R0 |
 | Block transfer direction | `STMIA LDMIA` are both "increment after", `P = 0, U = 1, W = 1` | checked |
+
+## Self-modifying code
+
+ARMv5 makes self-modifying code UNPREDICTABLE without the cache maintenance it
+would need on hardware (a `DCache` clean and an `ICache` invalidate around the
+store).  A model has to pick something, and this core picks the boring,
+deterministic reading: **an instruction word is read from memory for every
+retired instruction**, so a store is visible to the next fetch, and both
+execution paths have to behave as if they fetched every word.  The interpreter
+does that by construction.  The JIT has to be *told*, because a translated block
+is host code with the guest words already compiled in:
+
+* installing a block flags every 4 KiB guest page it was built from
+  (`Bus::mark_code_page`, the `PG_CODE` bit the bus has had since the first
+  round);
+* `Cpu::smc_watch` is set while any page carries that flag, and the store path
+  in both the fast RAM case and the MMU slow path then asks `Bus::note_store`,
+  which reports a store to a flagged page to the CPU and drops the blocks that
+  overlap it (`Cpu::invalidate_code` → `Jit::invalidate_range` →
+  `jit_cache_invalidate`, which unlinks only the blocks whose `[pc, end_pc)`
+  really intersects the store);
+* a flush - the one operation that drops every block - clears the flags and the
+  guard with them, so the interpreter alone never pays for any of it.
+
+The granularity is per page and deliberately conservative: a flagged page with
+no block left costs one range check per store, while a live block can never sit
+on a page whose flag has been cleared, which is the property that matters.
+`tests/test_unit.cpp::test_self_modifying_code()` pins the plumbing directly
+(the observer is called for a store to the code page and not for one to a data
+page, a covering store drops the block, a flush clears flag and guard) and
+`Stats::smc_flushes` counts the drops.
+
+Three corpus cases pin the behaviour against the oracle, all with the patch
+landing on a word the store has already passed: `arm_smc_patch_loop` (the loop
+head becomes a different immediate - a build that keeps running the stale block
+ends on 400 instead of 599, which is measured, not argued),
+`arm_smc_patch_same` (the same store writing the word that is already there, the
+control) and `arm_smc_countdown` (the patch turns the loop head into
+`SUBS R0, R0, #1`, so the program ends by itself and a stale `ADD` block shows
+up both in R0 and in CPSR).  A patch that lands on a word *ahead* of the store
+in the same straight-line run is deliberately absent: QEMU keeps executing its
+stale translation of that run, so the oracle's answer depends on its
+translation-block granularity rather than on the architecture.  The three cases
+here are the ones where an implementation that refetches every word and one that
+caches translations agree.
 
 ## Deliberately undefined
 
@@ -189,7 +234,7 @@ of zero words passes for *any* target, because `movs r0, r0` changes nothing.  T
 `arm_blxi_*` cases were a clean example - three of them, all assembled to the same
 word (the loop variable was never used), all passing, none of them able to notice
 that the BLX offset was being computed at half scale.  Deliberately putting that
-bug back leaves the corpus at 347/347 while `test_unit` fails three checks.
+bug back leaves the corpus at 350/350 while `test_unit` fails three checks.
 
 The reverse also happens: the `encoder` rule above fired on `seq_thumb_0`, and the
 sequence it had been deleting turned out to be the first case in the corpus that

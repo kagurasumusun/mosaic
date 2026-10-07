@@ -1153,6 +1153,145 @@ void test_branch_counters() {
   }
 }
 
+/* Self-modifying code.
+ *
+ * The pieces for this have been in the tree since the first round - a store
+ * observer on the bus, `Cpu::invalidate_code`, `Jit::invalidate_range`, the
+ * per-page `PG_CODE` flag - but nothing ever *set* the flag or the `smc_watch`
+ * word the store path consults, so the guard was dead code and a translated
+ * block could keep running bytes the guest had already overwritten.  The
+ * program here patches the instruction it is about to execute again on every
+ * iteration, so a correct engine must notice the store *and* agree with the
+ * one that has nothing to notice.  Both halves matter: a build that never
+ * caches (interpreter) and one that caches everything (JIT) have to retire the
+ * same arithmetic, and the JIT run has to show the invalidations.
+ */
+void test_self_modifying_code() {
+  std::printf("[self-modifying code]\n");
+  struct StoreCounter {
+    int hits = 0;
+    uint32_t last = 0;
+  };
+  auto count_store = [](void* user, uint32_t addr, uint32_t) {
+    StoreCounter* c = (StoreCounter*)user;
+    ++c->hits;
+    c->last = addr;
+  };
+  const uint32_t prog[] = {
+      0xE59F1010u, /* ldr r1, [pc, #16]  -> the replacement word at 0x8018 */
+      0xE2800001u, /* add r0, r0, #1     <- patched while the loop runs   */
+      0xE59F200Cu, /* ldr r2, [pc, #12]  -> 0x8004                        */
+      0xE5821000u, /* str r1, [r2]       a store into the code page       */
+      0xE2800001u, /* add r0, r0, #1     (this one is never patched)      */
+      0xEAFFFFFAu, /* b 0x8004           back to the patched instruction  */
+      0xE2800002u, /* the replacement: add r0, r0, #2                     */
+      0x00008004u, /* the address the store writes to                     */
+  };
+
+  uint32_t interp_r0 = 0;
+  for (int jit = 0; jit < 2; ++jit) {
+    brain_config_t cfg;
+    std::memset(&cfg, 0, sizeof cfg);
+    cfg.ram_size = 1u << 20;
+    cfg.use_jit = jit;
+    brain_emu_t* e = brain_emu_create(&cfg);
+    CHECK(e != nullptr);
+    if (!e) continue;
+    CHECK(brain_load_raw(e, prog, sizeof prog, 0x8000, 0) == 0);
+    CHECK(brain_run_insns(e, 1000) == 1000);
+
+    /* The patch landed, and it landed *before* the next pass over it. */
+    CHECK(brain_peek32(e, 0x8004) == 0xE2800002u);
+    const uint32_t r0 = brain_get_reg(e, 0);
+    /* Hand-computed: the entry pass is 4 instructions (ldr, add +1, ldr,
+     * str), the first loop pass adds 1 + 1 (the store patches the word after
+     * that add has run), every later pass adds 2 + 1, and 1000 instructions
+     * leave one instruction of the last pass retired. */
+    CHECK(r0 == 599u);
+    if (jit) CHECK(r0 == interp_r0);
+    else interp_r0 = r0;
+
+    brain_stats_t s;
+    brain_get_stats(e, &s);
+    if (!jit) {
+      CHECK(s.blocks == 0);
+    }
+#if BRAIN_JIT_BACKEND
+    else {
+      /* It really did execute translated code, and it really did drop it. */
+      CHECK(s.insns_jit > 0);
+      CHECK(s.blocks > 8);
+      CHECK(s.smc_flushes > 8);
+    }
+#endif
+    brain_emu_destroy(e);
+  }
+
+  /* The bookkeeping behind it, at the level the guard actually lives on. */
+  brain::arm926::Cpu cpu;
+  brain::arm926::CpuConfig cfg;
+  cfg.ram_size = 1u << 20;
+  CHECK(cpu.init(cfg));
+  /* Two translatable instructions and then a branch, so the block really does
+   * cover a range (0x8000..0x8008) rather than a single word. */
+  const uint32_t kAdd[] = {0xE2800001u, 0xE2811001u, 0xEAFFFFFEu};
+  for (uint32_t i = 0; i < 3; ++i) cpu.phys_write(0x8000 + i * 4, kAdd[i], 4);
+  cpu.npc = 0x8000; cpu.cur = 0x8000; cpu.regs[15] = 0x8008;
+
+  brain::arm926::JitCache* jc = brain::arm926::jit_cache_create(&cpu, 1);
+  CHECK(jc != nullptr);
+  if (jc) {
+    /* Nothing translated yet: no code page, and the store path is the plain
+     * one.  The observer the core installed at attach() time is the only way
+     * a store can reach a translation, so counting its calls is the direct
+     * statement of "this store pays nothing". */
+    StoreCounter sc;
+    CHECK(cpu.smc_watch == 0);
+    CHECK(!cpu.bus->page_has_code(0x8000));
+    cpu.bus->set_store_observer(count_store, &sc);
+    cpu.write32(0x9000, 0x11223344u);
+    cpu.write32(0x8000, 0xE2800001u);
+    CHECK(sc.hits == 0);
+
+    brain::arm926::JitBlock* b = nullptr;
+    CHECK(brain::arm926::jit_cache_translate(jc, 0x8000, &b));
+    CHECK(b != nullptr && b->end_pc == 0x8008);
+    /* Installing a block flags every page it was built from and turns the
+     * store guard on; the rest of the address space stays off. */
+    CHECK(cpu.smc_watch == 1);
+    CHECK(cpu.bus->page_has_code(0x8000));
+    CHECK(!cpu.bus->page_has_code(0x9000));
+    cpu.write32(0x9000, 1);                  /* data page: still nothing      */
+    CHECK(sc.hits == 0);
+    /* A store into the code page reaches the observer even when it misses the
+     * block (0x8010 is past the block's end_pc), because the flag is per page
+     * and deliberately conservative - one wasted range check beats a page of
+     * per-block bookkeeping. */
+    cpu.write32(0x8010, 2);
+    CHECK(sc.hits == 1 && sc.last == 0x8010);
+    cpu.write32(0x8004, 3);
+    CHECK(sc.hits == 2 && sc.last == 0x8004);
+
+    /* A flush is the one place that clears the flags, and with no block left
+     * the guard goes off with them: the interpreter's stores pay nothing. */
+    brain::arm926::jit_cache_flush(jc);
+    CHECK(cpu.smc_watch == 0);
+    CHECK(!cpu.bus->page_has_code(0x8000));
+    cpu.write32(0x8004, 4);
+    CHECK(sc.hits == 2);
+
+    /* Destroying the cache must put the guard back too - the core keeps
+     * running with the JIT off, and a live `smc_watch` would make every store
+     * pay for machinery that no longer exists. */
+    CHECK(brain::arm926::jit_cache_translate(jc, 0x8000, &b));
+    CHECK(cpu.smc_watch == 1);
+    cpu.bus->set_store_observer(&brain::arm926::Cpu::on_bus_store, &cpu);
+    brain::arm926::jit_cache_destroy(jc);
+    CHECK(cpu.smc_watch == 0);
+    CHECK(!cpu.bus->page_has_code(0x8000));
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -1170,6 +1309,7 @@ int main() {
   test_interrupt_inputs();
   test_shifter_primitive();
   test_branch_counters();
+  test_self_modifying_code();
   test_thumb_shift_zero();
   std::printf("%s: %d/%d checks passed\n", g_failed ? "FAILED" : "PASS",
               g_checks - g_failed, g_checks);

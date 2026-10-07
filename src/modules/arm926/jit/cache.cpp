@@ -58,14 +58,53 @@ JitCache* jit_cache_create(Cpu* cpu, u32 megabytes) {
 
 void jit_cache_destroy(JitCache* jc) {
   if (!jc) return;
+  jit_cache_flush(jc);            /* drop the code-page flags and the guard  */
   if (jc->arena) munmap(jc->arena, jc->cap);
   delete jc;
 }
 
+/* Self-modifying code, guest side of it: every guest page a block was built
+ * from is flagged in the bus page table, and `Bus::note_store` tests that flag
+ * on every store that could land in one (see include/brainemu/core/bus.h).
+ * That keeps the common store - RAM that holds data, not code - down to one
+ * load and a branch, while a store into a page that *might* hold code calls
+ * back here and drops the blocks that cover it.
+ *
+ * The flag is a conservative over-approximation on purpose.  It is set when a
+ * block is installed and cleared only by a flush - the one operation that
+ * drops every block - so no bookkeeping can drift out of step with the block
+ * list: a set flag may find no block at all (one wasted range check), but a
+ * live block can never sit on a page whose flag has been cleared.  A guest
+ * that writes its own code therefore cannot outrun its translations, which is
+ * the only property that matters here; a page that stops holding code pays for
+ * the flag until the next flush. */
+static void jit_mark_block_pages(JitCache* jc, u32 pc, u32 end_pc, bool code) {
+  Bus* bus = jc->cpu->bus;
+  if (!bus) return;
+  if (end_pc <= pc) end_pc = pc + 4;
+  for (u64 p = pc & ~(u64)0xFFF; p < end_pc; p += 0x1000) {
+    if (code) bus->mark_code_page((u32)p, true);
+    else if (bus->page_has_code((u32)p)) bus->mark_code_page((u32)p, false);
+  }
+}
+
+/* The store guard's on/off switch: the interpreter and the JIT's slow path ask
+ * `Cpu::smc_watch` before every store, so it must be true exactly while some
+ * page still carries the flag.  Installing a block makes that true; a flush
+ * drops every block and clears every flag, which makes it false again.  The
+ * interpreter alone (no Jit, or a host with no backend) never sets it, and its
+ * stores stay on the path they would have had anyway. */
+static void jit_cache_set_watch(JitCache* jc, bool on) { jc->cpu->smc_watch = on ? 1u : 0u; }
+
 void jit_cache_flush(JitCache* jc) {
+  /* Every page any of these blocks came from loses its flag, live or already
+   * unlinked: after a flush the cache is empty, so no page may keep the flag. */
+  for (size_t i = 0; i < jc->blocks.size(); ++i)
+    jit_mark_block_pages(jc, jc->blocks[i].pc, jc->blocks[i].end_pc, false);
   jc->blocks.clear();
   std::memset(jc->table.data(), 0, jc->table.size() * sizeof(u32));
   jc->used = 0;
+  jit_cache_set_watch(jc, false);
 }
 
 JitBlock* jit_cache_lookup(JitCache* jc, u32 pc) {
@@ -132,6 +171,8 @@ bool jit_cache_translate(JitCache* jc, u32 pc, JitBlock** out_block) {
   b.meta = meta;
   jc->used += bytes;
   jc->blocks.push_back(b);
+  jit_mark_block_pages(jc, b.pc, b.end_pc, true);
+  jit_cache_set_watch(jc, true);
   JitBlock& installed = jc->blocks.back();
   const u32 idx = (u32)jc->blocks.size();            /* slot = idx - 1 */
   installed.next = jc->table[hash_pc(installed.pc)];
@@ -172,13 +213,19 @@ void jit_cache_invalidate(JitCache* jc, u32 gaddr, u32 size) {
  * word.  Building the image here rather than in the block's prologue is worth
  * five instructions per entry, and it keeps the layout knowledge in one file. */
 /* True while a guest access may be done inline: RAM straight through, no
- * alignment check to perform, no halfword lane swap, and no store watch to
- * call for.  When this is false the block calls the interpreter's helper
- * instead - which is also what happens whenever the MMU is on, so a translated
- * block is only fast on the identity-mapped RAM the fast path exists for. */
+ * alignment check to perform, no halfword lane swap.  When this is false the
+ * block calls the interpreter's helper instead - which is also what happens
+ * whenever the MMU is on, so a translated block is only fast on the
+ * identity-mapped RAM the fast path exists for.
+ *
+ * The store watch (`Cpu::smc_watch`) is deliberately *not* part of this: a
+ * block ends at the first memory access, so no translated code ever performs
+ * the store that would need invalidating.  The guard sits on the interpreter's
+ * store path, which is what a block's fallback goes through.  A frontend that
+ * ever translates a guest store has to add the check back here - an inline
+ * store cannot call the observer. */
 static bool jit_fast_mem_ok(const Cpu* c) {
-  return c->cfg.jit_fast_mem && c->ram_fast && !c->align_chk && !c->be_data &&
-         !c->smc_watch;
+  return c->cfg.jit_fast_mem && c->ram_fast && !c->align_chk && !c->be_data;
 }
 
 static u32 eflags_image(const Cpu* c) {

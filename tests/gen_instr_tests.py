@@ -97,6 +97,18 @@ class Asm:
         self.width = width
 
     def asm(self, line, addr=CODE_BASE):
+        # A raw data word, for a case whose point is the *bytes*: a
+        # self-modifying one has to name the instruction it writes, and it has
+        # to name it in its own literal pool, where no assembler directive the
+        # guest could execute is involved.  `.word`/`.hword` match the mode's
+        # width, exactly like an instruction would.
+        m = re.match(r"^\.(word|hword) (0x[0-9a-fA-F]+)$", line.strip())
+        if m:
+            want = 4 if m.group(1) == "word" else 2
+            if want != self.width:
+                raise AssertionError("raw %s in a %d-byte mode: %r" %
+                                     (m.group(1), self.width, line))
+            return int(m.group(2), 16).to_bytes(want, "little")
         if self.width == 2:
             w = manual_thumb(line)
             if w is not None:
@@ -477,6 +489,102 @@ def multi_seq_cases(rnd):
 # oracle
 # --------------------------------------------------------------------------
 
+def smc_cases():
+    """Self-modifying code.
+
+    A store into a page that holds translated code has to drop that code: the
+    JIT runs a guest basic block as host instructions, and the interpreter's
+    stores are the only thing that can tell it the bytes underneath changed.
+    Get it wrong and the two engines disagree about *which program the machine
+    is running* - the one failure mode this project's test story cannot see by
+    accident, because a single instruction cannot modify itself.
+
+    The shape is forced by the design: a block ends at every memory access and
+    every branch (a guest load or store needs the MMU and the abort path, which
+    a block must not duplicate), so the only code a patch can reach *after* it
+    was translated is a word the loop comes back around to.  Every program below
+    therefore patches a word the store has already passed.
+
+    That last restriction is the one place the oracle cannot be trusted, so it
+    is worth writing down.  A patch that lands on a word *ahead* of the store in
+    the same straight-line run hands the answer to the oracle's translation
+    granularity: QEMU translates the run as one block, keeps executing its stale
+    copy of the words the store just rewrote, and only rebuilds the block at the
+    next branch - so a program that patches the instruction it is about to
+    execute gets the *old* word once, and any run cut off by an instruction
+    budget lands one pass away from an implementation that refetches every word.
+    Both of ours refetch, and the architecture calls self-modifying code without
+    cache maintenance UNPREDICTABLE anyway, so a corpus case cannot pin that
+    behaviour: it can only pin what the two engines must agree on, which is
+    every word the store has already passed.
+
+    R0 starts at zero so the expected value in the corpus is a count of the
+    patched arithmetic and reads directly.  The literal pool is written as raw
+    `.word` lines: what `LDR R1, [PC, #n]` reads here is precisely the
+    instruction word the case is about."""
+    out = []
+    base = list(DEFAULT_REGS)
+    base[0] = 0
+
+    # (name, program, count)
+    progs = [
+        # The loop body is `ADD R0, R0, #1` and the patch turns it into `#2`.
+        # The block covering it (0x8004) is the one that must be dropped: the
+        # first pass adds 1, every pass after the patch adds 2, and the corpus
+        # expectation (599) is what a refetching machine gets - a build that
+        # keeps running the translated block lands on 400.
+        ("arm_smc_patch_loop", [
+            "LDR R1, [PC, #16]",       # 0x8000 -> the word at 0x8018
+            "ADD R0, R0, #1",          # 0x8004 <- patched to `ADD R0, R0, #2`
+            "LDR R2, [PC, #12]",       # 0x8008 -> 0x8004
+            "STR R1, [R2]",            # 0x800C the store that does it
+            "ADD R0, R0, #1",          # 0x8010
+            "B 0x8004",                # 0x8014
+            ".word 0xe2800002",        # 0x8018 `ADD R0, R0, #2`
+            ".word 0x00008004",        # 0x801C
+        ], 1000),
+        # The same store writing the word that is already there, so nothing
+        # about the arithmetic changes - which is the point: this is the control
+        # for the case above, and it is what a build that invalidates everything
+        # on every store still has to get right (it ends on 400, so reporting
+        # 599 for both would be a broken patch rather than a working
+        # invalidator).
+        ("arm_smc_patch_same", [
+            "LDR R1, [PC, #16]",
+            "ADD R0, R0, #1",
+            "LDR R2, [PC, #12]",
+            "STR R1, [R2]",
+            "ADD R0, R0, #1",
+            "B 0x8004",
+            ".word 0xe2800001",        # = the original word
+            ".word 0x00008004",
+        ], 1000),
+        # The patch changes what the loop *does*, not just an immediate: the
+        # head becomes `SUBS R0, R0, #1` and the loop keeps running while R0 is
+        # non-zero, so the program ends by itself and the case pins the flags
+        # the patched instruction sets as well as the arithmetic.  A block left
+        # over from before the patch is an `ADD`, which neither counts down nor
+        # touches a flag; the run then walks straight out of the loop with a
+        # wrong R0 and a different CPSR.
+        ("arm_smc_countdown", [
+            "MOVS R0, #10",            # 0x8000
+            "ADD R0, R0, #1",          # 0x8004 <- patched to `SUBS R0, R0, #1`
+            "LDR R1, [PC, #0x14]",     # 0x8008 -> 0x8024
+            "LDR R2, [PC, #0x14]",     # 0x800C -> 0x8028
+            "STR R1, [R2]",            # 0x8010 -> 0x8004
+            "BNE 0x8004",              # 0x8014 Z is clear, so the loop is entered
+            ".word 0xeafffffe",        # 0x8018 `B .` where the countdown leaves
+            ".word 0xe1a00000",        # 0x801C padding (never executed)
+            ".word 0xe1a00000",        # 0x8020
+            ".word 0xe2500001",        # 0x8024 `SUBS R0, R0, #1`
+            ".word 0x00008004",        # 0x8028
+        ], 70),
+    ]
+    for name, lines, count in progs:
+        out.append((name, "arm", lines, base, None, count))
+    return out
+
+
 def run_unicorn(words, mode, regs, cpsr, data, nsteps):
     mu = Uc(UC_ARCH_ARM, UC_MODE_ARM if mode == "arm" else UC_MODE_THUMB)
     mu.mem_map(RAM_BASE, RAM_SIZE, UC_PROT_ALL)
@@ -526,6 +634,7 @@ def main():
     cases += misc_cases()
     cases += branch_cases(rnd)
     cases += multi_seq_cases(rnd)
+    cases += smc_cases()
     if args.cases:
         cases = cases[:args.cases]
 
