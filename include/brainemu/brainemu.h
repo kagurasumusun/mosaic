@@ -160,6 +160,17 @@ int brain_load_elf32(brain_emu_t* e, const void* image, size_t size,
  * Devices and monitors built this way live in the machine. */
 int brain_add_device_module(brain_emu_t* e, const char* id, uint32_t base,
                             int has_base);
+/* The same, with an *instance* name: a machine that has two devices built from
+ * one module (two timers, several UARTs) tells them apart by this, and every
+ * name a wire or a tool uses resolves the instance first.  `name` is copied, and
+ * passing it for a device that is the only one of its kind is allowed and
+ * useful - `brain_wire` and the stats print then say "t1" instead of "timer". */
+int brain_add_device_named(brain_emu_t* e, const char* id, const char* name,
+                           uint32_t base, int has_base);
+/* The instance name of a device (which is its module id when it was given none),
+ * and its module id.  `brain_device_id` is the module; this is what a wire
+ * names. */
+const char* brain_device_instance(const brain_emu_t* e, uint32_t index);
 int brain_add_monitor_module(brain_emu_t* e, const char* id);
 
 /* Wiring: connect a device's interrupt output to one of the CPU's interrupt

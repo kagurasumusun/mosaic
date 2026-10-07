@@ -111,8 +111,8 @@ bool Machine::init(const MachineConfig& cfg) {
    * `add_wire` validates on the spot). */
   for (const WireSpec& w : wires_) {
     std::string why;
-    u32 input = 0;
-    if (!resolve_wire(w, &input, &why)) {
+    WireEnd sink;
+    if (!resolve_wire(w, &sink, &why)) {
       err_ = why;
       return false;
     }
@@ -200,6 +200,14 @@ void Machine::reset() {
 }
 
 bool Machine::add_device(Device& d) {
+  /* A caller-owned device may have named itself; two devices answering to one
+   * name would make every wire ambiguous, so that is refused here (the
+   * module-built path checks the same thing, with the id as the default name). */
+  if (instance_taken(d.instance(), &d)) {
+    err_ = std::string("two devices are called '") + d.instance() +
+           "': give one an instance name (Device::set_instance)";
+    return false;
+  }
   /* The wiring hook goes on first: a device that drives a line from `on_attach`
    * (or during `attach`'s reset) is already connected. */
   install_wiring(d);
@@ -213,7 +221,8 @@ bool Machine::add_device(Device& d) {
   return true;
 }
 
-Device* Machine::add_device_by_id(const char* id, u32 base, bool has_base) {
+Device* Machine::add_device_by_id(const char* id, u32 base, bool has_base,
+                                  const char* as) {
   const DeviceModule* mod = ModuleRegistry::instance().device_by_id(id);
   if (!mod) {
     err_ = std::string("no device module named '") + (id ? id : "") +
@@ -226,12 +235,35 @@ Device* Machine::add_device_by_id(const char* id, u32 base, bool has_base) {
     return nullptr;
   }
   Device* raw = d.get();
+  /* The instance name is set before anything else can look the device up, and it
+   * is owned here (a caller may hand a temporary): a second timer is only
+   * addressable because it has one. */
+  if (as && *as) {
+    instance_names_.push_back(as);
+    raw->set_instance(instance_names_.back().c_str());
+  }
+  if (instance_taken(raw->instance())) {
+    err_ = std::string("two devices are called '") + raw->instance() +
+           "': give one an instance name (ModuleSpec::as)";
+    return nullptr;
+  }
   if (!add_device(*raw)) {
-    err_ = std::string("device '") + raw->info().id + "': " + err_;
+    err_ = std::string("device '") + raw->instance() + "': " + err_;
     return nullptr;          /* add_device named the window it could not take */
   }
   owned_devices_.push_back(std::move(d));
   return raw;
+}
+
+/* Is this instance name already in use by a device that is not `except`?  Two
+ * devices that answer to one name make every wire and every `--stats` line
+ * ambiguous, and the ambiguity would show up as the *wrong peripheral* being
+ * serviced - so it is refused where it is created. */
+bool Machine::instance_taken(const char* name, const Device* except) const {
+  if (!name || !*name) return false;
+  for (const Device* d : devices_)
+    if (d != except && d->instance() && !std::strcmp(d->instance(), name)) return true;
+  return false;
 }
 
 /* ------------------------------------------------------------- wiring --- */
@@ -253,7 +285,7 @@ int output_index(const Device& d, const char* name) {
 
 void Machine::install_wiring(Device& d) { d.set_irq_notify(&Machine::deliver_irq, this); }
 
-bool Machine::resolve_wire(const WireSpec& w, u32* input_index, std::string* why) {
+bool Machine::resolve_wire(const WireSpec& w, WireEnd* sink, std::string* why) {
   if (!w.device || !*w.device) {
     if (why) *why = "a wire needs a device id";
     return false;
@@ -265,7 +297,7 @@ bool Machine::resolve_wire(const WireSpec& w, u32* input_index, std::string* why
              " -> " + (w.input ? w.input : "") + "': no device named '" + w.device +
              "' on this machine (have:";
       for (const Device* d : devices_)
-        if (d->info().id) *why += std::string(" ") + d->info().id;
+        if (d->instance()) *why += std::string(" ") + d->instance();
       *why += ")";
     return false;
   }
@@ -280,23 +312,60 @@ bool Machine::resolve_wire(const WireSpec& w, u32* input_index, std::string* why
     }
     return false;
   }
-  if (!cpu_) {
-    if (why) *why = "no CPU to wire to";
+  const std::string want = (w.input && *w.input) ? w.input : "irq";
+  /* A dot in the sink names a *device* input; without one it names a CPU input.
+   * One rule, no flag, and a message that says which it was. */
+  const size_t dot = want.find('.');
+  if (dot == std::string::npos) {
+    if (!cpu_) {
+      if (why) *why = "no CPU to wire to";
+      return false;
+    }
+    for (u32 i = 0; i < cpu_->input_count(); ++i) {
+      const char* n = cpu_->input_name(i);
+      if (n && !std::strcmp(n, want.c_str())) {
+        if (sink) { sink->device = nullptr; sink->index = i; }
+        return true;
+      }
+    }
+    if (why) {
+      *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
+             " -> " + want + "': the CPU module has no input named '" + want +
+             "' (have:";
+      for (u32 i = 0; i < cpu_->input_count(); ++i)
+        *why += std::string(" ") + cpu_->input_name(i);
+      *why += ")";
+    }
     return false;
   }
-  const char* want = w.input && *w.input ? w.input : "irq";
-  for (u32 i = 0; i < cpu_->input_count(); ++i) {
-    const char* n = cpu_->input_name(i);
-    if (n && !std::strcmp(n, want)) {
-      if (input_index) *input_index = i;
+
+  const std::string dev_name = want.substr(0, dot);
+  const std::string in_name = want.substr(dot + 1);
+  Device* t = device_by_id(dev_name.c_str());
+  if (!t) {
+    if (why) {
+      *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
+             " -> " + want + "': no device named '" + dev_name + "' (have:";
+      for (const Device* d : devices_)
+        if (d->instance()) *why += std::string(" ") + d->instance();
+      *why += ")";
+    }
+    return false;
+  }
+  for (u32 i = 0; i < t->input_count(); ++i) {
+    const char* n = t->input_name(i);
+    if (n && !std::strcmp(n, in_name.c_str())) {
+      if (sink) { sink->device = t; sink->index = i; }
       return true;
     }
   }
   if (why) {
     *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
-           " -> " + want + "': the CPU module has no input named '" + want + "' (have:";
-    for (u32 i = 0; i < cpu_->input_count(); ++i)
-      *why += std::string(" ") + cpu_->input_name(i);
+           " -> " + want + "': device '" + t->instance() +
+           "' has no interrupt input named '" + in_name + "' (have:";
+    for (u32 i = 0; i < t->input_count(); ++i)
+      *why += std::string(" ") + t->input_name(i);
+    if (!t->input_count()) *why += " none - it has no inputs at all";
     *why += ")";
   }
   return false;
@@ -318,8 +387,8 @@ WireSpec Machine::intern_wire(const WireSpec& w) {
 
 bool Machine::add_wire(const WireSpec& w) {
   std::string why;
-  u32 input = 0;
-  if (!resolve_wire(w, &input, &why)) {
+  WireEnd sink;
+  if (!resolve_wire(w, &sink, &why)) {
     err_ = why;
     return false;
   }
@@ -331,27 +400,54 @@ int Machine::wire_level(u32 i) const {
   if (i >= wires_.size()) return 0;
   const WireSpec& w = wires_[i];
   for (const Device* d : devices_) {
-    if (d->info().id && w.device && !std::strcmp(d->info().id, w.device))
+    if (d->instance() && w.device && !std::strcmp(d->instance(), w.device))
       return d->irq_level((u32)output_index(*d, w.output));
   }
   return 0;
 }
 
+/* One level change on `d`'s output `output`, delivered to whoever is wired to
+ * it.  The source is resolved by *instance* (so two timers stay apart) and the
+ * sink may be a device input, which is how a chain - peripheral to controller to
+ * CPU - works without either peripheral knowing about the other.  A change
+ * nothing is wired to is dropped: that is what lets a device be used alone. */
 void Machine::deliver_irq(void* user, Device& d, u32 output, int level) {
   Machine* m = static_cast<Machine*>(user);
-  if (!m || !m->cpu_ || !d.info().id) return;
+  if (!m || m->wires_.empty()) return;
   for (const WireSpec& w : m->wires_) {
-    if (!w.device || std::strcmp(w.device, d.info().id)) continue;
+    if (!w.device) continue;
+    if (m->device_by_id(w.device) != &d) continue;
     if (output_index(d, w.output) != (int)output) continue;
-    for (u32 i = 0; i < m->cpu_->input_count(); ++i) {
-      const char* n = m->cpu_->input_name(i);
-      const char* want = w.input && *w.input ? w.input : "irq";
-      if (n && !std::strcmp(n, want)) {
-        m->cpu_->set_input(i, level);
-        break;
-      }
-    }
+    WireEnd sink;
+    std::string why;
+    if (!m->resolve_wire(w, &sink, &why)) continue;   /* refused at init; live wires too */
+    m->deliver(sink, level);
   }
+}
+
+/* Hand one level to a resolved sink.  A device sink re-enters `deliver_irq` when
+ * the device answers by driving its own output, which is the point - and also why
+ * the depth is capped: a cycle in the wire graph (a controller wired back into
+ * itself through another device) asked to oscillate would otherwise recurse until
+ * the stack ran out.  A machine like that is a design error, and it is reported
+ * once rather than silently ignored. */
+void Machine::deliver(const WireEnd& sink, int level) {
+  if (sink.device) {
+    if (wiring_depth_ >= kMaxWiringDepth) {
+      if (!wiring_depth_reported_) {
+        wiring_depth_reported_ = true;
+        std::fprintf(stderr, "[machine] wire graph oscillates past depth %u "
+                             "('a' wired to 'b' wired back to 'a'?); dropping\n",
+                     kMaxWiringDepth);
+      }
+      return;
+    }
+    ++wiring_depth_;
+    sink.device->set_input(sink.index, level);
+    --wiring_depth_;
+    return;
+  }
+  if (cpu_) cpu_->set_input(sink.index, level);
 }
 
 void Machine::end_slice(u64 retired) {
@@ -423,6 +519,11 @@ void Machine::stop() {
 
 Device* Machine::device_by_id(const char* id) {
   if (!id || !*id) return nullptr;
+  /* Instance names win: that is what makes `t0` and `t1` two devices built from
+   * the one `timer` module.  A module id still resolves when no instance claims
+   * it, which is what lets a machine with a single console call it "console". */
+  for (Device* d : devices_)
+    if (d->instance() && !std::strcmp(d->instance(), id)) return d;
   for (Device* d : devices_)
     if (d->info().id && !std::strcmp(d->info().id, id)) return d;
   return nullptr;

@@ -1583,6 +1583,144 @@ static void test_board_timer_irq() {
   }
 }
 
+/* The same chain a real SoC has, end to end: two interrupt sources behind one
+ * controller, which drives the CPU's IRQ input.  Nothing in the core knows what a
+ * timer or a controller is - the board is a preset, the three wires are name
+ * pairs, and the guest's console log says which source it serviced.
+ *
+ * The image (hand-assembled words, keystone-verified) is the flat 0x9000-byte ROM
+ * image the `--addr 0 --board dual-timer` command line runs:
+ *
+ *   0x0000  vectors: reset -> 0x8000, IRQ -> 0x8100
+ *   0x8000  r7 = console, r9 = t0 (0x10001000), r10 = t1 (0x10001100),
+ *           r8 = intc (0x10002000): t0 period 100, t1 period 150, both enabled,
+ *           intc MASK = 0b11, CPSR.I cleared, then spin
+ *   0x8100  the handler: read intc PENDING; if line 0 is up acknowledge t0 and
+ *           print '0'; if line 1 is up acknowledge t1 and print '1'; count the
+ *           interrupts and, on the second, write 0x11 through the board's exit
+ *           port - the guest stops the run itself, from inside the handler.
+ *
+ * The log is "0101": each of the two entries found *both* lines pending - the
+ * devices are ticked once per run slice, so both timers expire inside the first
+ * slice's clock and their lines are up together - and the handler resolves them
+ * from PENDING, acknowledging each and printing which one it was.  That the CPU
+ * saw two interrupts and not four is the controller doing its job: the guest
+ * never looks at a timer's status or at which line fired, only at PENDING. */
+static const uint32_t kDualVectors[] = {
+    0xEA001FFEu, 0xEAFFFFFEu, 0xEAFFFFFEu, 0xEAFFFFFEu,
+    0xEAFFFFFEu, 0xEAFFFFFEu, 0xEA002038u, 0xEAFFFFFEu,
+};
+static const uint32_t kDualProg[] = {
+    0xE3A07201u,  /* mov r7, #0x10000000   (console)      */
+    0xE3A09201u,  /* mov r9, #0x10000000                  */
+    0xE2899A01u,  /* add r9, r9, #0x1000   (t0)           */
+    0xE289AC01u,  /* add r10, r9, #0x100   (t1)           */
+    0xE3A08201u,  /* mov r8, #0x10000000                  */
+    0xE2888A02u,  /* add r8, r8, #0x2000   (intc)         */
+    0xE3A00064u,  /* mov r0, #100                         */
+    0xE5890000u,  /* str r0, [r9]          t0 PERIOD      */
+    0xE3A00096u,  /* mov r0, #150                         */
+    0xE58A0000u,  /* str r0, [r10]         t1 PERIOD      */
+    0xE3A00001u,  /* mov r0, #1                           */
+    0xE5890008u,  /* str r0, [r9, #8]      t0 enable      */
+    0xE3A00001u,  /* mov r0, #1                           */
+    0xE58A0008u,  /* str r0, [r10, #8]     t1 enable      */
+    0xE3A00003u,  /* mov r0, #3                           */
+    0xE5880000u,  /* str r0, [r8]          intc MASK = 3  */
+    0xE10F0000u,  /* mrs r0, cpsr                         */
+    0xE3C00080u,  /* bic r0, r0, #0x80                    */
+    0xE121F000u,  /* msr cpsr_c, r0        unmask IRQ     */
+    0xE3A0B000u,  /* mov r11, #0                          */
+    0xEAFFFFFEu,  /* b .                                  */
+};
+static const uint32_t kDualHandler[] = {
+    0xE5980008u,  /* ldr r0, [r8, #8]      intc PENDING  */
+    0xE3100001u,  /* tst r0, #1                           */
+    0x0A000003u,  /* beq 0x811C                           */
+    0xE3A01001u,  /* mov r1, #1                           */
+    0xE5891010u,  /* str r1, [r9, #0x10]   ack t0        */
+    0xE3A01030u,  /* mov r1, #'0'                         */
+    0xE5C71000u,  /* strb r1, [r7]         console        */
+    0xE3100002u,  /* tst r0, #2                           */
+    0x0A000003u,  /* beq 0x8134                           */
+    0xE3A01001u,  /* mov r1, #1                           */
+    0xE58A1010u,  /* str r1, [r10, #0x10]  ack t1        */
+    0xE3A01031u,  /* mov r1, #'1'                         */
+    0xE5C71000u,  /* strb r1, [r7]                        */
+    0xE28BB001u,  /* add r11, r11, #1                     */
+    0xE35B0002u,  /* cmp r11, #2                          */
+    0x1A000003u,  /* bne 0x8150                           */
+    0xE3A00011u,  /* mov r0, #0x11                        */
+    0xE3A0C201u,  /* mov r12, #0x10000000                 */
+    0xE28CC010u,  /* add r12, r12, #0x10                  */
+    0xE58C0000u,  /* str r0, [r12]         exit(0x11)     */
+    0xE25EF004u,  /* subs pc, lr, #4                      */
+};
+
+static std::vector<uint8_t> dual_timer_image() {
+  std::vector<uint8_t> img(0x9000u, 0);
+  auto put = [&](uint32_t at, const uint32_t* w, size_t n) {
+    for (size_t i = 0; i < n; ++i)
+      for (int b = 0; b < 4; ++b)
+        img[at + i * 4 + (size_t)b] = (uint8_t)(w[i] >> (8 * b));
+  };
+  put(0x0000u, kDualVectors, sizeof kDualVectors / 4);
+  put(0x8000u, kDualProg, sizeof kDualProg / 4);
+  put(0x8100u, kDualHandler, sizeof kDualHandler / 4);
+  return img;
+}
+
+static void test_board_dual_timer_irq() {
+  std::printf("[board: 2 timers -> controller -> IRQ -> guest]\n");
+  const std::vector<uint8_t> img = dual_timer_image();
+  for (int jit = 0; jit < 2; ++jit) {
+    brain_config_t cfg;
+    std::memset(&cfg, 0, sizeof cfg);
+    cfg.ram_size = 1u << 20;
+    cfg.board_id = "dual-timer";
+    cfg.use_jit = jit;
+    brain_emu_t* e = brain_emu_create(&cfg);
+    CHECK(e != nullptr);
+    if (!e) continue;
+    CHECK(std::strcmp(brain_board_id(e), "dual-timer") == 0);
+    /* The board's own wires: two sources into the controller, one out to the
+     * CPU.  The instance names are what tell the two timers apart. */
+    CHECK(brain_wire_count(e) == 3);
+    CHECK(brain_wire_level(e, 2) == 0);
+    CHECK(brain_load_raw(e, img.data(), img.size(), 0, 0) == 0);
+
+    const uint64_t ran = brain_run_insns(e, 400000);
+    check(ran > 50u && ran < 400000u, "the guest stopped the run itself");
+
+    brain_stats_t st;
+    brain_get_stats(e, &st);
+    /* Two interrupts, not three: the first entry found both lines pending and
+     * serviced both, which is exactly what an interrupt controller is for. */
+    check(st.exc[BRAIN_EXC_IRQ] == 2u, "one IRQ per handler entry, not per source");
+    check(st.exc[BRAIN_EXC_DABORT] == 0u && st.exc[BRAIN_EXC_PABORT] == 0u, "no abort");
+
+    uint32_t con = brain_device_count(e), ex = brain_device_count(e), ic = ex;
+    for (uint32_t i = 0; i < brain_device_count(e); ++i) {
+      if (!std::strcmp(brain_device_id(e, i), "console")) con = i;
+      if (!std::strcmp(brain_device_id(e, i), "exit")) ex = i;
+      if (!std::strcmp(brain_device_id(e, i), "intc")) ic = i;
+    }
+    CHECK(con < brain_device_count(e) && ex < brain_device_count(e) &&
+          ic < brain_device_count(e));
+    if (con < brain_device_count(e))
+      check(std::strcmp(brain_device_field_value(e, con, 1), "0101") == 0,
+            "each entry serviced both lines, in the order it found them");
+    if (ex < brain_device_count(e))
+      check(std::strcmp(brain_device_field_value(e, ex, 0), "0x00000011") == 0,
+            "the guest left through the exit port with its own code");
+    if (ic < brain_device_count(e)) {
+      CHECK(std::strcmp(brain_device_field_name(e, ic, 2), "pending") == 0);
+      CHECK(std::strcmp(brain_device_field_value(e, ic, 1), "0x3") == 0);
+    }
+    brain_emu_destroy(e);
+  }
+}
+
 int main() {
   std::printf("brain-emu unit tests: %s\n", brain_version_string());
   test_basic_run();
@@ -1599,6 +1737,7 @@ int main() {
   test_jit_cache();
   test_interrupt_inputs();
   test_board_timer_irq();
+  test_board_dual_timer_irq();
   test_shifter_primitive();
   test_branch_counters();
   test_self_modifying_code();

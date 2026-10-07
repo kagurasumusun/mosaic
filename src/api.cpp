@@ -263,6 +263,17 @@ int brain_add_device_module(brain_emu_t* e, const char* id, u32 base,
   return 0;
 }
 
+int brain_add_device_named(brain_emu_t* e, const char* id, const char* name,
+                           u32 base, int has_base) {
+  if (!e || !id) return -1;
+  e->err.clear();
+  if (!e->m.add_device_by_id(id, base, has_base != 0, name)) {
+    set_err(e, e->m.last_error());
+    return -1;
+  }
+  return 0;
+}
+
 int brain_add_monitor_module(brain_emu_t* e, const char* id) {
   if (!e || !id) return -1;
   e->err.clear();
@@ -314,6 +325,11 @@ int brain_wire_level(const brain_emu_t* e, uint32_t index) {
 
 u32 brain_device_count(const brain_emu_t* e) {
   return e ? e->m.device_count() : 0;
+}
+
+const char* brain_device_instance(const brain_emu_t* e, u32 index) {
+  const Device* d = e ? e->m.device(index) : nullptr;
+  return (d && d->instance()) ? d->instance() : "";
 }
 
 const char* brain_device_id(const brain_emu_t* e, u32 index) {

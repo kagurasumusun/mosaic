@@ -34,6 +34,7 @@ void register_toy8_module();
 void register_exit_module();
 void register_console_module();
 void register_timer_module();
+void register_intc_module();
 void register_builtin_boards();
 
 void register_builtin_modules() {
@@ -46,6 +47,7 @@ void register_builtin_modules() {
   register_exit_module();       /* devices: the adapters this build ships     */
   register_console_module();
   register_timer_module();      /* ...and one with an interrupt output        */
+  register_intc_module();       /* a controller: inputs, a mask, one output   */
   register_builtin_boards();    /* boards: named presets of the above         */
 }
 

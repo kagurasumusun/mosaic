@@ -45,7 +45,7 @@ struct Options {
   uint32_t ram_size = 32u << 20;
   uint32_t exit_port = 0;
   bool have_exit_port = false;
-  std::vector<std::string> devices;   /* --device ID[@BASE]                    */
+  std::vector<std::string> devices;   /* --device ID[@BASE][#NAME]             */
   std::vector<std::string> monitors;  /* --monitor ID                          */
   std::vector<std::string> wires;     /* --wire DEV.OUT=INPUT                  */
   std::string board;                  /* --board ID                            */
@@ -120,9 +120,12 @@ void usage(const char* argv0) {
       "                   its devices are the starting point, --device adds more\n"
       "  --wire DEV.OUT=I wire a device's interrupt output to a CPU input\n"
       "                   (e.g. --wire timer.irq=irq; --list-modules names both)\n"
-      "  --device ID[@A]  build a device module into the machine, at A or at\n"
-      "                   the module's own default address (repeatable;\n"
-      "                   --list-modules names them)\n"
+      "  --device ID[@A][#NAME]\n"
+      "                   build a device module into the machine, at A or at\n"
+      "                   the module's own default address, called NAME\n"
+      "                   (repeatable; --list-modules names the modules, and\n"
+      "                   the name is how --wire and --stats tell two\n"
+      "                   devices built from one module apart)\n"
       "  --monitor ID     tell a monitor module about the run (repeatable)\n"
       "  --exit           shorthand for --device exit and its status as this\n"
       "                   process' exit code\n"
@@ -336,15 +339,22 @@ int main(int argc, char** argv) {
     }
     std::printf("exit port at 0x%08x\n", o.exit_port);
   }
-  /* The modules the caller asked for, by id: "ID" or "ID@ADDRESS".  A device
-   * module knows its own default address, so the address is optional - which is
-   * the difference between `--exit` and `--exit-port A`. */
+  /* The modules the caller asked for, by id: "ID", "ID@ADDRESS" or
+   * "ID@ADDRESS#NAME".  A device module knows its own default address, so the
+   * address is optional - which is the difference between `--exit` and
+   * `--exit-port A` - and the instance name is what tells two of the same module
+   * apart (`--device timer@0x10001000#t0 --device timer@0x10001100#t1`), since a
+   * wire can only name the instance. */
   for (const std::string& spec : o.devices) {
-    const size_t at = spec.find('@');
-    const std::string id = spec.substr(0, at);
+    const size_t hash = spec.find('#');
+    const std::string head = spec.substr(0, hash);
+    const std::string name = hash == std::string::npos ? "" : spec.substr(hash + 1);
+    const size_t at = head.find('@');
+    const std::string id = head.substr(0, at);
     const bool has_base = at != std::string::npos;
-    const uint32_t base = has_base ? parse_num(spec.substr(at + 1).c_str()) : 0;
-    if (brain_add_device_module(e, id.c_str(), base, has_base ? 1 : 0)) {
+    const uint32_t base = has_base ? parse_num(head.substr(at + 1).c_str()) : 0;
+    if (brain_add_device_named(e, id.c_str(), name.empty() ? nullptr : name.c_str(),
+                               base, has_base ? 1 : 0)) {
       std::fprintf(stderr, "brainemu: %s\n", brain_last_error(e));
       brain_emu_destroy(e);
       return 2;
@@ -422,8 +432,14 @@ int main(int argc, char** argv) {
     /* Each device and monitor describes itself; the tool prints the names and
      * values it is handed and knows nothing about what they mean. */
     for (uint32_t i = 0; i < brain_device_count(e); ++i) {
-      std::printf("  device %s @0x%08x", brain_device_id(e, i),
-                  brain_device_base(e, i));
+      /* The instance name is what a wire names, so that is what a line leads
+       * with; the module only shows when the two differ. */
+      const char* inst = brain_device_instance(e, i);
+      const char* id = brain_device_id(e, i);
+      if (std::strcmp(inst, id))
+        std::printf("  device %s (%s) @0x%08x", inst, id, brain_device_base(e, i));
+      else
+        std::printf("  device %s @0x%08x", inst, brain_device_base(e, i));
       for (uint32_t f = 0; f < brain_device_field_count(e, i); ++f)
         std::printf(" %s=%s", brain_device_field_name(e, i, f),
                     brain_device_field_value(e, i, f));

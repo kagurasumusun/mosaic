@@ -13,6 +13,11 @@
  *
  *   --board minimal        console + exit port
  *   --board timer          the same, plus a timer wired to the CPU's IRQ input
+ *   --board dual-timer     two timers behind an interrupt controller, on IRQ
+ *
+ * The last one is the shape a real SoC has, in miniature, and the reason devices
+ * have input pins and instances: two sources share one CPU interrupt line, and
+ * the CPU is not asked to tell them apart.
  */
 #include <cstring>
 
@@ -53,16 +58,43 @@ class TimerBoard final : public BoardModule {
                    "a timing source on the CPU's interrupt input"};
 };
 
+/* Two sources, one CPU line.  `t0` and `t1` are two *instances* of the one timer
+ * module (which is why a device needs an instance name at all), each wired to an
+ * input of the controller; the controller's single output goes to the CPU.  The
+ * chain timer -> intc -> CPU is three wires and no code: a peripheral drives a
+ * line, a device with inputs aggregates, and the CPU input is just the last sink
+ * in the chain. */
+class DualTimerBoard final : public BoardModule {
+ public:
+  const ModuleInfo& info() const override { return info_; }
+  void configure(MachineConfig& cfg) const override {
+    MinimalBoard().configure(cfg);
+    cfg.add_device(ModuleSpec("timer", 0x10001000u, true, "t0"));
+    cfg.add_device(ModuleSpec("timer", 0x10001100u, true, "t1"));
+    cfg.add_device(ModuleSpec("intc"));
+    cfg.add_wire("t0", "irq", "intc.irq0");
+    cfg.add_wire("t1", "irq", "intc.irq1");
+    cfg.add_wire("intc", "irq", "irq");
+  }
+
+ private:
+  ModuleInfo info_{"dual-timer", "minimal + 2 timers behind an interrupt controller",
+                   ModuleKind::Board,
+                   "two interrupt sources sharing one CPU line, the SoC way"};
+};
+
 }  // namespace
 
 void register_builtin_boards() {
   static const MinimalBoard minimal;
   static const TimerBoard timer;
+  static const DualTimerBoard dual;
   static bool done = false;
   if (done) return;
   done = true;
   ModuleRegistry::instance().add_board(&minimal);
   ModuleRegistry::instance().add_board(&timer);
+  ModuleRegistry::instance().add_board(&dual);
 }
 
 }  // namespace brain

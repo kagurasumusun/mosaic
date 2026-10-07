@@ -33,9 +33,9 @@ src/modules/exit/                  a device module: a store that stops the run
 | --- | --- | --- | --- |
 | `cpu` | a processor: registers, an instruction set, its own timing | the machine, at slice boundaries | `arm926`, `toy8` |
 | `loader` | an image format | `Machine::load_image`, by content | `elf32`, `raw` |
-| `device` | something mapped into the address space | the bus, per access | `exit`, `console`, a UART |
+| `device` | something mapped into the address space | the bus, per access | `exit`, `console`, `timer`, `intc` |
 | `monitor` | an observer of a running machine | the run loop, per slice | none built in; the tests declare one |
-| `board` | a named machine preset: CPU, devices, wires | `Machine::init`, once | `minimal`, `timer` |
+| `board` | a named machine preset: CPU, devices, wires | `Machine::init`, once | `minimal`, `timer`, `dual-timer` |
 
 All five kinds are *registry* modules and all five are created through a factory
 (`CpuModule`, `Loader`, `DeviceModule`, `MonitorModule`, `BoardModule` in
@@ -206,7 +206,18 @@ A device that can interrupt declares its outputs - `irq_count()` names how many,
 `irq_name(i)` names them - and drives them with `drive_irq(i, level)`.  It does
 not know, and cannot know, where they go: a *board* wires each one to a CPU input
 by name (below).  Driving a line nothing is wired to is fine and does nothing,
-which is what lets a device be used on its own in a test.  `drive_irq` is
+which is what lets a device be used on its own in a test.
+
+A device that can *be* interrupted declares inputs - `input_count()`,
+`input_name(i)` and `set_input(i, level)`, the mirror of `drive_irq` - and a wire
+may target those instead of the CPU's (below).  The default has none, so a
+peripheral that only speaks outwards needs no code at all; a device that combines
+its inputs (an interrupt controller, a GPIO block, a DMA engine's request lines)
+drives its own output from `set_input`, and the machine carries that on.  A
+device may also need a *per-machine name* when two of them are built from one
+module: `Device::set_instance` (usually through `ModuleSpec::as`,
+`brain_add_device_named` or `--device ID@A#NAME`) is what a wire and a tool then
+call it.  `drive_irq` is
 level-sensitive and reports only *changes*, so a peripheral that re-asserts an
 already-high line costs nothing.
 
@@ -236,11 +247,24 @@ to the other:
 
 ```cpp
 MachineConfig cfg;
-cfg.add_device(ModuleSpec("timer"));            /* 0x10001000 by default     */
-cfg.add_wire("timer", "irq", "irq");            /* device.out -> cpu.in      */
+cfg.add_device(ModuleSpec("timer"));                  /* 0x10001000 by default */
+cfg.add_wire("timer", "irq", "irq");                  /* device.out -> cpu.in  */
+
+/* Two of the same module need instance names, and a sink may be a device: this
+ * is a machine where t0 and t1 share one CPU interrupt line. */
+cfg.add_device(ModuleSpec("timer", 0x10001000u, true, "t0"));
+cfg.add_device(ModuleSpec("timer", 0x10001100u, true, "t1"));
+cfg.add_device(ModuleSpec("intc"));                   /* 4 in, 1 out           */
+cfg.add_wire("t0", "irq", "intc.irq0");               /* device.out -> dev.in  */
+cfg.add_wire("t1", "irq", "intc.irq1");
+cfg.add_wire("intc", "irq", "irq");                   /* ...          -> cpu.in */
 Machine m;
 if (!m.init(cfg)) { /* last_error() names the end that is missing */ }
 ```
+
+The destination decides the kind: a bare name is a CPU input, a dotted one is a
+device input (`intc.irq0`).  `--board dual-timer` is that machine, and
+`src/modules/intc/` is the controller in it.
 
 The wire is resolved by name at the moment a level changes, not when it is
 declared, which is what makes the order above irrelevant - a board may name a
@@ -255,6 +279,26 @@ Refusals are specific: an unknown device, an output the device does not have, an
 input the CPU does not have - each says what *does* exist.  A missing wire is not
 an error at run time, though: an unwired output is simply dropped, so the same
 device works in a machine, in a unit test and in a debugger without a flag.
+
+### Adding an interrupt controller
+
+`src/modules/intc/intc_module.cpp` is the worked example of a device with
+*inputs*, and the shape a real collector (the i.MX28's, an ARM PL190) has: N input
+pins, a mask register, a status/pending pair, and one output that is the OR of the
+unmasked inputs.  The three pieces that make it a device like any other:
+
+* `input_count()`/`input_name(i)` declare the pins a wire may name, and
+  `set_input(i, level)` is told every change - the mirror image of `drive_irq`;
+* `drive_irq(0, ...)` on the way out, driven from `set_input` when the mask says
+  the change matters: that is the whole aggregation, and the machine carries it on
+  to whatever the next wire names;
+* no `tick` override at all - a controller is combinational, and a device that
+  needs no clock simply does not ask for one.
+
+Its registers are `0x00` mask, `0x04` status (raw pin levels), `0x08` pending
+(masked, read-only), `0x0C` set and `0x10` clear for software interrupts.  A
+controller that needs priorities, edge detection or a per-line enable of its own
+grows registers; nothing in the core changes.
 
 ### Adding a board
 

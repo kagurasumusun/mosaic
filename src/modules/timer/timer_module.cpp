@@ -46,7 +46,7 @@ class TimerDevice final : public Device {
 
   const ModuleInfo& info() const override { return info_; }
   u32 base() const override { return base_; }
-  u32 size() const override { return 0x10; }
+  u32 size() const override { return 0x14; }   /* through the ACK register */
 
   void reset() override {
     period_ = 0;

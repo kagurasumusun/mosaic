@@ -58,6 +58,27 @@ class Device {
   void pulse_irq(u32 i) { drive_irq(i, 1); drive_irq(i, 0); }
   int irq_level(u32 i) const { return i < kMaxIrq ? irq_level_[i] : 0; }
 
+  /* Interrupt *inputs* - the other half of a pin, and what lets devices be
+   * chained (two timers sharing one interrupt controller, a controller feeding a
+   * CPU).  A device that has them declares the names a wire may target
+   * (`input_count`/`input_name`) and is told every level change with
+   * `set_input`; the default has no inputs, so a peripheral that only speaks
+   * outwards needs no code for this.  A device that combines its inputs simply
+   * drives its own output from here, and the machine carries that on to whatever
+   * the next wire names - an interrupt controller is nothing more than that
+   * (see src/modules/intc/). */
+  virtual u32 input_count() const { return 0; }
+  virtual const char* input_name(u32 i) const { (void)i; return ""; }
+  virtual void set_input(u32 i, int level) { (void)i; (void)level; }
+
+  /* The name this *instance* answers to on its machine, which is how a wire (or
+   * a tool) tells two devices built from the same module apart: `device_by_id`
+   * matches it first, and only falls back to the module id.  The machine sets it
+   * when it builds the device; on its own the instance is the module's id, so a
+   * device used outside a machine still has a name. */
+  const char* instance() const { return instance_ ? instance_ : info().id; }
+  void set_instance(const char* name) { instance_ = name; }
+
   /* Where the machine installs itself: a device never needs the machine's type,
    * and a device used outside a machine (a unit test, a GUI) simply has no
    * notifier and drives its levels into the void. */
@@ -96,6 +117,7 @@ class Device {
 
  private:
   bool attached_ = false;
+  const char* instance_ = nullptr;
   int irq_level_[kMaxIrq] = {};
   IrqNotify irq_fn_ = nullptr;
   void* irq_user_ = nullptr;

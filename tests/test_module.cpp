@@ -730,7 +730,7 @@ void test_timer_device() {
   if (!dev) return;
   CHECK(dev->attach(bus));                 /* attach() resets the device */
   CHECK(dev->base() == 0x10001000u);
-  CHECK(dev->size() == 0x10u);
+  CHECK(dev->size() == 0x14u);
   CHECK(dev->irq_count() == 1);
   CHECK(std::strcmp(dev->irq_name(0), "irq") == 0);
 
@@ -894,7 +894,7 @@ void test_boards_and_wiring() {
   c2.ram_size = 1u << 20;
   c2.cpu_id = "toy8";
   c2.board = "timer";
-  c2.add_device(ModuleSpec("console", 0x10002000u, true));  /* a second one */
+  c2.add_device(ModuleSpec("console", 0x10002000u, true, "console2"));
   c2.add_wire("timer", "irq", "fiq");
   Machine m2;
   CHECK(m2.init(c2));
@@ -902,6 +902,17 @@ void test_boards_and_wiring() {
   CHECK(std::strcmp(m2.wire(1).input, "fiq") == 0);
   CHECK(std::strcmp(m2.wire(1).device, "timer") == 0);
   CHECK(m2.device_count() == 4);                    /* the board's three + one */
+  /* Two devices built from one module are told apart by their instance name, and
+   * a wire (or a tool) resolves the instance first. */
+  CHECK(m2.device_by_id("console2") == m2.device(3));
+  CHECK(m2.device_by_id("console") != m2.device(3));
+  CHECK(std::strcmp(m2.device(3)->instance(), "console2") == 0);
+  CHECK(std::strcmp(m2.device(3)->info().id, "console") == 0);
+  /* ...and two devices that answer to one name are refused where they are
+   * created, because every wire for them would be ambiguous. */
+  CHECK(m2.add_device_by_id("console", 0x10003000u, true) == nullptr);
+  CHECK(std::strstr(m2.last_error(), "two devices are called 'console'") != nullptr);
+  CHECK(m2.device_count() == 4);
   /* The names are copied into the machine: a caller (the C API, a CLI option
    * parser) may hand a temporary, and the wire has to keep working after the
    * temporary dies - a `const char*` kept as-is leaves the stats print reading
@@ -993,6 +1004,219 @@ void test_boards_and_wiring() {
     brain_write32(e, 0x10001008u, 1u);          /* enable */
     brain_run_cycles(e, 8);                     /* let the device clock move   */
     CHECK(brain_wire_level(e, 0) == 1);         /* the timer expired and latched */
+    brain_emu_destroy(e);
+  }
+}
+
+/* ------------------------------------------------- the interrupt chain ---- */
+
+/* Devices have *inputs* as well as outputs, and that is what makes a chain -
+ * peripheral to controller to CPU - possible without any of the three knowing
+ * about the others.  This test drives the wire graph on its own, with no CPU
+ * involved: a sink device reports what it was told, so the deliveries are
+ * visible as plain numbers. */
+namespace {
+
+class SinkDevice final : public Device {
+ public:
+  const ModuleInfo& info() const override { return info_; }
+  u32 base() const override { return base_; }
+  u32 size() const override { return 4; }
+  u32 read(u32, u32) override { return (u32)last_; }
+  void write(u32, u32 v, u32) override { last_ = (int)v; }
+
+  u32 input_count() const override { return 2; }
+  const char* input_name(u32 i) const override {
+    return i == 0 ? "in0" : i == 1 ? "in1" : "";
+  }
+  void set_input(u32 i, int level) override {
+    if (i >= 2) return;
+    levels_[i] = level;
+    ++deliveries_;
+  }
+  /* What the test reads: the two levels it was handed, and how many times. */
+  int level(u32 i) const { return i < 2 ? levels_[i] : -1; }
+  int deliveries() const { return deliveries_; }
+
+ private:
+  ModuleInfo info_{"sink", "wire sink", ModuleKind::Device,
+                   "a device that records the levels it is handed"};
+  u32 base_ = 0x10003000;
+  int last_ = 0;
+  int levels_[2] = {0, 0};
+  int deliveries_ = 0;
+};
+
+}  // namespace
+
+void test_interrupt_chain() {
+  std::printf("[interrupt chain: device -> device -> CPU]\n");
+  const DeviceModule* tmod = ModuleRegistry::instance().device_by_id("timer");
+  const DeviceModule* imod = ModuleRegistry::instance().device_by_id("intc");
+  CHECK(tmod != nullptr && imod != nullptr);
+  if (!tmod || !imod) return;
+
+  /* The controller on its own bus: its inputs are pins, its output is a level,
+   * and its mask is what decides between them. */
+  Bus bus;
+  CHECK(bus.map_ram(0x8000, 1u << 16, "ram"));
+  std::unique_ptr<Device> idev = imod->create(imod->default_base());
+  CHECK(idev != nullptr);
+  if (!idev) return;
+  CHECK(idev->attach(bus));
+  CHECK(idev->input_count() == 4);
+  CHECK(std::strcmp(idev->input_name(0), "irq0") == 0);
+  CHECK(std::strcmp(idev->input_name(3), "irq3") == 0);
+  CHECK(idev->irq_count() == 1);
+
+  LevelLog log;
+  idev->set_irq_notify(&log_irq, &log);
+  CHECK(idev->irq_level(0) == 0);
+  /* Everything is masked at reset: a line can assert and nothing comes out. */
+  idev->set_input(0, 1);
+  CHECK(idev->irq_level(0) == 0);
+  CHECK((reg32(bus, 0x10002004u) & 1u) == 1u);            /* STATUS    */
+  CHECK(reg32(bus, 0x10002008u) == 0u);                   /* PENDING   */
+  /* Unmasking is what connects it, and the delivery is a level change. */
+  put32(bus, 0x10002000u, 1u);                            /* MASK = line 0 */
+  CHECK(idev->irq_level(0) == 1);
+  CHECK(log.calls == 1 && log.levels[0] == 1);
+  /* A second line asserting while the first is up does not re-drive. */
+  idev->set_input(1, 1);
+  put32(bus, 0x10002000u, 3u);
+  CHECK(idev->irq_level(0) == 1);
+  check(log.calls == 1, "an already-high output is not re-notified");
+  CHECK((reg32(bus, 0x10002008u) & 3u) == 3u);
+  /* The last line letting go is what drops it - a level, not a pulse. */
+  idev->set_input(0, 0);
+  CHECK(idev->irq_level(0) == 1);
+  idev->set_input(1, 0);
+  CHECK(idev->irq_level(0) == 0);
+  CHECK(log.calls == 2 && log.levels[1] == 0);
+  /* A software interrupt goes through the same mask and the same output, which
+   * is what lets a guest (or a test) interrupt itself with no peripheral at all,
+   * and what a real controller's "software interrupt" register does. */
+  put32(bus, 0x1000200Cu, 2u);                            /* SET line 1 */
+  CHECK(idev->irq_level(0) == 1);
+  CHECK((reg32(bus, 0x10002004u) & 2u) == 2u);            /* it is a line, too */
+  put32(bus, 0x10002010u, 2u);                            /* CLEAR line 1 */
+  CHECK(idev->irq_level(0) == 0);
+  /* Masking while asserted drops it as well, and the raw level is still there. */
+  put32(bus, 0x1000200Cu, 1u);
+  put32(bus, 0x10002000u, 0u);
+  CHECK(idev->irq_level(0) == 0);
+  CHECK((reg32(bus, 0x10002004u) & 1u) == 1u);
+  idev->reset();
+  CHECK(idev->irq_level(0) == 0 && (reg32(bus, 0x10002004u) & 1u) == 0u);
+
+  /* Now the chain in a machine: two timer instances, a controller, one CPU line.
+   * Every level in this test arrives through `Machine::deliver_irq`, because that
+   * is the only thing that knows what the wires mean. */
+  MachineConfig c;
+  c.ram_size = 1u << 20;
+  c.cpu_id = "toy8";
+  c.board = "dual-timer";
+  Machine m;
+  CHECK(m.init(c));
+  CHECK(m.device_count() == 5);          /* console, exit, t0, t1, intc */
+  CHECK(m.wire_count() == 3);
+  CHECK(std::strcmp(m.config().board, "dual-timer") == 0);
+  Device* t0 = m.device_by_id("t0");
+  Device* t1 = m.device_by_id("t1");
+  Device* ic = m.device_by_id("intc");
+  CHECK(t0 && t1 && ic);
+  CHECK(t0 != t1);
+  if (t0 && t1 && ic) {
+    CHECK(t0->base() == 0x10001000u && t1->base() == 0x10001100u);
+    /* Arm both timers and let the machine's own clock run: the expires travel
+     * t0/t1 -> intc -> the wire the board declared. */
+    put32(m.bus(), t0->base() + 0x00u, 10u);
+    put32(m.bus(), t1->base() + 0x00u, 10u);
+    put32(m.bus(), t0->base() + 0x08u, 1u);
+    put32(m.bus(), t1->base() + 0x08u, 1u);
+    put32(m.bus(), ic->base() + 0x00u, 3u);           /* unmask both lines */
+    CHECK(m.wire_level(0) == 0 && m.wire_level(1) == 0 && m.wire_level(2) == 0);
+    t0->tick(10);
+    CHECK(t0->irq_level(0) == 1);
+    CHECK((reg32(m.bus(), ic->base() + 0x08u) & 1u) == 1u);
+    CHECK(ic->irq_level(0) == 1);
+    /* The board's third wire is the one that reaches the CPU, and the machine
+     * reports its level like any other. */
+    CHECK(m.wire_level(2) == 1);
+    CHECK(m.wire_level(0) == 1);
+    CHECK(m.wire_level(1) == 0);
+    /* Acknowledge t0: its line drops, the controller's other input is still low,
+     * so the controller's output drops too, and with it the CPU's line. */
+    put32(m.bus(), t0->base() + 0x10u, 1u);
+    CHECK(t0->irq_level(0) == 0);
+    CHECK(ic->irq_level(0) == 0);
+    CHECK(m.wire_level(2) == 0);
+    /* Now t1, which shares the same CPU line and must be indistinguishable from
+     * t0 at the CPU end - that is the whole point of a controller. */
+    t1->tick(10);
+    CHECK(m.wire_level(2) == 1);
+    put32(m.bus(), t1->base() + 0x10u, 1u);
+    CHECK(m.wire_level(2) == 0);
+    CHECK(std::strcmp(ic->field_value(2), "0x0") == 0);   /* pending back to 0 */
+  }
+
+  /* A caller-owned device can be wired by hand, and the sink end may be a
+   * device: `sink.in0` is resolved by instance, `irq` by CPU input name. */
+  MachineConfig c3;
+  c3.ram_size = 1u << 16;
+  c3.cpu_id = "toy8";
+  c3.add_device(ModuleSpec("timer", 0, false, "t9"));
+  c3.add_wire("t9", "irq", "irq");
+  Machine m3;
+  CHECK(m3.init(c3));
+  SinkDevice sink;
+  CHECK(m3.add_device(sink));
+  CHECK(m3.add_wire("t9", "irq", "sink.in1"));
+  CHECK(m3.wire_count() == 2);
+  Device* t9 = m3.device_by_id("t9");
+  CHECK(t9 != nullptr);
+  if (t9) {
+    put32(m3.bus(), t9->base() + 0x00u, 4u);
+    put32(m3.bus(), t9->base() + 0x08u, 1u);
+    t9->tick(4);
+    CHECK(t9->irq_level(0) == 1);
+    CHECK(sink.level(1) == 1);
+    CHECK(sink.level(0) == 0);
+    check(sink.deliveries() == 1, "one level change, one delivery");
+    put32(m3.bus(), t9->base() + 0x10u, 1u);
+    CHECK(sink.level(1) == 0);
+    check(sink.deliveries() == 2, "the drop is delivered too");
+  }
+  /* The error messages name the end that is missing, and the names that exist. */
+  CHECK(m3.add_wire("t9", "irq", "sink.in7") == false);
+  CHECK(std::strstr(m3.last_error(), "has no interrupt input named 'in7'") != nullptr);
+  CHECK(std::strstr(m3.last_error(), "in0 in1") != nullptr);
+  CHECK(m3.add_wire("t9", "irq", "nosuch.in0") == false);
+  CHECK(std::strstr(m3.last_error(), "no device named 'nosuch'") != nullptr);
+  CHECK(m3.add_wire("t9", "irq", "sink") == false);     /* no dot: a CPU input */
+  CHECK(std::strstr(m3.last_error(), "the CPU module has no input named 'sink'") != nullptr);
+  /* The chain through the C API, including an instance name and a device sink. */
+  brain_config_t bc;
+  std::memset(&bc, 0, sizeof bc);
+  bc.ram_size = 1u << 16;
+  bc.cpu_id = "toy8";
+  CHECK(brain_add_device_named(nullptr, "timer", "t0", 0, 0) != 0);
+  brain_emu_t* e = brain_emu_create(&bc);
+  CHECK(e != nullptr);
+  if (e) {
+    CHECK(brain_add_device_named(e, "timer", "t0", 0x10001000u, 1) == 0);
+    CHECK(brain_add_device_named(e, "timer", "t1", 0x10001100u, 1) == 0);
+    CHECK(brain_add_device_module(e, "intc", 0, 0) == 0);
+    CHECK(brain_add_wire(e, "t0", "irq", "intc.irq0") == 0);
+    CHECK(brain_add_wire(e, "t1", "irq", "intc.irq1") == 0);
+    CHECK(brain_add_wire(e, "intc", "irq", "irq") == 0);
+    CHECK(brain_wire_count(e) == 3);
+    CHECK(std::strcmp(brain_device_instance(e, 0), "t0") == 0);
+    CHECK(std::strcmp(brain_device_id(e, 0), "timer") == 0);
+    for (uint32_t i = 0; i < brain_device_count(e); ++i) {
+      if (std::strcmp(brain_device_instance(e, i), "intc")) continue;
+      CHECK(std::strcmp(brain_device_id(e, i), "intc") == 0);
+    }
     brain_emu_destroy(e);
   }
 }
@@ -1138,6 +1362,7 @@ int main() {
   test_device_modules();
   test_timer_device();
   test_boards_and_wiring();
+  test_interrupt_chain();
   test_device_page_sharing();
   test_monitor_modules();
   test_loader_registry();

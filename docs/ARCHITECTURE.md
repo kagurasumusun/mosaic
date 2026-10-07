@@ -30,6 +30,7 @@ src/core/machine.cpp               build, run, reset, load
 src/loader/elf.cpp                 the elf32 + raw loader modules
 src/modules/builtin.cpp            the list of modules this build contains
 src/modules/timer/                 a device module with an interrupt output
+src/modules/intc/                  a device with interrupt *inputs*: a controller
 src/modules/boards/                board modules: named machine presets
 src/api.cpp                        the C API over the Machine
 
@@ -164,10 +165,12 @@ when the CPU retired fewer instructions than it was asked for, which is what a
 
 Two modules never know each other's type.  A device that can interrupt declares
 its outputs (`Device::irq_count()`/`irq_name(i)`) and drives them
-(`Device::drive_irq(i, level)`); a CPU declares its inputs (`CpuCore::input_count()`,
-`input_name(i)`, `set_input(i, level)`, whose default maps input 0 to IRQ and 1 to
-FIQ); and a **board** - a named machine preset, or simply the `MachineConfig` a
-caller builds - names the pair:
+(`Device::drive_irq(i, level)`); a device that can *be* interrupted declares
+inputs (`Device::input_count()`/`input_name(i)`/`set_input(i, level)`); a CPU
+declares its inputs (`CpuCore::input_count()`, `input_name(i)`,
+`set_input(i, level)`, whose default maps input 0 to IRQ and 1 to FIQ); and a
+**board** - a named machine preset, or simply the `MachineConfig` a caller
+builds - names each pair:
 
 ```cpp
 MachineConfig cfg;
@@ -184,6 +187,27 @@ names it is given (they are copied when the wire is declared), because a caller
 may hand a temporary and the wire outlives the call.  A level that no wire
 carries is dropped: a device is usable on its own, in a test, with nothing wired
 to it, and the device never knows the difference.
+
+**The sink can be a device.**  A wire's destination is a bare name for a CPU
+input (`irq`) or a dotted name for a device input (`intc.irq0`), and the machine
+delivers either way - a device that combines its inputs simply drives its own
+output from `set_input`, which re-enters the same delivery path.  That one rule is
+what makes a chain work with no new machinery: two timers drive a controller, the
+controller drives the CPU, and none of the three was written with the others in
+mind (`--board dual-timer` is exactly that machine).  Because a chain is
+re-entrant, the delivery depth is capped (`Machine::kMaxWiringDepth`): a wire
+graph wired into a cycle that oscillates is a machine design error, and it is
+reported once instead of running the stack out.
+
+**Devices have instance names.**  A per-machine name (`Device::instance()`,
+`ModuleSpec::as`) is what tells two devices built from one module apart - two
+timers, four UARTs - and every name a wire or a tool uses resolves the instance
+first and the module id second, so a lone peripheral needs no name and a repeated
+one must have one (`Machine::add_device_by_id` refuses a second device that would
+answer to the same name, because every wire for it would be ambiguous).  A board
+writes them as `ModuleSpec("timer", 0x10001000u, true, "t0")`, the C API as
+`brain_add_device_named`, and the command line as
+`--device timer@0x10001000#t0`.
 
 Nothing here is ARM-shaped.  `set_input` is the generic surface; the ARM-shaped
 `set_irq`/`set_fiq` are the default implementation of inputs 0 and 1, and a CPU

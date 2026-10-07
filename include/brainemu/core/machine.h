@@ -43,24 +43,42 @@ class Monitor;
  * (a device module knows where its peripheral normally sits).  A monitor
  * ignores both. */
 struct ModuleSpec {
-  const char* id = nullptr;
+  const char* id = nullptr;       /* the module, e.g. "timer"                  */
   u32 base = 0;
   bool has_base = false;
+  /* What this *instance* of the module is called on the machine, or null for
+   * "the module's id".  A machine that has two timers needs it: every name a
+   * wire or a tool can use (`--wire t1.irq=intc.irq1`, `device_by_id`) resolves
+   * the instance first and the module id second, so a lone device needs no name
+   * and a repeated one must have one. */
+  const char* as = nullptr;
 
   ModuleSpec() = default;
-  ModuleSpec(const char* i, u32 b = 0, bool hb = false) : id(i), base(b), has_base(hb) {}
+  ModuleSpec(const char* i, u32 b = 0, bool hb = false, const char* name = nullptr)
+      : id(i), base(b), has_base(hb), as(name) {}
 };
 
-/* One connection in a machine: a device's interrupt output to one of the CPU's
- * inputs, both by name.  A board (or a caller) declares the wires; the machine
- * delivers the levels.  Names are resolved when a level *changes*, not when the
- * wire is declared, so a board may name a device or an input that does not exist
- * yet - which is the order `Machine::init` builds things in anyway, and it also
- * makes `brain_add_wire` work on a live machine. */
+/* One connection in a machine: some device's interrupt *output* to some other
+ * node's interrupt *input*, both by name.  A board (or a caller) declares the
+ * wires; the machine delivers the levels.  The sink is either
+ *
+ *   "irq"          the CPU's input named "irq" (the common case), or
+ *   "intc.irq0"    the input named "irq0" of the device called "intc"
+ *
+ * - a sink with a dot in it names a device, one without names a CPU input.  That
+ * one rule is enough for a whole SoC: a peripheral speaks outwards, a controller
+ * (a device with inputs, see Device::set_input) aggregates several of them, and
+ * only the last wire reaches the CPU - so nothing has to grow an interrupt path
+ * of its own, and neither end learns the other's type.
+ *
+ * Names are resolved when a level *changes*, not when the wire is declared, so a
+ * board may name a device or an input that does not exist yet - which is the
+ * order `Machine::init` builds things in anyway, and it also makes
+ * `brain_add_wire` work on a live machine. */
 struct WireSpec {
-  const char* device = nullptr;   /* module id of the device, e.g. "timer"   */
+  const char* device = nullptr;   /* instance name of the source, e.g. "t0"  */
   const char* output = nullptr;   /* its output's name; null/"" = the first  */
-  const char* input = nullptr;    /* the CPU input's name, e.g. "irq"        */
+  const char* input = nullptr;    /* the sink, see above; null/"" = "irq"    */
   WireSpec() = default;
   WireSpec(const char* d, const char* o, const char* i) : device(d), output(o), input(i) {}
 };
@@ -166,8 +184,10 @@ class Machine {
 
   /* The same, by module id - what `MachineConfig::devices[]` is shorthand for.
    * The machine owns what it creates; the device is mapped and reset like any
-   * other.  A failure says which ids exist. */
-  Device* add_device_by_id(const char* id, u32 base, bool has_base = true);
+   * other.  A failure says which ids exist.  `as` names the instance (see
+   * ModuleSpec::as); null means the module's id. */
+  Device* add_device_by_id(const char* id, u32 base, bool has_base = true,
+                           const char* as = nullptr);
 
   /* Wiring: connect a device's interrupt output to one of the CPU's inputs.
    * Both ends are named, and neither module learns anything about the other -
@@ -186,10 +206,16 @@ class Machine {
   /* Deliver one level change to whatever the wire names.  Public because it is
    * the callback a device's `IrqNotify` gets; callers use the wires above. */
   static void deliver_irq(void* user, Device& d, u32 output, int level);
-  /* Look one up by module id, whether the machine built it or the caller did. */
+  /* Look one up by *instance* name, falling back to the module id (and, when
+   * several devices were built from one module without instance names, the
+   * first of them).  A wire's device end is resolved exactly this way, so the
+   * two agree by construction. */
   Device* device_by_id(const char* id);
+  /* Whether an instance name is already taken (two devices answering to one name
+   * would make every wire ambiguous), and what the names are - for messages. */
+  bool instance_taken(const char* name, const Device* except = nullptr) const;
   Device* add_device_by_id(const ModuleSpec& spec) {
-    return add_device_by_id(spec.id, spec.base, spec.has_base);
+    return add_device_by_id(spec.id, spec.base, spec.has_base, spec.as);
   }
 
   /* Monitors: observers the run loop reports every slice and every reset to
@@ -219,11 +245,21 @@ class Machine {
 
  private:
   bool build_cpu(const char* id);
+  /* Where one end of a wire landed: a device input, or (`device == nullptr`) a
+   * CPU input at `index`. */
+  struct WireEnd {
+    Device* device = nullptr;
+    u32 index = 0;
+  };
+
   /* The board, if the config named one: fills the effective config before
    * anything is built.  Unknown ids fail the machine and say what exists. */
   bool apply_board(const char* id, MachineConfig* eff);
+  static constexpr u32 kMaxWiringDepth = 16;
+  void deliver(const WireEnd& sink, int level);
+
   /* Look a wire's two ends up by name.  Fills `why` with what is missing. */
-  bool resolve_wire(const WireSpec& w, u32* input_index, std::string* why);
+  bool resolve_wire(const WireSpec& w, WireEnd* sink, std::string* why);
   /* Point every device's interrupt notify at the machine.  Called by add_device
    * (both the direct and the by-id path), because a device can be added long
    * after init - before anything can raise a level. */
@@ -241,6 +277,9 @@ class Machine {
    * the pointers stay valid as more are interned. */
   std::vector<WireSpec> wires_{};
   std::deque<std::string> wire_names_{};
+  std::deque<std::string> instance_names_{};
+  u32 wiring_depth_ = 0;
+  bool wiring_depth_reported_ = false;
   WireSpec intern_wire(const WireSpec& w);
   std::vector<Device*> devices_{};
   std::vector<Monitor*> monitors_{};

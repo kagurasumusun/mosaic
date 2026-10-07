@@ -49,6 +49,12 @@ build/brainemu --device console --exit prog.bin; echo $?
 # a named machine: a board preset, plus a wire of your own
 build/brainemu --board timer --wire timer.irq=irq --stats prog.bin
 
+# two interrupt sources behind one controller, on the CPU's one IRQ line
+build/brainemu --board dual-timer --stats prog.bin
+build/brainemu --device timer@0x10001000#t0 --device timer@0x10001100#t1 \
+               --device intc --wire t0.irq=intc.irq0 --wire t1.irq=intc.irq1 \
+               --wire intc.irq=irq prog.bin
+
 # what CPUs this build contains, and one that is not an ARM
 build/brainemu --list-cpus
 build/brainemu --cpu toy8 --regs program.t8
@@ -62,10 +68,12 @@ module's own description, so it works for a CPU whose PC is not register 15.
 `--board ID` starts from a *board* - a named machine preset (which CPU, which
 devices, which wires) - and everything else on the command line is applied on top
 of it, so `--board timer --device exit` is that board plus a peripheral.
-`--wire DEV.OUT=CPU_IN` connects a device's interrupt output to one of the CPU's
-inputs by name (`--wire timer.irq=irq`), which is the only place the two modules
-are named together; `--list-modules` prints the boards, devices and monitors this
-build contains.
+`--wire DEV.OUT=SINK` connects a device's interrupt output to something that has
+an input, by name: `--wire timer.irq=irq` a CPU input, `--wire t0.irq=intc.irq0`
+a device input, so several sources can share one CPU line through a controller
+(as in `--board dual-timer`).  This is the only place two modules are named
+together; `--list-modules` prints the boards, devices and monitors this build
+contains.
 
 `--device ID[@A]` builds a device module into the machine (at `A`, or at the
 address the module says is its default), `--monitor ID` tells a monitor module
@@ -129,6 +137,7 @@ src/modules/*/        the modules this build contains
   console/            a device module: bytes written there become text
   exit/               a device module: a store there stops the machine
   timer/              a device module with an interrupt output (the reference)
+  intc/               a device with interrupt *inputs*: a controller
   boards/             board modules: named machine presets
 src/loader/           the built-in image formats (elf32, raw)
 src/api.cpp           the C API, implemented against the machine
@@ -145,12 +154,14 @@ LICENSE               the brain-emu License, version 1.0 (see docs/LICENSE-NOTES
   registry; `CpuCore` is the whole CPU contract and is only called at slice
   boundaries, so a module's inner loop stays non-virtual and monomorphic. Five
   kinds of module ship - CPUs (`arm926`, `toy8`), loaders (`elf32`, `raw`),
-  devices (the console, the exit port, a timer with an interrupt output),
-  monitors, and *boards* (named machine presets: which CPU, which devices, how
-  their interrupt lines are wired). A device declares interrupt *outputs* and a
-  CPU declares named interrupt *inputs*; a board is the only place that names both
-  ends, and the machine carries the level between them, so no module knows another
-  module's type. Each reports its state through name/value fields the core only
+  devices (the console, the exit port, a timer with an interrupt output, and an
+  interrupt controller with inputs), monitors, and *boards* (named machine
+  presets: which CPU, which devices, how their interrupt lines are wired). A
+  device declares interrupt *outputs*; a device or a CPU declares named interrupt
+  *inputs*; a board is the only place that names both ends, and the machine
+  carries the level between them, so no module knows another module's type. Two
+  devices built from one module are told apart by an instance name
+  (`--device timer@0x10001000#t0`), which is what a wire names. Each reports its state through name/value fields the core only
   forwards. `docs/MODULES.md` documents the contract and how to add a processor,
   a device, a monitor or a board.
 * ARM and Thumb state, ARMv5TEJ data processing, loads/stores (including the
