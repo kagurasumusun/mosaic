@@ -296,7 +296,7 @@ of zero words passes for *any* target, because `movs r0, r0` changes nothing.  T
 `arm_blxi_*` cases were a clean example - three of them, all assembled to the same
 word (the loop variable was never used), all passing, none of them able to notice
 that the BLX offset was being computed at half scale.  Deliberately putting that
-bug back leaves the corpus at 350/350 while `test_unit` fails three checks.
+bug back leaves the corpus at 350/350 while `test_arm926` fails three checks.
 
 The reverse also happens: the `encoder` rule above fired on `seq_thumb_0`, and the
 sequence it had been deleting turned out to be the first case in the corpus that
@@ -310,7 +310,7 @@ The habits that follow from this: (1) check that the case *count* moved when you
 add cases, and read the "skipped" list; (2) give every case slots with distinct
 effects on either side of the interesting address, so an off-by-a-factor target
 computation lands on a different R0; (3) where the assembler or the oracle cannot
-express a case at all, hand-assemble it into `test_unit.cpp` rather than leaving a
+express a case at all, hand-assemble it into `test_arm926.cpp` rather than leaving a
 corpus case that only proves the core does not crash.
 
 ## What the corpus cannot express
@@ -320,7 +320,7 @@ corpus case that only proves the core does not crash.
   caches when the PC moves, so a stack case has to give itself an SP with a guest
   `MOV SP, R4` and ends with LR reading 0.  The corpus therefore pins the round trip
   of the saved registers (that is `seq_arm_0` and `seq_thumb_0`), but the state the
-  popped value selects is pinned in `test_unit.cpp`, in `test_push_pop_return()`,
+  popped value selects is pinned in `test_arm926.cpp`, in `test_push_pop_return()`,
   where LR is seeded odd and even.
 * `BLX` with an immediate, beyond the interworking itself.  Keystone *does* emit
   the ARMv5 A2 layout (`cond 1111 101 H imm24`) for `BLX <label>`, so the
@@ -335,7 +335,8 @@ corpus case that only proves the core does not crash.
   `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp::test_load_pc_and_l4`, whose two BLX phases differ only in
   insn[24] and land two bytes apart.
 * `LDM`/`STM` register-list effects on the flags and on banked R13/R14, and any
-  check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
+  check of `R15` itself: `test_instr.cpp` (in this CPU's `tests/` directory) compares
+  R0-R12 and lets the branch
   target show up as a register write (`MOV Rn, R14`) instead.
 
 ## The JIT backends
@@ -557,8 +558,9 @@ the sweep found the rotate/MVN-immediate rules and the HI/LS condition, and the
 random blocks found the operand-swap and carry-fixup hazards the sequential tests
 never reach.
 
-`tests/test_jit_aarch64.py` checks the other backend, and runs as part of `make check`:
-every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
+`arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_jit_aarch64.py` checks the other
+backend, and runs as part of `make check`:
+every encoding in `build/jit_emit --forms` is disassembled and compared to the text it
 is supposed to produce (44 forms, 83 words, 0 wrong); every ARM block the corpus
 contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, CPSR
 and the next PC against the interpreter (148 blocks agree, 212 cases refused by
@@ -572,9 +574,10 @@ sweep is what found the four real bugs in the carry rule, `ROR #0`, and MVN's
 immediate and RRX forms: the encoding checks had passed throughout, because a
 disassembler only proves what the *text* of an instruction says.  Capstone and Unicorn
 are optional here: without them the second and third layers print a `SKIP:` line
-rather than pretending to have run.  `tests/test_shifter.py` belongs alongside them:
+rather than pretending to have run.  `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_shifter.py`
+belongs alongside them:
 it runs every shift encoding - all four types, every amount the field holds, the
 re-encoded zeros, and register-supplied amounts up to 255 - against the model, so
 the primitive that both engines share stays honest even where the corpus has no
-instruction that uses it (it has none), and `test_unit.cpp` pins the same rules as a
+instruction that uses it (it has none), and `test_arm926.cpp` pins the same rules as a
 100-row table that needs nothing installed.

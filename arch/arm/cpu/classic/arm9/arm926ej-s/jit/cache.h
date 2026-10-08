@@ -52,7 +52,7 @@
  *
  * On a host with no code generator (see BRAIN_JIT_BACKEND) `Jit::init()` never
  * creates one of these and the interpreter runs unmodified.  The bookkeeping
- * here still compiles, and tests/test_unit.cpp exercises it directly:
+ * here still compiles, and tests/test_arm926.cpp exercises it directly:
  * install/lookup/invalidate/generation/budget decisions with `jit_cache_exec_hook`
  * standing in for the one line of host-code execution.
  */

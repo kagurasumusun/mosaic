@@ -105,7 +105,7 @@ class RecorderDevice final : public Device {
 
 /* A device's registers, read and written the way a guest would: through the bus,
  * so the test goes through the same window a program would. */
-u32 reg32(Bus& bus, u32 addr) {
+[[maybe_unused]] u32 reg32(Bus& bus, u32 addr) {
   u32 v = 0;
   for (u32 i = 0; i < 4; ++i) {
     u8 b = 0;
@@ -115,7 +115,7 @@ u32 reg32(Bus& bus, u32 addr) {
   return v;
 }
 
-void put32(Bus& bus, u32 addr, u32 value) {
+[[maybe_unused]] void put32(Bus& bus, u32 addr, u32 value) {
   for (u32 i = 0; i < 4; ++i) bus.write_byte(addr + i, (u8)(value >> (8 * i)));
 }
 
@@ -128,7 +128,7 @@ struct LevelLog {
   u32 outputs[16] = {};
 };
 
-void log_irq(void* user, Device&, u32 output, int level) {
+[[maybe_unused]] void log_irq(void* user, Device&, u32 output, int level) {
   LevelLog* l = static_cast<LevelLog*>(user);
   if (l->calls < 16) {
     l->levels[l->calls] = level;

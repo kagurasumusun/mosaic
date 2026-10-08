@@ -142,8 +142,8 @@ does not need an ARM to run.
 4. **Provide a factory.** A `CpuModule` whose `create()` returns a fresh core.
 5. **Register it.** A directory `arch/<arch>/cpu/<family>/<id>/` with a header declaring one
    `register_<id>_module()`, and two lines in `builtin/builtin.cpp`: the include
-   and the call. The build discovers sources recursively under `arch/` (including CPU/JIT modules),
-   `arch/**/jit/`), so no build edit is needed either.
+   and the call. The build discovers sources recursively under `arch/` (CPU modules
+   and their `jit/` subdirectories included), so no build edit is needed either.
 
 Then:
 

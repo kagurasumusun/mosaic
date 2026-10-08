@@ -19,7 +19,7 @@ the very case under test).
 SKIPs without the three python bindings, and needs `make` to have produced
 build/jit_emit, so `make check` stays green on a bare tree.
 
-    /home/user/oracle-venv/bin/python tests/test_oracle.py     # capstone unicorn keystone
+    python3 arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_oracle.py   # capstone unicorn keystone
 """
 import os
 import struct
@@ -303,7 +303,7 @@ def family_thumb_immshift(fails, compared, skipped):
                 # ARM926; from ARMv6 the same encoding is `LSLS #0`, which does
                 # update N/Z - the model is a v6-and-later core, so this one shape
                 # cannot be settled here and the core's own behaviour is pinned by
-                # tests/test_unit.cpp instead.
+                # tests/test_arm926.cpp instead.
                 continue
             hw = (typ << 9) | (imm5 << 6) | (2 << 3) | 1
             cases.append((bytes(struct.pack("<H", hw)), 1))

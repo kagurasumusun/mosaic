@@ -4,8 +4,8 @@
  * A loader is a module: it takes a host buffer and fills *memory*, and it does
  * not need a CPU to do it.  Every check here therefore runs on a Bus with no
  * machine and no processor behind it, which is the point - the ARM loader tests
- * live in test_unit.cpp (through the C API), and these are about the module
- * boundary and about the refusals.
+ * live in arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp (through the
+ * C API), and these are about the module boundary and about the refusals.
  *
  * The ELF images are built by hand in the test rather than by a toolchain: a
  * loader's contract is about headers, so the headers are what the test writes.

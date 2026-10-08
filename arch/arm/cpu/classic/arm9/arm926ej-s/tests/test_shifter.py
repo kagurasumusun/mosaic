@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LicenseRef-brain-emu-1.0
-"""Barrel-shifter differential test: the shifter in src/core/ops.h and its encodings.
+"""Barrel-shifter differential test: the shifter in cpu/ops.h and its encodings.
 
 `MOV{S} Rd, Rm, <shift>` is the purest probe of the shifter there is: the result is
 the shifted operand and the carry is whatever the shifter says.  Comparing that
@@ -129,7 +129,7 @@ def run_core(word, regs, cpsr):
     p = subprocess.run(args, capture_output=True, text=True, cwd=REPO)
     # Status 1 is the JIT front end refusing to translate the word, which says
     # nothing about the interpreter run whose result is being read here.  (Same
-    # convention as tests/test_jit_aarch64.py.)
+    # convention as test_jit_aarch64.py in this directory.)
     if p.returncode not in (0, 1):
         raise RuntimeError("jit_emit failed: %s%s" % (p.stdout, p.stderr))
     post = None

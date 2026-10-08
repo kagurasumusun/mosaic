@@ -901,7 +901,7 @@ void test_exception_entry() {
 }
 
 /* shift_arm(), the barrel-shifter primitive that the interpreter and the JIT front
- * end share (src/core/ops.h).  Pinned here as a table because the two places that
+ * end share (cpu/ops.h).  Pinned here as a table because the two places that
  * would otherwise catch a regression can miss it: the corpus contains no instruction
  * using the re-encoded shift spellings, and tests/test_shifter.py can only compare
  * against a model when unicorn is installed.  The expected values are ARM DDI 0084D

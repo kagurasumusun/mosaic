@@ -17,7 +17,7 @@ and the emitted code is checked against the interpreter.  A block the front end
 refuses is not a failure: the point is that whatever it *does* translate, it gets
 right.
 
-Run:  tests/test_jit_aarch64.py [--corpus F] [--jit-emit P] [-v]
+Run:  arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_jit_aarch64.py [--corpus F] [--jit-emit P] [-v]
 Needs capstone and unicorn; exits 0 with a note when they are missing, so that
 `make check` does not depend on a Python environment.
 """

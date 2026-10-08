@@ -18,7 +18,7 @@ namespace brain::arm926 {
 
 /* When set, `jit_cache_enter` calls this instead of the arena code.  It lets the
  * dispatcher and the copy-in/copy-back run on hosts with no AArch64 execution;
- * tests/test_unit.cpp drives every block boundary through it. */
+ * tests/test_arm926.cpp drives every block boundary through it. */
 void (*jit_cache_exec_hook)(u32* shadow, const JitBlock* b) = nullptr;
 
 namespace {

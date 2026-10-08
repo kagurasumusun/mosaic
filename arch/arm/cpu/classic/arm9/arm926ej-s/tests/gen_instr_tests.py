@@ -473,7 +473,7 @@ def branch_cases(rnd):
     # interworking (CPSR.T set) and that the fall-through was skipped, because
     # the target has to be a zero word - an ARM-mode line list cannot express a
     # Thumb callee, and R14 is not compared.  The A2 offset scaling and its H
-    # bit are pinned by hand-assembled words in tests/test_unit.cpp instead.
+    # bit are pinned by hand-assembled words in tests/test_arm926.cpp instead.
     out.append(("arm_blxi", "arm",
                 ["ADD R0, R0, #0x100", "BLX 0x%x" % (CODE_BASE + 0x100 + 1),
                  "ADD R0, R0, #0x200"], None, None, 2))
@@ -556,7 +556,7 @@ def multi_seq_cases(rnd):
     # the point of them: `count` stops the run at the return, so what is compared is
     # the round trip of R4-R8 (and of CPSR), not the address returned to - LR has to
     # read 0 here for the same banked-register reason.  Returning to an *odd* value,
-    # i.e. an L4 interworking load into the PC, is pinned in tests/test_unit.cpp,
+    # i.e. an L4 interworking load into the PC, is pinned in tests/test_arm926.cpp,
     # where every register can be seeded directly.
     out = []
     for i, sq in enumerate(seqs):

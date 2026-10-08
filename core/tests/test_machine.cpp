@@ -7,9 +7,10 @@
  * runs on it, and that the bus, the registry, the run loop, the devices and the C
  * API never needed to know which one they were driving.
  *
- * Everything here is written against `brainemu/*.h` alone, so it is also the
- * statement of what the foundation promises without any component: the suite
- * compiles and passes with every machine removed except the fakes below.
+ * Everything here is written against the public `brainemu/` headers alone, so
+ * it is also the statement of what the foundation promises without any
+ * component: the suite compiles and passes with every machine removed except
+ * the fakes below.
  */
 #include <brainemu/brainemu.h>
 

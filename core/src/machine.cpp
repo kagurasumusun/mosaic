@@ -341,13 +341,14 @@ bool Machine::resolve_wire(const WireSpec& w, WireEnd* sink, std::string* why) {
   }
   Device* d = device_by_id(w.device);
   if (!d) {
-    if (why)
+    if (why) {
       *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
              " -> " + (w.input ? w.input : "") + "': no device named '" + w.device +
              "' on this machine (have:";
-      for (const Device* d : devices_)
-        if (d->instance()) *why += std::string(" ") + d->instance();
+      for (const Device* dev : devices_)
+        if (dev->instance()) *why += std::string(" ") + dev->instance();
       *why += ")";
+    }
     return false;
   }
   if (output_index(*d, w.output) < 0) {
@@ -395,8 +396,8 @@ bool Machine::resolve_wire(const WireSpec& w, WireEnd* sink, std::string* why) {
     if (why) {
       *why = std::string("wire '") + w.device + "." + (w.output ? w.output : "") +
              " -> " + want + "': no device named '" + dev_name + "' (have:";
-      for (const Device* d : devices_)
-        if (d->instance()) *why += std::string(" ") + d->instance();
+      for (const Device* dev : devices_)
+        if (dev->instance()) *why += std::string(" ") + dev->instance();
       *why += ")";
     }
     return false;

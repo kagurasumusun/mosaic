@@ -36,7 +36,7 @@
  * data processing yet, so on an AArch64 host a memory or branch block is refused
  * and interpreted (the x86-64 backend covers the whole set).  The block cache and
  * dispatcher live in jit/cache.h + jit/cache.cpp, driven by exactly the six entry
- * points below; tests/test_unit.cpp exercises them on any host, because its exec
+ * points below; tests/test_arm926.cpp exercises them on any host, because its exec
  * hook stands in for the generated code.
  */
 #ifndef BRAIN_JIT_JIT_H
