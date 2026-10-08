@@ -19,8 +19,9 @@ boards/                                reusable named board presets
 buses/                                  reusable interconnects
  devices/                               reusable memory-mapped peripherals
 loaders/                                guest image formats
-host/                                   host-side I/O and presentation
-debugger/                               debugger/trace integrations
+host/                                   host-side services: log, byte I/O, filesystems,
+                                        monitors (log/ io/ fs/ monitor/)
+debugger/                               debugger/trace integrations (gdb/)
 testkit/                                shared test helpers
 tests/                                  cross-component tests
 tools/                                  command-line utilities
@@ -93,6 +94,30 @@ a real processor family.
 The current SoC/documentation slot for the NXP i.MX28 is
 `soc/nxp/imx28/` and `reference/soc/nxp/imx28/`. The implementation can be added
 without moving the ARM926 CPU again.
+
+## The host stack
+
+The emulator's common foundation for everything around the guest lives in
+`host/` (logging, byte I/O, filesystems, monitors) and `debugger/` (the gdb
+stub), with the UART — the peripheral a real firmware talks to — in
+`devices/uart/`. All of it works through the C API (`brain_emu_t*`), so none of
+it knows a CPU:
+
+* `host/log/` — one leveled logger for the whole tree.
+* `host/io/` — byte sinks/sources (stdio, buffers) and the adapters that turn
+  them into the function pointers a device takes.
+* `host/fs/` — the filesystem service: `HostFs` (rooted at a host directory, a
+  sandbox against `..`) and `MemFs` (in memory).
+* `host/monitor/` — a `stats` monitor module (`--monitor stats`) and the command
+  monitor, a debugger's console (`--monitor-cmd`).
+* `debugger/gdb/` — a gdb stub: the remote serial protocol over TCP
+  (`--gdb PORT`) or over a memory transport in tests.
+* `devices/uart/` — a 16550-style UART: 8 byte-wide registers, a 16-byte RX
+  FIFO, one interrupt output, host hooks for where the bytes go and come from.
+
+`tests/integration/test_host_stack.cpp` exercises the whole stack together: a
+guest printing through a console and a UART, an interrupt over a wire into the
+CPU, and the gdb stub and command monitor driving a machine through the C API.
 
 ## Build
 

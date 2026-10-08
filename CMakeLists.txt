@@ -19,6 +19,8 @@ file(GLOB_RECURSE BRAIN_CORE_SRCS CONFIGURE_DEPENDS
      devices/*.cpp
      loaders/*.cpp
      boards/*.cpp
+     host/*.cpp
+     debugger/*.cpp
      builtin/*.cpp)
 list(FILTER BRAIN_CORE_SRCS EXCLUDE REGEX "/tests/")
 
@@ -50,8 +52,11 @@ file(GLOB_RECURSE BRAIN_TEST_SRCS CONFIGURE_DEPENDS
      arch/*.cpp
      devices/*.cpp
      loaders/*.cpp
-     boards/*.cpp)
-list(FILTER BRAIN_TEST_SRCS INCLUDE REGEX "/tests/[^/]+\\.cpp$")
+     boards/*.cpp
+     host/*.cpp
+     debugger/*.cpp
+     tests/*.cpp)
+list(FILTER BRAIN_TEST_SRCS INCLUDE REGEX "/tests/.+\\.cpp$")
 foreach(src ${BRAIN_TEST_SRCS})
   get_filename_component(suite ${src} NAME_WE)
   add_executable(${suite} ${src})

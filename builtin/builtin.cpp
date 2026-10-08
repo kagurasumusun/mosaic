@@ -31,6 +31,8 @@
 #include "devices/system/exit/exit.h"
 #include "devices/interrupt/intc/intc.h"
 #include "devices/timer/timer.h"
+#include "devices/uart/uart.h"
+#include "host/monitor/monitor.h"
 #include "loaders/elf/elf32/elf32.h"
 #include "loaders/raw/raw.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/arm926.h"
@@ -57,6 +59,10 @@ void register_builtin_modules() {
   register_console_module();
   register_timer_module();       /* an interrupt output                      */
   register_intc_module();        /* interrupt inputs and one output          */
+  register_uart_module();        /* a serial port: the peripheral a guest talks to */
+
+  /* Monitors: observers of the run loop. */
+  register_monitor_module();     /* "stats": slices, retired, resets as fields */
 
   /* Boards: named presets of the above. */
   register_builtin_boards();

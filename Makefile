@@ -44,13 +44,18 @@ ALL_CPP_SRCS := $(sort $(wildcard core/src/*.cpp) \
                      $(call rwildcard,devices/,*.cpp) \
                      $(call rwildcard,loaders/,*.cpp) \
                      $(call rwildcard,boards/,*.cpp) \
+                     $(call rwildcard,host/,*.cpp) \
+                     $(call rwildcard,debugger/,*.cpp) \
                      $(wildcard builtin/*.cpp))
 TOOL_SRCS  := $(sort $(wildcard tools/*.cpp) $(call rwildcard,arch/,tools/*.cpp))
 TEST_SRCS  := $(sort $(wildcard core/tests/*.cpp) \
                      $(call rwildcard,arch/,test_*.cpp) \
                      $(call rwildcard,devices/,test_*.cpp) \
                      $(call rwildcard,loaders/,test_*.cpp) \
-                     $(call rwildcard,boards/,test_*.cpp))
+                     $(call rwildcard,boards/,test_*.cpp) \
+                     $(call rwildcard,host/,test_*.cpp) \
+                     $(call rwildcard,debugger/,test_*.cpp) \
+                     $(call rwildcard,tests/,test_*.cpp))
 LIB_SRCS   := $(filter-out $(TEST_SRCS),$(ALL_CPP_SRCS))
 PYTEST_SRCS := $(sort $(call rwildcard,arch/,test_*.py))
 

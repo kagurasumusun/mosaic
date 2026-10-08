@@ -24,7 +24,11 @@ arch/experimental/toy8/                     a second CPU, in 300 lines, on purpo
 devices/console/                   a device module: a window that collects text
 devices/system/exit/                      a device module: a store that stops the run
 devices/timer/  devices/interrupt/intc/      a device with an output, a device with inputs
+devices/uart/                             a 16550-style serial port (FIFO + interrupt)
 loaders/elf/elf32/  loaders/raw/       one image format per directory
+host/log/  host/io/  host/fs/  host/monitor/   host services: logging, byte I/O,
+                                              filesystems, monitors (over the C API)
+debugger/gdb/                             a gdb stub: RSP over TCP or memory
 boards/                            named machine presets
 builtin/builtin.cpp                the list of what this build contains
 testkit/test_support.h             what every suite shares (CHECK, LevelLog, ...)
@@ -47,7 +51,7 @@ names it.
 | `cpu` | a processor: registers, an instruction set, its own timing | the machine, at slice boundaries | `arm926`, `toy8` |
 | `loader` | an image format | `Machine::load_image`, by content | `elf32`, `raw` |
 | `device` | something mapped into the address space | the bus, per access | `exit`, `console`, `timer`, `intc` |
-| `monitor` | an observer of a running machine | the run loop, per slice | none built in; the tests declare one |
+| `monitor` | an observer of a running machine | the run loop, per slice | `stats` (slices/retired/resets as fields) |
 | `board` | a named machine preset: CPU, devices, wires | `Machine::init`, once | `minimal`, `timer`, `dual-timer` |
 
 All five kinds are *registry* modules and all five are created through a factory

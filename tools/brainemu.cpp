@@ -21,6 +21,10 @@
 #include <string>
 #include <vector>
 
+#include "debugger/gdb/gdbstub.h"
+#include "debugger/gdb/tcp_transport.h"
+#include "host/monitor/command_monitor.h"
+
 namespace {
 
 struct Options {
@@ -51,6 +55,8 @@ struct Options {
   std::string board;                  /* --board ID                            */
   uint32_t dump_addr = 0, dump_len = 0;
   bool have_dump = false;
+  uint32_t gdb_port = 0;      /* --gdb PORT: serve a gdb stub before the run  */
+  bool monitor_cmd = false;   /* --monitor-cmd: the command monitor's REPL    */
 };
 
 /* The tool's own `--exit-port` callback, for a caller that wants the port at an
@@ -135,7 +141,12 @@ void usage(const char* argv0) {
       "  --regs           after the run, print R0-R15, CPSR and the flags\n"
       "  --stats          after the run, print the counters\n"
       "  --jit            enable the JIT (no host backend -> interpreter)\n"
-      "  --trace          trace every instruction the core retires\n",
+      "  --trace          trace every instruction the core retires\n"
+      "  --monitor-cmd    before the run, drive the machine from a command\n"
+      "                   monitor (regs, memory, breakpoints, step, run)\n"
+      "  --gdb PORT       before the run, serve a gdb stub on PORT: wait for a\n"
+      "                   debugger to connect, serve it until it detaches, then\n"
+      "                   run normally (gdb: target remote :PORT)\n",
       argv0, brain_default_cpu_id());
 }
 
@@ -180,6 +191,8 @@ bool parse_args(int argc, char** argv, Options* o) {
       ++i;
     }
     else if (a == "--cpu") { o->cpu = take("--cpu"); ++i; }
+    else if (a == "--gdb") { o->gdb_port = parse_num(take("--gdb")); ++i; }
+    else if (a == "--monitor-cmd") o->monitor_cmd = true;
     else if (a == "--cpu-opt") {
       const char* v = take("--cpu-opt");
       if (!o->cpu_opts.empty()) o->cpu_opts += ';';
@@ -389,6 +402,35 @@ int main(int argc, char** argv) {
     }
     std::printf("wire %s.%s -> %s\n", dev.c_str(), out.empty() ? "(out)" : out.c_str(),
                 input.c_str());
+  }
+
+  /* Debugging before the run: the command monitor is a console over the same
+   * handle this tool already holds, and the gdb stub serves one debugger over
+   * TCP until it detaches (or kills the session) - after which the run goes on
+   * exactly as it would have without them. */
+  if (o.monitor_cmd) {
+    brain::host::CommandMonitor mon(e);
+    mon.run();
+  }
+  if (o.gdb_port) {
+    brain::gdb::TcpTransport t;
+    if (!t.listen((brain::u16)o.gdb_port)) {
+      std::fprintf(stderr, "brainemu: cannot listen on port %u\n", o.gdb_port);
+      brain_emu_destroy(e);
+      return 2;
+    }
+    std::printf("gdb: listening on port %u, waiting for a debugger "
+                "(gdb: target remote :%u)\n",
+                t.port(), t.port());
+    if (!t.accept()) {
+      std::fprintf(stderr, "brainemu: no debugger connected\n");
+      brain_emu_destroy(e);
+      return 2;
+    }
+    std::printf("gdb: connected\n");
+    brain::gdb::GdbStub stub(e, &t);
+    stub.serve();
+    std::printf("gdb: session ended\n");
   }
 
   const uint64_t retired =

@@ -56,13 +56,17 @@ buses/
   ahb/ apb/ axi/ pci/ pcie/ usb/  reusable interconnect implementations
 
 devices/
-  console/ timer/ interrupt/ system/ ... reusable peripherals
+  console/ timer/ interrupt/ system/ uart/ ...   reusable peripherals
 
 loaders/
   elf/elf32/ raw/       guest image loaders
 
 host/
-  audio/ io/ monitor/    host-side services
+  log/ io/ fs/ monitor/ host-side services (logging, byte I/O, filesystems,
+                        monitors); no CPU knowledge, C API or callbacks only
+
+debugger/
+  gdb/                  a gdb stub: RSP over TCP or memory, over the C API
 
 testkit/                 common test helpers
 tests/                   cross-component/system tests
@@ -189,8 +193,9 @@ preset.
 ## Build rule
 
 The build recursively discovers active implementation files below `arch/`,
-`devices/`, `loaders/` and `boards/`. Tests are selected by living under a
-`tests/` directory and are never linked into the library.
+`devices/`, `loaders/`, `boards/`, `host/` and `debugger/`. Tests are selected
+by living under a `tests/` directory (a component's own `tests/`, or the
+cross-component `tests/` tree) and are never linked into the library.
 
 `builtin/builtin.cpp` remains the explicit registration list because this project
 uses a static library: an unreferenced module object is otherwise liable to be
