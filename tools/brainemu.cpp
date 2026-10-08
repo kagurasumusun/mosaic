@@ -1,17 +1,8 @@
 /* brain-emu -- command line runner for the emulator core.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
- * This is the smallest thing that is still useful: load an image, run it for a
- * bounded amount of time, look at the machine afterwards.  It speaks only the
- * public API (brainemu/brainemu.h), so it doubles as the example of how to
- * embed the core - including how to pick a CPU module with `--cpu` and how to
- * drive one whose registers it has never heard of.
- *
- * The default CPU is this build's primary one (the ARM926EJ-S); `--list-cpus`
- * prints what the build contains, and `--device`/`--monitor` add the rest of the
- * machine by id.  Nothing here knows what a device is beyond its fields: the
- * `--stats` print asks each of them to describe itself, which is what makes a
- * peripheral the core has never heard of show up in the output.
+ * This is the command line runner and embedder example for brain-emu.
+ * Supports running ELF executables, raw binaries, and i.MX28 eMMC images.
  */
 #include <brainemu/brainemu.h>
 
@@ -24,6 +15,7 @@
 #include "debugger/gdb/gdbstub.h"
 #include "debugger/gdb/tcp_transport.h"
 #include "host/monitor/command_monitor.h"
+#include "machine/arm/imx28/imx28_machine.h"
 
 namespace {
 
@@ -57,11 +49,12 @@ struct Options {
   bool have_dump = false;
   uint32_t gdb_port = 0;      /* --gdb PORT: serve a gdb stub before the run  */
   bool monitor_cmd = false;   /* --monitor-cmd: the command monitor's REPL    */
+
+  /* eMMC runner options */
+  std::string emmc_file;
+  std::vector<std::string> emmc_parts;
 };
 
-/* The tool's own `--exit-port` callback, for a caller that wants the port at an
- * address the *exit module* does not take.  `--exit` is the module; this is the
- * one-line function-device spelling of the same thing, and both end the run. */
 brain_emu_t* g_emu = nullptr;
 uint32_t g_exit_status = 0;
 
@@ -91,8 +84,6 @@ uint64_t parse_num64(const char* s) {
   return v;
 }
 
-/* One line per module this build contains, so a user can see what a build is
- * before choosing a CPU for it. */
 void list_modules() {
   std::printf("modules in this build (default CPU: %s)\n", brain_default_cpu_id());
   for (uint32_t i = 0; i < brain_module_count(); ++i) {
@@ -104,11 +95,13 @@ void list_modules() {
 
 void usage(const char* argv0) {
   std::printf(
-      "usage: %s [options] FILE\n"
+      "usage: %s [options] [FILE]\n"
       "\n"
       "Load and run an image on this build's default CPU (an ARM926EJ-S,\n"
       "ARMv5TEJ); --cpu picks another module, --list-cpus lists them.\n"
       "\n"
+      "  --emmc PATH      load single eMMC image for i.MX28 machine\n"
+      "  --emmc-part PATH add multi-part eMMC image file (repeatable)\n"
       "  --cpu ID         CPU module to run on (default: %s)\n"
       "  --cpu-opt K=V    hand an option to the CPU module (repeatable)\n"
       "  --list-cpus      list the modules this build contains and exit\n"
@@ -122,31 +115,18 @@ void usage(const char* argv0) {
       "  --steps N        retire at most N instructions (default 1000000)\n"
       "  --cycles N       stop after N cycles instead of at --steps\n"
       "  --ram-mb N       size of the RAM window (default 32)\n"
-      "  --board ID       start from a board module (a named machine preset);\n"
-      "                   its devices are the starting point, --device adds more\n"
+      "  --board ID       start from a board module (a named machine preset)\n"
       "  --wire DEV.OUT=I wire a device's interrupt output to a CPU input\n"
-      "                   (e.g. --wire timer.irq=irq; --list-modules names both)\n"
-      "  --device ID[@A][#NAME]\n"
-      "                   build a device module into the machine, at A or at\n"
-      "                   the module's own default address, called NAME\n"
-      "                   (repeatable; --list-modules names the modules, and\n"
-      "                   the name is how --wire and --stats tell two\n"
-      "                   devices built from one module apart)\n"
-      "  --monitor ID     tell a monitor module about the run (repeatable)\n"
-      "  --exit           shorthand for --device exit and its status as this\n"
-      "                   process' exit code\n"
-      "  --exit-port A    map a callback device at A; a write there stops the\n"
-      "                   run and its value becomes this process' status\n"
+      "  --device ID[@A][#NAME] build a device module into the machine\n"
+      "  --monitor ID     tell a monitor module about the run\n"
+      "  --exit           exit module status as exit code\n"
       "  --dump A:N       after the run, print N bytes at address A\n"
-      "  --regs           after the run, print R0-R15, CPSR and the flags\n"
-      "  --stats          after the run, print the counters\n"
+      "  --regs           after the run, print R0-R15, CPSR and flags\n"
+      "  --stats          after the run, print counters\n"
       "  --jit            enable the JIT (no host backend -> interpreter)\n"
-      "  --trace          trace every instruction the core retires\n"
-      "  --monitor-cmd    before the run, drive the machine from a command\n"
-      "                   monitor (regs, memory, breakpoints, step, run)\n"
-      "  --gdb PORT       before the run, serve a gdb stub on PORT: wait for a\n"
-      "                   debugger to connect, serve it until it detaches, then\n"
-      "                   run normally (gdb: target remote :PORT)\n",
+      "  --trace          trace every instruction retired\n"
+      "  --monitor-cmd    drive machine from command monitor REPL\n"
+      "  --gdb PORT       serve gdb stub on PORT before run\n",
       argv0, brain_default_cpu_id());
 }
 
@@ -161,7 +141,9 @@ bool parse_args(int argc, char** argv, Options* o) {
       }
       return nxt;
     };
-    if (a == "--elf") { o->elf = true; o->raw = false; }
+    if (a == "--emmc") { o->emmc_file = take("--emmc"); ++i; }
+    else if (a == "--emmc-part") { o->emmc_parts.push_back(take("--emmc-part")); ++i; }
+    else if (a == "--elf") { o->elf = true; o->raw = false; }
     else if (a == "--raw") { o->raw = true; o->elf = false; }
     else if (a == "--thumb") o->thumb = true;
     else if (a == "--be32") o->be32 = true;
@@ -211,7 +193,7 @@ bool parse_args(int argc, char** argv, Options* o) {
     else if (o->file.empty()) o->file = a;
     else { std::fprintf(stderr, "brainemu: two files given\n"); return false; }
   }
-  if (o->file.empty()) return false;
+  if (o->file.empty() && o->emmc_file.empty() && o->emmc_parts.empty()) return false;
   return true;
 }
 
@@ -229,9 +211,6 @@ std::vector<uint8_t> read_file(const std::string& path, size_t max = 64u << 20) 
   return v;
 }
 
-/* Registers, named the way the CPU module describes them.  The ARM926 has the
- * names everyone knows (R0-R15 with SP/LR/PC, CPSR, SPSR) and gets the flag and
- * mode breakdown too; any other module gets its numbering and no assumptions. */
 void print_regs(brain_emu_t* e) {
   const int pc_reg = brain_cpu_pc_reg(e);
   const int sp_reg = brain_cpu_sp_reg(e);
@@ -275,6 +254,32 @@ void print_regs(brain_emu_t* e) {
   if (ss >= 0) std::printf("  SPSR = 0x%08x\n", brain_get_reg(e, ss));
 }
 
+int run_imx28_emmc_machine(const Options& o) {
+  brain::machine::imx28::Imx28Machine mac;
+  if (!mac.init(o.jit, o.ram_size >> 20)) {
+    std::fprintf(stderr, "brainemu: failed to initialize i.MX28 machine\n");
+    return 1;
+  }
+  if (!o.emmc_file.empty()) {
+    if (!mac.load_emmc_file(o.emmc_file)) {
+      std::fprintf(stderr, "brainemu: failed to open eMMC file %s\n", o.emmc_file.c_str());
+      return 1;
+    }
+    std::printf("i.MX28: attached single-file eMMC image: %s\n", o.emmc_file.c_str());
+  } else if (!o.emmc_parts.empty()) {
+    if (!mac.load_emmc_multipart(o.emmc_parts)) {
+      std::fprintf(stderr, "brainemu: failed to open multi-part eMMC images\n");
+      return 1;
+    }
+    std::printf("i.MX28: attached multi-part (%zu files) eMMC image\n", o.emmc_parts.size());
+  }
+
+  mac.reset();
+  const uint64_t retired = mac.run(o.steps);
+  std::printf("i.MX28 machine: ran %llu instructions\n", (unsigned long long)retired);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -282,6 +287,10 @@ int main(int argc, char** argv) {
   if (!parse_args(argc, argv, &o)) {
     usage(argv[0]);
     return 2;
+  }
+
+  if (!o.emmc_file.empty() || !o.emmc_parts.empty()) {
+    return run_imx28_emmc_machine(o);
   }
 
   std::vector<uint8_t> image = read_file(o.file);
@@ -336,8 +345,7 @@ int main(int argc, char** argv) {
     else
       std::printf("loaded raw: %zu bytes at 0x%08x\n", image.size(), o.addr);
   }
-  /* The entry and stack go through the register indices the CPU module
-   * reports, so this works for a CPU whose PC is not register 15. */
+
   const int pc_reg = brain_cpu_pc_reg(e);
   const int sp_reg = brain_cpu_sp_reg(e);
   if (o.have_entry && pc_reg >= 0)
@@ -352,12 +360,7 @@ int main(int argc, char** argv) {
     }
     std::printf("exit port at 0x%08x\n", o.exit_port);
   }
-  /* The modules the caller asked for, by id: "ID", "ID@ADDRESS" or
-   * "ID@ADDRESS#NAME".  A device module knows its own default address, so the
-   * address is optional - which is the difference between `--exit` and
-   * `--exit-port A` - and the instance name is what tells two of the same module
-   * apart (`--device timer@0x10001000#t0 --device timer@0x10001100#t1`), since a
-   * wire can only name the instance. */
+
   for (const std::string& spec : o.devices) {
     const size_t hash = spec.find('#');
     const std::string head = spec.substr(0, hash);
@@ -380,8 +383,7 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
-  /* Wiring, after the devices exist (the ids are looked up now): "DEV[.OUT]=IN",
-   * with the output name optional for a device that has only one. */
+
   for (const std::string& spec : o.wires) {
     const size_t eq = spec.find('=');
     if (eq == std::string::npos) {
@@ -404,10 +406,6 @@ int main(int argc, char** argv) {
                 input.c_str());
   }
 
-  /* Debugging before the run: the command monitor is a console over the same
-   * handle this tool already holds, and the gdb stub serves one debugger over
-   * TCP until it detaches (or kills the session) - after which the run goes on
-   * exactly as it would have without them. */
   if (o.monitor_cmd) {
     brain::host::CommandMonitor mon(e);
     mon.run();
@@ -471,11 +469,7 @@ int main(int argc, char** argv) {
       if (s.exc[i])
         std::printf("  exc %-8s %llu\n", brain_exception_name(i),
                     (unsigned long long)s.exc[i]);
-    /* Each device and monitor describes itself; the tool prints the names and
-     * values it is handed and knows nothing about what they mean. */
     for (uint32_t i = 0; i < brain_device_count(e); ++i) {
-      /* The instance name is what a wire names, so that is what a line leads
-       * with; the module only shows when the two differ. */
       const char* inst = brain_device_instance(e, i);
       const char* id = brain_device_id(e, i);
       if (std::strcmp(inst, id))
@@ -494,8 +488,6 @@ int main(int argc, char** argv) {
                     brain_monitor_field_value(e, i, f));
       std::printf("\n");
     }
-    /* The wiring, with the level each line is driving right now: "is the timer
-     * still asserting?" is the first question about a machine that will not run. */
     for (uint32_t i = 0; i < brain_wire_count(e); ++i) {
       const char *dev = nullptr, *out = nullptr, *in = nullptr;
       brain_wire_info(e, i, &dev, &out, &in);
@@ -504,9 +496,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  /* An exit port the *device module* built reports its code through its fields;
-   * the tool reads "status" out of them, which is the whole point of the field
-   * mechanism: the guest's exit path is a peripheral like any other. */
   int status = o.have_exit_port ? (int)g_exit_status : 0;
   for (uint32_t i = 0; i < brain_device_count(e); ++i) {
     if (std::strcmp(brain_device_id(e, i), "exit")) continue;

@@ -16,6 +16,8 @@ endif()
 file(GLOB_RECURSE BRAIN_CORE_SRCS CONFIGURE_DEPENDS
      core/src/*.cpp
      arch/*.cpp
+     soc/*.cpp
+     machine/*.cpp
      devices/*.cpp
      loaders/*.cpp
      boards/*.cpp
@@ -50,6 +52,8 @@ enable_testing()
 file(GLOB_RECURSE BRAIN_TEST_SRCS CONFIGURE_DEPENDS
      core/tests/*.cpp
      arch/*.cpp
+     soc/*.cpp
+     machine/*.cpp
      devices/*.cpp
      loaders/*.cpp
      boards/*.cpp

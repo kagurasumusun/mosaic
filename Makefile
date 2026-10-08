@@ -41,6 +41,8 @@ rwildcard = $(foreach d,$(wildcard $(1)*/),$(call rwildcard,$(d),$(2)) $(wildcar
 
 ALL_CPP_SRCS := $(sort $(wildcard core/src/*.cpp) \
                      $(call rwildcard,arch/,*.cpp) \
+                     $(call rwildcard,soc/,*.cpp) \
+                     $(call rwildcard,machine/,*.cpp) \
                      $(call rwildcard,devices/,*.cpp) \
                      $(call rwildcard,loaders/,*.cpp) \
                      $(call rwildcard,boards/,*.cpp) \
@@ -50,6 +52,8 @@ ALL_CPP_SRCS := $(sort $(wildcard core/src/*.cpp) \
 TOOL_SRCS  := $(sort $(wildcard tools/*.cpp) $(call rwildcard,arch/,tools/*.cpp))
 TEST_SRCS  := $(sort $(wildcard core/tests/*.cpp) \
                      $(call rwildcard,arch/,test_*.cpp) \
+                     $(call rwildcard,soc/,test_*.cpp) \
+                     $(call rwildcard,machine/,test_*.cpp) \
                      $(call rwildcard,devices/,test_*.cpp) \
                      $(call rwildcard,loaders/,test_*.cpp) \
                      $(call rwildcard,boards/,test_*.cpp) \
