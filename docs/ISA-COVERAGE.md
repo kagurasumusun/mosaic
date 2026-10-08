@@ -1,9 +1,9 @@
 # ISA coverage
 
 Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
-`machines/arm926/cpu/decode_arm.cpp`, `machines/arm926/cpu/decode_thumb.cpp` and the single execution
-engine in `machines/arm926/cpu/interp_arm.cpp`. "Checked" below means a case in
-`machines/arm926/tests/data/corpus.txt` compares this core against a golden emulator for that
+`arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_arm.cpp`, `arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.cpp` and the single execution
+engine in `arch/arm/cpu/classic/arm9/arm926ej-s/cpu/interp_arm.cpp`. "Checked" below means a case in
+`arch/arm/cpu/classic/arm9/arm926ej-s/tests/data/corpus.txt` compares this core against a golden emulator for that
 encoding; 577 cases exist today (410 in ARM state, 167 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
 into the next, 175 multi-instruction sequences, and three self-modifying
@@ -83,9 +83,9 @@ modelled is a power domain: the wait costs one cycle per tick like anything else
 and there is no notion of the core clock stopping, so `cycles` keeps running
 while the guest sleeps - a device's view of time has to keep moving or the
 interrupt that ends the wait could never arrive.  Both are pinned by
-`machines/arm926/tests/test_arm926.cpp::test_wait_for_interrupt()` (the
+`arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp::test_wait_for_interrupt()` (the
 instruction, the wake-up, and the return address) and by
-`boards/tests/test_boards.cpp::test_board_idle_wait()` (a guest that does nothing
+`boards/generic/tests/test_boards.cpp::test_board_idle_wait()` (a guest that does nothing
 but wait, woken by the board's timer on both engines).
 
 ## Thumb state
@@ -135,7 +135,7 @@ loader's bss fill, and `brain_poke*`, which writes into the host buffer behind a
 page. A debugger that patches code while a machine runs is the case that is easy
 to forget - it does not look like a guest store at all.
 
-`machines/arm926/tests/test_arm926.cpp::test_self_modifying_code()` pins the plumbing directly
+`arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp::test_self_modifying_code()` pins the plumbing directly
 (the observer is called for a store to the code page and not for one to a data
 page, a covering store drops the block, a write that straddles a page boundary
 is reported for the page it ends in, a flush clears flag and guard, a poke into
@@ -178,7 +178,7 @@ caches translations agree.
   `PUSH`/`POP` decode on bit 10 alone made the holes execute as a stack op - and
   made the `BKPT` test below it unreachable, since `1011 1110` was already
   claimed.  All three holes now take an undefined instruction; `BKPT` reaches its
-  own operation again.  `machines/arm926/tests/test_arm926.cpp::test_exception_entry()` uses `IT AL`
+  own operation again.  `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp::test_exception_entry()` uses `IT AL`
   (`0xBFE8`) as its Thumb undefined trigger, so the group stays honest.
 * **Jazelle (T16)** is not implemented: no bytecodes are decoded. With
   `cfg.jazelle_trap` set (the default) an `MSR` that would set `CPSR.J`, and a
@@ -205,7 +205,7 @@ caches translations agree.
 
 ## Gaps to close next
 
-1. ~~A code generator for *this* host.~~  Closed: `machines/arm926/jit/emit_x64.cpp` is the
+1. ~~A code generator for *this* host.~~  Closed: `arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/x86_64/emit_x64.cpp` is the
    x86-64 backend, selected by `BRAIN_JIT_BACKEND` on an x86-64 host, so
    `Stats::insns_jit` is non-zero and the corpus replays through generated
    blocks natively; `test_instr --jit` *fails* if the backend retires nothing,
@@ -217,7 +217,7 @@ caches translations agree.
    wrong reading: neither the TRM nor the Microchip SAM9G15 datasheet gives CP15
    a load/store interface - "other instructions like CDP, LDC, STC can cause an
    undefined instruction exception" - which the core already does and now pins.
-   `PG_DEVICE` splitting is pinned by `machines/arm926/tests/test_mmu.cpp`: aligned word accesses
+   `PG_DEVICE` splitting is pinned by `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_mmu.cpp`: aligned word accesses
    are one bus transaction, misaligned ones ascend as single bytes, and `c1.A`
    turns the misaligned case into a pre-bus alignment fault with FAR/DFSR.)
 3. Interrupt *timing*, not delivery.  This item is otherwise closed: the public
@@ -243,7 +243,7 @@ caches translations agree.
 5. Nothing remains of the prefetch side: the `L4` half was closed earlier
    (`Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15 as well as for
    the `MOV`-style PC writes, c1[15] is writable and reads back, and
-   `machines/arm926/tests/test_arm926.cpp` pins both settings), and device-page fetches are closed by
+   `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp` pins both settings), and device-page fetches are closed by
    the model's shape: there is no prefetch pipeline, so a fetch happens exactly once
    per retired instruction and cannot speculative-read a device, while DDI0198's
    "alignment faults are not possible for instruction fetches" holds by
@@ -251,7 +251,7 @@ caches translations agree.
    fetch - the data path has `serror_on_busfault`, the fetch path has no analogue.
 
 Two further notes on the interrupt path: exception *return* is exercised through
-`MOVS PC,R14` (machines/arm926/tests/test_arm926.cpp restores CPSR from SPSR and resumes with it);
+`MOVS PC,R14` (arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp restores CPSR from SPSR and resumes with it);
 the other return idioms are pinned only through the link values they consume -
 `test_interrupt_inputs()` checks that `SUBS PC,R14,#4` would resume exactly on the
 deferred instruction, but does not run the pair back-to-back with a handler
@@ -329,10 +329,10 @@ corpus case that only proves the core does not crash.
   ARM-mode line list cannot express a Thumb callee, and R14 is not compared.  A
   target that is wrong by a factor of two therefore passes; the scaling itself is
   pinned by the hand-assembled words named above and by the branch sweep in
-  `machines/arm926/tests/test_jit_x64.cpp` (which also covers the H bit).  The A2 offset
+  `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_jit_x64.cpp` (which also covers the H bit).  The A2 offset
   scaling (`imm32 = SignExtend(imm24 : H : 0)`, an *even* offset, not a multiple
   of 4) and the H bit are pinned by hand-assembled words in
-  `machines/arm926/tests/test_arm926.cpp::test_load_pc_and_l4`, whose two BLX phases differ only in
+  `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp::test_load_pc_and_l4`, whose two BLX phases differ only in
   insn[24] and land two bytes apart.
 * `LDM`/`STM` register-list effects on the flags and on banked R13/R14, and any
   check of `R15` itself: `test_instr.cpp` compares R0-R12 and lets the branch
@@ -342,7 +342,7 @@ corpus case that only proves the core does not crash.
 
 One interpreter, two code generators, one translation layer.  `BRAIN_JIT_BACKEND`
 (`jit/jit.h`) picks the backend from the *host*: 1 is AArch64
-(`machines/arm926/jit/emit_arm64.h`), 2 is x86-64 (`machines/arm926/jit/emit_x64.cpp`), 0 means neither
+(`arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/aarch64/emit_aarch64.h`), 2 is x86-64 (`arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/x86_64/emit_x64.cpp`), 0 means neither
 is compiled in and `use_jit` degrades to the interpreter, which is what `--jit`
 reports as `insns_jit 0` rather than pretending to have run anything.  On a
 given host exactly one backend can run, because a block is host machine code.
@@ -528,7 +528,7 @@ Four x86 rules do not match ARM's, and each costs at most one instruction:
   address I have to interpret".  Without that word the dispatcher would hand the
   block's partial retirement to the *next* boundary and skip an instruction.
 
-`machines/arm926/tests/test_jit_x64.cpp` is the check, and it is the strongest one available:
+`arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_jit_x64.cpp` is the check, and it is the strongest one available:
 the machine the blocks run on is the machine they were translated for, so there
 is no model in the loop.  It pins the encoder byte by byte, hands a block a
 sentinel-filled shadow buffer and looks at what it wrote (an offset the emitter
@@ -557,7 +557,7 @@ the sweep found the rotate/MVN-immediate rules and the HI/LS condition, and the
 random blocks found the operand-swap and carry-fixup hazards the sequential tests
 never reach.
 
-`tests/test_jit_arm64.py` checks the other backend, and runs as part of `make check`:
+`tests/test_jit_aarch64.py` checks the other backend, and runs as part of `make check`:
 every encoding in `tools/jit_emit --forms` is disassembled and compared to the text it
 is supposed to produce (44 forms, 83 words, 0 wrong); every ARM block the corpus
 contains is emitted and executed on Unicorn's AArch64 model, comparing R0-R12, CPSR

@@ -82,6 +82,7 @@ assembly. Two consequences worth understanding:
 
 ## Third-party code copied into this tree
 
-None. Everything under `src/` and `include/` is written here, including the two
-code generators (`src/modules/arm926/jit/emit_x64.cpp` and `src/modules/arm926/jit/emit_arm64.h`), the
+None. Everything under the active source tree is written here, including the two
+code generators (`arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/x86_64/emit_x64.cpp` and
+`arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/aarch64/emit_aarch64.h`), the
 encoders they emit through, the decoders, and the C API.

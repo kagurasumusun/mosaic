@@ -22,11 +22,11 @@
  * loader a `load_image` call probes for), so a build can contain a peripheral
  * the core has never heard of and a caller can select it by name.  The two
  * adapters the core itself ships - the exit port and the console - are modules
- * in exactly that sense (src/modules/console/, src/modules/exit/).
+ * in exactly that sense (devices/console/, devices/system/exit/).
  *
  * Registration is explicit rather than magically static-initialised, because
  * this library is a static archive and an unreferenced object file inside one is
- * simply not linked in: `register_builtin_modules()` (src/modules/builtin.cpp)
+ * simply not linked in: `register_builtin_modules()` (builtin/builtin.cpp)
  * is the list the core calls, and a build that leaves a module out says so once,
  * in that file, instead of dropping it silently.
  */

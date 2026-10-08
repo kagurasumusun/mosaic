@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * One process-wide list per module kind, filled by `register_builtin_modules()`
- * (src/modules/builtin.cpp) with the modules this build contains.  Lookups are
+ * (builtin/builtin.cpp) with the modules this build contains.  Lookups are
  * linear over a handful of entries and happen at machine construction, never on
  * an execution path: a run loop that had to find a module per instruction would
  * be a design error, not a slow registry.

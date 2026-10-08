@@ -25,16 +25,16 @@
  */
 #include "builtin/builtin.h"
 
-#include "boards/boards.h"
+#include "boards/generic/boards.h"
 #include "brainemu/module.h"
 #include "devices/console/console.h"
-#include "devices/exit/exit.h"
-#include "devices/intc/intc.h"
+#include "devices/system/exit/exit.h"
+#include "devices/interrupt/intc/intc.h"
 #include "devices/timer/timer.h"
-#include "loaders/elf32/elf32.h"
+#include "loaders/elf/elf32/elf32.h"
 #include "loaders/raw/raw.h"
-#include "machines/arm926/arm926.h"
-#include "machines/toy8/toy8.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/arm926.h"
+#include "arch/experimental/toy8/toy8.h"
 
 namespace brain {
 

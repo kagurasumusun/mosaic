@@ -15,12 +15,12 @@ core/include/brainemu/device.h     Device + FuncDevice/BufferDevice
 core/include/brainemu/loader.h     Loader (probe + load) and the image description
 core/include/brainemu/monitor.h    Monitor: an observer the run loop reports to
 core/src/                          the address space, the registry, the machine, the C API
-machines/arm926/                   the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
-machines/toy8/                     a second CPU, in 300 lines, on purpose
+arch/arm/cpu/classic/arm9/arm926ej-s/                   the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
+arch/experimental/toy8/                     a second CPU, in 300 lines, on purpose
 devices/console/                   a device module: a window that collects text
-devices/exit/                      a device module: a store that stops the run
-devices/timer/  devices/intc/      a device with an output, a device with inputs
-loaders/elf32/  loaders/raw/       one image format per directory
+devices/system/exit/                      a device module: a store that stops the run
+devices/timer/  devices/interrupt/intc/      a device with an output, a device with inputs
+loaders/elf/elf32/  loaders/raw/       one image format per directory
 boards/                            named machine presets
 builtin/builtin.cpp                the list of what this build contains
 testkit/test_support.h             what every suite shares (CHECK, LevelLog, ...)
@@ -127,7 +127,7 @@ What a module must guarantee the core:
 
 ## Adding a CPU: five steps
 
-The worked example is `machines/toy8/`, which is deliberately a
+The worked example is `arch/experimental/toy8/`, which is deliberately a
 five-register accumulator machine with no MMU and no JIT: it proves the core
 does not need an ARM to run.
 
@@ -140,10 +140,10 @@ does not need an ARM to run.
    indices of the PC/flags/stack pointer, and whether bit 0 of an entry address
    selects a second instruction set) and a `ModuleInfo`.
 4. **Provide a factory.** A `CpuModule` whose `create()` returns a fresh core.
-5. **Register it.** A directory `machines/<id>/` with a header declaring one
+5. **Register it.** A directory `arch/<arch>/cpu/<family>/<id>/` with a header declaring one
    `register_<id>_module()`, and two lines in `builtin/builtin.cpp`: the include
-   and the call. The build globs `machines/*/` (and `machines/*/cpu/`,
-   `machines/*/jit/`), so no build edit is needed either.
+   and the call. The build discovers sources recursively under `arch/` (including CPU/JIT modules),
+   `arch/**/jit/`), so no build edit is needed either.
 
 Then:
 
@@ -182,7 +182,7 @@ build/brainemu --cpu mycpu --cpu-opt cache_bits=13 prog.bin
 
 The ARM module's keys are `jazelle_trap`, `strict_unpredictable`,
 `serror_on_busfault`, `tlb_bits`, `max_block_insns`, `jit_cache_mb`,
-`jit_fast_mem` and `big_endian_data` (`machines/arm926/arm926.cpp`).
+`jit_fast_mem` and `big_endian_data` (`arch/arm/cpu/classic/arm9/arm926ej-s/arm926.cpp`).
 
 ### Devices and monitors after the machine exists
 
@@ -221,7 +221,7 @@ A device is `devices/<id>/`: one `.cpp` with the device class and its
 `DeviceModule`, one header declaring `register_<id>_module()`, and two lines in
 `builtin/builtin.cpp`. If the device has tests they go in `devices/<id>/tests/`
 or `devices/tests/`, and they are picked up by the same glob that builds every
-other suite. `devices/timer/` (an output), `devices/intc/` (inputs) and
+other suite. `devices/timer/` (an output), `devices/interrupt/intc/` (inputs) and
 `devices/console/` (no interrupts at all, plus the device class its own header
 declares) are the three shapes.
 
@@ -296,7 +296,7 @@ if (!m.init(cfg)) { /* last_error() names the end that is missing */ }
 
 The destination decides the kind: a bare name is a CPU input, a dotted one is a
 device input (`intc.irq0`).  `--board dual-timer` is that machine, and
-`devices/intc/` is the controller in it.
+`devices/interrupt/intc/` is the controller in it.
 
 The wire is resolved by name at the moment a level changes, not when it is
 declared, which is what makes the order above irrelevant - a board may name a
@@ -314,7 +314,7 @@ device works in a machine, in a unit test and in a debugger without a flag.
 
 ### Adding an interrupt controller
 
-`devices/intc/intc.cpp` is the worked example of a device with
+`devices/interrupt/intc/intc.cpp` is the worked example of a device with
 *inputs*, and the shape a real collector (the i.MX28's, an ARM PL190) has: N input
 pins, a mask register, a status/pending pair, and one output that is the OR of the
 unmasked inputs.  The three pieces that make it a device like any other:
@@ -334,7 +334,7 @@ grows registers; nothing in the core changes.
 
 ### Adding a board
 
-All the boards live in `boards/boards.cpp` with `boards/boards.h` declaring
+All the boards live in `boards/generic/boards.cpp` with `boards/generic/boards.h` declaring
 `register_builtin_boards()`, because a board *is* a preset: it has no behaviour of
 its own to grow, and a preset is only meaningful next to the other presets of the
 same build.  A board is the answer to "what machine is this?".  It owns no behaviour - it

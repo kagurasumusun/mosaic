@@ -66,7 +66,7 @@ class Device {
    * outwards needs no code for this.  A device that combines its inputs simply
    * drives its own output from here, and the machine carries that on to whatever
    * the next wire names - an interrupt controller is nothing more than that
-   * (see src/modules/intc/). */
+   * (see devices/interrupt/intc/). */
   virtual u32 input_count() const { return 0; }
   virtual const char* input_name(u32 i) const { (void)i; return ""; }
   virtual void set_input(u32 i, int level) { (void)i; (void)level; }

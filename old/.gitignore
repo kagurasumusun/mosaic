@@ -1,0 +1,15 @@
+# Build output: the Makefile writes everything under build/, CMake under build-cmake/.
+/build/
+/build-cmake/
+*.o
+*.d
+*.a
+
+# Python scratch used by the corpus generator.
+__pycache__/
+*.pyc
+
+# Local scratch and captured traces; the corpus itself is checked in on purpose
+# so `make check` needs no Python environment.
+*.log
+*.trace
