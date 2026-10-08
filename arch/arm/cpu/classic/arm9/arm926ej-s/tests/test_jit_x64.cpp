@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/cpu.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/cache.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/frontend.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"

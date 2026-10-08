@@ -11,7 +11,7 @@
 #include "testkit/test_support.h"
 
 #include "arch/arm/isa/armv5/ops.h"        /* shift_arm(), the primitive both engines share */
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/cpu.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/cache.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"   /* BRAIN_JIT_BACKEND (which host generator is in) */
 

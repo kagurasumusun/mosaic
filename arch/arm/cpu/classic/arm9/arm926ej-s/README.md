@@ -12,4 +12,4 @@ The instruction set is the ARMv5TEJ ISA layer, `arch/arm/isa/armv5/`
 model — reusable by any ARMv5TEJ core), and the AArch32 execution state is
 `arch/arm/execution/aarch32/` (the pipeline step). `Cpu` inherits the
 architectural state (`IsaState`) and forwards the engine entry points into
-those layers; see `cpu/README.md` and `docs/ARCHITECTURE.md`.
+those layers; see `core/README.md` and `docs/ARCHITECTURE.md`.

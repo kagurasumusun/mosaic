@@ -42,7 +42,7 @@
 #ifndef BRAIN_JIT_JIT_H
 #define BRAIN_JIT_JIT_H
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/state.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/state.h"
 
 /* Which host code generator is compiled in, and therefore whether the JIT can
  * retire anything at all:

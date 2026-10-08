@@ -18,7 +18,7 @@
  *   - ARM DDI 0198E 2.2/2.3 (CP15 register file and reset values),
  *   - ARM DDI 0198E 3.x (MMU, fault status encoding).
  */
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/cpu.h"
 
 #include <cstdio>
 #include <cstdlib>

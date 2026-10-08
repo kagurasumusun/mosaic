@@ -127,7 +127,7 @@ arch/arm/execution/aarch32/             the AArch32 execution state
   step.{h,cpp}           the pipeline step (prime cur/npc/regs[15], dispatch)
 arch/arm/cpu/classic/arm9/arm926ej-s/   the ARM926EJ-S core (this module)
   arm926.{h,cpp}       module registration/factory
-  cpu/                 Cpu (inherits IsaState): CP15/MMU/TLB, run loop, env
+  core/                Cpu (inherits IsaState): CP15/MMU/TLB, run loop, env
   jit/                 block cache, IR, translator and host code generators
   tests/               ISA/core/JIT/MMU regression suites and corpus
   tools/               CPU-specific development tools

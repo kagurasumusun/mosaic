@@ -20,7 +20,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/cpu.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"
 
 namespace brain::arm926 {

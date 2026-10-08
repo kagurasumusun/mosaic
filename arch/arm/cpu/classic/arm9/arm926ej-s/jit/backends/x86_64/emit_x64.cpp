@@ -36,7 +36,7 @@
 #include <cstddef>
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/state.h"   /* SH_* : the shift-type numbering the IR uses */
+#include "arch/arm/cpu/classic/arm9/arm926ej-s/core/state.h"   /* SH_* : the shift-type numbering the IR uses */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/abi.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/x86_64/x64_asm.h"
 

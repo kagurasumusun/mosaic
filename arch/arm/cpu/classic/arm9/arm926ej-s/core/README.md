@@ -1,4 +1,4 @@
-# ARM926EJ-S core implementation (`cpu/`)
+# ARM926EJ-S core implementation (`core/`))
 
 The core-specific half of the ARM926EJ-S: CP15 (system control coprocessor)
 and the MMU/TLB, the configuration caches derived from them, the identity
