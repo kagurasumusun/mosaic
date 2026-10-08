@@ -1,4 +1,4 @@
-/* Instruction formatting for the trace/log output.
+/* brain-emu -- ARMv5TEJ ISA: the disassembler and the name tables.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Both formatters drive the *real* decoders (decode_arm.cpp / decode_thumb.cpp)
@@ -6,17 +6,18 @@
  * emulator executes an instruction, the trace names the same instruction -- and
  * avoids a second, drifting hand-written disassembler.  Anything the decoder
  * rejects prints as `.word`/`.short`, which is also the most useful thing to
- * see in a trace.
+ * see in a trace.  cond_name/mode_name/exc_name live here too: they are pure
+ * tables over the ISA's own enums (state.h), used by the trace and by tools.
  */
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
+#include "arch/arm/isa/armv5/decode.h"
+#include "arch/arm/isa/armv5/decode_thumb.h"
+#include "arch/arm/isa/armv5/ops.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 namespace {
 
 struct Sink {
@@ -352,4 +353,31 @@ void format_thumb_insn(u32 hw, char* out, size_t n) {
   }
 }
 
-}  // namespace brain::arm926
+
+/* ------------------------------------------------------ name tables ----
+ * Pure tables over the ISA's own enums; the trace and tools print with them. */
+
+const char* cond_name(u32 c) {
+  static const char* n[16] = {"EQ","NE","CS","CC","MI","PL","VS","VC","HI","LS",
+                              "GE","LT","GT","LE","AL","NV"};
+  return n[c & 15];
+}
+const char* mode_name(u32 m) {
+  switch (m & CPSR_MODE_M) {
+    case MODE_USR: return "USR";
+    case MODE_FIQ: return "FIQ";
+    case MODE_IRQ: return "IRQ";
+    case MODE_SVC: return "SVC";
+    case MODE_ABT: return "ABT";
+    case MODE_UND: return "UND";
+    case MODE_SYS: return "SYS";
+    default: return "???";
+  }
+}
+const char* exc_name(u32 e) {
+  static const char* n[EXC_COUNT + 1] = {"none", "reset", "undef", "swi",
+                                        "pabort", "dabort", "irq", "fiq"};
+  return e <= EXC_COUNT ? n[e] : "?";
+}
+
+}  // namespace brain::arm::isa::armv5

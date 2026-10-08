@@ -1,4 +1,4 @@
-/* brain-emu: ARM (32-bit) instruction decoder -- ARMv5TEJ.
+/* brain-emu -- ARMv5TEJ ISA: ARM (32-bit) instruction decoder.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * One decoder serves both engines: the interpreter executes what it returns
@@ -8,12 +8,12 @@
  *
  * Field layout follows ARM DDI 0100I chapter A5 (ARM instruction set).
  */
-#ifndef BRAINEMU_CORE_DECODE_H
-#define BRAINEMU_CORE_DECODE_H
+#ifndef BRAIN_ISA_ARMV5_DECODE_H
+#define BRAIN_ISA_ARMV5_DECODE_H
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/state.h"
+#include "arch/arm/isa/armv5/state.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 
 enum ArmOp : u32 {
   AOP_UNDEF = 0,      /* not a valid ARM926EJ-S encoding                 */
@@ -108,6 +108,6 @@ struct ArmDec {
  * Undefined Instruction exception).  AOP_SATISFY means the condition failed. */
 u32 decode_arm(u32 insn, ArmDec* d);
 
-}  // namespace brain::arm926
+}  // namespace brain::arm::isa::armv5
 
 #endif  /* BRAINEMU_CORE_DECODE_H */

@@ -8,13 +8,15 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"       /* CycleModel */
+#include "arch/arm/isa/armv5/ops.h"                /* CycleModel */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/abi.h"        /* SH_*: the shadow layout both sides agree on */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/x86_64/emit_x64.h"   /* the x86-64 backend's entry point + meta      */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/frontend.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"        /* BRAIN_JIT_BACKEND, JITSLOW_* */
 
 namespace brain::arm926 {
+
+using namespace brain::arm::isa::armv5;
 
 /* When set, `jit_cache_enter` calls this instead of the arena code.  It lets the
  * dispatcher and the copy-in/copy-back run on hosts with no AArch64 execution;

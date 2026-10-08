@@ -26,10 +26,10 @@
  */
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
+#include "arch/arm/isa/armv5/decode_thumb.h"
+#include "arch/arm/isa/armv5/ops.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 
 namespace {
 
@@ -445,4 +445,4 @@ u32 decode_thumb(u32 hw, ArmDec* d) {
   return 0;
 }
 
-}  // namespace brain::arm926
+}  // namespace brain::arm::isa::armv5

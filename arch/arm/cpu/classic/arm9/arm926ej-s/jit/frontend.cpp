@@ -11,13 +11,17 @@
 
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"          /* CycleModel: the cycle charge rides in the IR */
+#include "arch/arm/isa/armv5/decode.h"
+#include "arch/arm/isa/armv5/decode_thumb.h"
+#include "arch/arm/isa/armv5/ops.h"               /* CycleModel: the cycle charge rides in the IR */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/backends/aarch64/emit_aarch64.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"      /* jit_fast_mem_ok: may a block access memory?  */
 
 namespace brain::arm926 {
+
+/* The frontend translates what the ISA layer decodes: the decoders, the ArmDec
+ * record and the opcode enums are brain::arm::isa::armv5's. */
+using namespace brain::arm::isa::armv5;
 
 namespace {
 

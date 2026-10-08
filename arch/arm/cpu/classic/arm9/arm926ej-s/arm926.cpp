@@ -14,6 +14,8 @@
 
 namespace brain::arm926 {
 
+using namespace brain::arm::isa::armv5;
+
 const CpuInfo& info() {
   static const CpuInfo kInfo = [] {
     CpuInfo i;
@@ -162,9 +164,16 @@ bool Core::set_option(const char* key, const char* value) {
   auto on = [&]() -> bool {
     return !value || !*value || std::strcmp(value, "0") != 0;
   };
-  if (!std::strcmp(key, "jazelle_trap")) { cpu_.cfg.jazelle_trap = on(); return true; }
+  /* jazelle_trap/strict_unpredictable are behaviour policy the ISA engine
+   * reads (IsaState), so the option updates both the config and the mirror
+   * the engine sees. */
+  if (!std::strcmp(key, "jazelle_trap")) {
+    cpu_.cfg.jazelle_trap = on(); cpu_.jazelle_trap = on() ? 1u : 0u; return true;
+  }
   if (!std::strcmp(key, "strict_unpredictable")) {
-    cpu_.cfg.strict_unpredictable = on(); return true;
+    cpu_.cfg.strict_unpredictable = on();
+    cpu_.strict_unpredictable = on() ? 1u : 0u;
+    return true;
   }
   if (!std::strcmp(key, "serror_on_busfault")) {
     cpu_.cfg.serror_on_busfault = on(); return true;

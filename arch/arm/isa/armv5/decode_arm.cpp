@@ -1,4 +1,4 @@
-/* brain-emu: ARM (32-bit, ARMv5TEJ) decoder.
+/* brain-emu -- ARMv5TEJ ISA: ARM (32-bit) decoder.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * One decoder serves both engines: the interpreter executes what it returns,
@@ -24,9 +24,9 @@
  *  bits[27:25]==110           LDC STC MCR MRC (MCR2/MRC2 need opcode1!=0)
  *  bits[27:24]==1111          SWI
  */
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode.h"
+#include "arch/arm/isa/armv5/decode.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 
 #define BF(insn, hi, lo) (((insn) >> (lo)) & ((1u << ((hi) - (lo) + 1)) - 1u))
 #define BIT(insn, n) BF(insn, n, n)
@@ -429,4 +429,4 @@ u32 decode_arm(u32 insn, ArmDec* d) {
 #undef BF
 #undef BIT
 
-}  // namespace brain::arm926
+}  // namespace brain::arm::isa::armv5

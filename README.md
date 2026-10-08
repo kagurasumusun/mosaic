@@ -65,8 +65,25 @@ rewrite.
 
 ## Current implementation
 
-The first real CPU core is the ARM926EJ-S. Its interpreter, MMU/CP15 model,
-translation/JIT, tests and tools live together under
+The first real CPU core is the ARM926EJ-S, and it is layered the way the
+naming rule describes:
+
+* `arch/arm/isa/armv5/` is the ARMv5TEJ **instruction set architecture** —
+  the ARM and Thumb decoders, the execution semantics (the interpreter
+  engine), the barrel shifter, the PSR/flag/mode model, register banking and
+  the exception model. It is a real, separable layer: it knows nothing about
+  any core, and runs against an architectural state (`IsaState`) plus an
+  environment contract (`IsaEnv`) a core fills in.
+* `arch/arm/execution/aarch32/` is the **AArch32 execution state** — the
+  pipeline step that primes `cur`/`npc`/`regs[15]` and dispatches to the
+  state the T bit selects.
+* `arch/arm/cpu/classic/arm9/arm926ej-s/` is the **core** — CP15, the
+  MMU/TLB, the cache/alignment/endianness configuration, the run loop, the
+  JIT, and the `IsaEnv` the engine calls through. `Cpu` inherits `IsaState`
+  and forwards the engine entry points, so the interpreter, the JIT and the
+  tests all drive one implementation.
+
+The ARM926EJ-S's MMU/CP15 model, JIT, tests and tools live under
 `arch/arm/cpu/classic/arm9/arm926ej-s/`.
 
 The synthetic `toy8` CPU remains available as a module-seam test, but is now

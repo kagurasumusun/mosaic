@@ -1,23 +1,41 @@
-/* brain-emu -- ARM926EJ-S (ARMv5TEJ) core: state layout + hot paths.
+/* brain-emu -- ARM926EJ-S core: the core-specific state, on top of the ISA.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
- * This header is the ABI between the interpreter, the JIT dispatcher, the IR
- * and both code generators.  Generated host code touches guest state only
- * through offsetof(Cpu, field) so the layout can evolve as long as the
- * invariants below hold:
+ * This header is the ARM926EJ-S *core*.  The instruction set architecture it
+ * executes lives one layer down, in arch/arm/isa/armv5/ (the ARMv5TEJ ISA:
+ * decoders, execution semantics, PSR/flags, banking, the exception model),
+ * and the execution state it runs in lives in arch/arm/execution/aarch32/
+ * (the pipeline step, the ARM/Thumb dispatch).  What is left here is exactly
+ * what makes this core this core:
  *
- *   - the "hot" block at the top of the struct is POD and stays within a
- *     couple of cache lines;
- *   - Rn of the *current* mode is always `cpu->regs[n]` (banked registers are
- *     swapped in/out on mode change, which keeps every data-path access a
- *     single base+disp load);
- *   - N/Z/C may live in the host flag register while `jit_flags &
- *     JITF_HOST_NZC` is set; V is *always* materialised in `cpu->vflag`.
- *     Rationale: ARM leaves V untouched for shifts/MOV/MUL while x86/AArch64
- *     logical and shift ops destroy it -- mirroring V in memory removes every
- *     "preserve OF" dance from the code generators.
+ *   - CP15, the system control coprocessor: its register shadow, the SCTLR
+ *     bits, the ID/cache-type constants, and the write side effects (TLB
+ *     ops, cache ops, the translation-environment change notification);
+ *   - the MMU: the two-level ARMv5 translation, the TLB, the domain/AP
+ *     checks, the fetch translation cache;
+ *   - the configuration caches derived from CP15 (mmu_on, align_chk, be_data,
+ *     ttb, domain) and the identity RAM fast-path window;
+ *   - the run loop: budgets, halting, stop requests, interrupt lines, the
+ *     JIT dispatcher's control plane, and the trace;
+ *   - the environment the ISA engine runs against: `env` (IsaEnv) is this
+ *     core's answer to every callback the engine makes.
  *
- * References: ARM DDI 0100I (ARM ARM v5), ARM DDI 0198E (ARM926EJ-S TRM).
+ * Cpu inherits the architectural state (`struct Cpu : public IsaState`), so
+ * the engine, this core's own code, the JIT helpers and the tests all operate
+ * on one object with one register file: `cpu.regs`, `cpu.cpsr`, `cpu.exec_arm`
+ * and friends resolve exactly as they always have, while the implementations
+ * live in the ISA layer.  The engine entry points below are thin forwarders
+ * into that layer (the JIT's out-of-line helpers call them, so a bailed-out
+ * instruction and an interpreted one are the same code).
+ *
+ * Layout: the architectural hot fields (register file, pipeline view, CPSR +
+ * V mirror, counters, pending exception) sit at the top of the base, the
+ * bank array follows, and the core's own fields come after - the JIT
+ * dispatcher copies the architectural part per block entry (by field name;
+ * nothing is addressed by offset - generated code talks to the shadow buffer,
+ * jit/abi.h).
+ *
+ * References: ARM DDI 0198E (ARM926EJ-S TRM); ARM DDI 0100I (ARM ARM v5).
  */
 #ifndef BRAINEMU_CORE_STATE_H
 #define BRAINEMU_CORE_STATE_H
@@ -29,134 +47,22 @@
 #include "brainemu/cpu.h"
 #include "brainemu/types.h"
 
+#include "arch/arm/execution/aarch32/step.h"
+#include "arch/arm/isa/armv5/decode.h"
+#include "arch/arm/isa/armv5/exceptions.h"
+#include "arch/arm/isa/armv5/interp.h"
+#include "arch/arm/isa/armv5/memory.h"
+#include "arch/arm/isa/armv5/state.h"
+
 namespace brain::arm926 {
 
-struct ArmDec;
-
-/* Barrel-shifter result: value plus the carry the shift produced. */
-/* SH_RRX is not an encoding: the decoder substitutes it for the ROR field whose
- * amount is zero, which ARM state spells as RRX. */
-enum : u32 { SH_LSL = 0, SH_LSR = 1, SH_ASR = 2, SH_ROR = 3, SH_RRX = 4 };
-struct Shifted {
-  u32 val;
-  u32 carry;
-};
-
-/* ================================================================ modes == */
-
-enum : u32 {
-  MODE_USR = 0x10,
-  MODE_FIQ = 0x11,
-  MODE_IRQ = 0x12,
-  MODE_SVC = 0x13,
-  MODE_ABT = 0x17,
-  MODE_UND = 0x1B,
-  MODE_SYS = 0x1F,
-};
-
-enum : u32 {
-  BANK_USR = 0,   /* USR + SYS  : r0-r14          */
-  BANK_FIQ,       /* r8_fiq-r14_fiq               */
-  BANK_IRQ,       /* r13_irq, r14_irq             */
-  BANK_SVC,       /* r13_svc, r14_svc             */
-  BANK_ABT,       /* r13_abt, r14_abt             */
-  BANK_UND,       /* r13_und, r14_und             */
-  BANK_COUNT = 6,
-};
-
-/* ================================================================= CPSR == */
-
-enum : u32 {
-  CPSR_T   = 1u << 5,   /* Thumb state                                    */
-  CPSR_F   = 1u << 6,   /* FIQ disable                                    */
-  CPSR_I   = 1u << 7,   /* IRQ disable                                    */
-  CPSR_A   = 1u << 8,   /* alignment check enable                         */
-  CPSR_E   = 1u << 9,   /* BE8: big-endian data                           */
-  CPSR_J   = 1u << 24,  /* Jazelle                                        */
-  CPSR_Q   = 1u << 27,  /* sticky overflow (ARMv5E)                       */
-  CPSR_V   = 1u << 28,
-  CPSR_C   = 1u << 29,
-  CPSR_Z   = 1u << 30,
-  CPSR_N   = 1u << 31,
-};
-
-enum : u32 {
-  CPSR_FLAGS   = 0xF0000000u,
-  CPSR_NVQC    = 0xF8000000u,
-  CPSR_MODE_M  = 0x0000001Fu,
-  CPSR_CTRL_M  = 0x000000F0u,
-  /* What "MSR CPSR, #all" may write on ARM926EJ-S (ARMv5 B2.9.4). */
-  CPSR_WRITABLE = CPSR_NVQC | CPSR_CTRL_M | CPSR_MODE_M | CPSR_J,
-};
-
-/* Field-select mask nibbles used by MSR{cond} <CPSR|SPSR>_<fields>. */
-enum : u32 { MSR_C = 1u << 0, MSR_X = 1u << 1, MSR_S = 1u << 2, MSR_F = 1u << 3 };
-
-enum : u32 {
-  COND_EQ = 0x0, COND_NE = 0x1, COND_CS = 0x2, COND_CC = 0x3,
-  COND_MI = 0x4, COND_PL = 0x5, COND_VS = 0x6, COND_VC = 0x7,
-  COND_HI = 0x8, COND_LS = 0x9, COND_GE = 0xA, COND_LT = 0xB,
-  COND_GT = 0xC, COND_LE = 0xD, COND_AL = 0xE, COND_NV = 0xF,
-};
-
-enum : u32 {
-  VEC_RESET = 0x00, VEC_UNDEF = 0x04, VEC_SWI = 0x08, VEC_PABORT = 0x0C,
-  VEC_DABORT = 0x10, VEC_RSVD = 0x14, VEC_IRQ = 0x18, VEC_FIQ = 0x1C,
-  VEC_HIGH_BASE = 0xFFFF0000u,
-};
-
-enum : u32 {
-  EXC_NONE = 0, EXC_RESET, EXC_UNDEF, EXC_SWI, EXC_PABORT, EXC_DABORT,
-  EXC_IRQ, EXC_FIQ, EXC_COUNT,
-};
-
-/* Fault status: the ARM926EJ-S (ARMv4/v5 style) encoding of TRM table 3-9.
- * FSR[7:4] = domain, FSR[11] = fault came from a second level (page) table,
- * FSR[10] = write access, FSR[9] = section translation fault is *not* used
- * here; bit 8 = external abort on linefill (unused). */
-enum : u32 {
-  FS926_ALIGN         = 0x01, /* b00x1, alignment                             */
-  FS926_EXT_LINEFILL  = 0x08, /* b10x0, external abort on linefill            */
-  FS926_TRANS_SECTION = 0x05, /* b0101, translation fault, first level         */
-  FS926_TRANS_PAGE    = 0x07, /* b0111, translation fault, second level        */
-  FS926_DOMAIN_SECT   = 0x09, /* b1001, domain fault, first level             */
-  FS926_DOMAIN_PAGE   = 0x0B, /* b1011, domain fault, second level            */
-  FS926_PERM_SECT     = 0x0D, /* b1101, permission fault, first level          */
-  FS926_PERM_PAGE     = 0x0F, /* b1111, permission fault, second level         */
-  FS926_EXT_TRANS_L1  = 0x0C, /* b1100, external abort on first level table walk*/
-  FS926_EXT_TRANS_L2  = 0x0E, /* b1110, external abort on second level walk     */
-};
-enum : u32 {
-  /* TRM table 2-15: the FSR is only [3:0] fault type and [7:4] domain - bit
-   * [8] "always reads as zero, writes ignored" and [31:9] UNP/SBZ, so there
-   * is no write bit and no level bit here (the level is part of the 4-bit
-   * fault type, table 3-9).  Nothing else may be OR-ed into what the guest
-   * reads back. */
-  FSR_DOMAIN_SHIFT = 4,
-};
+namespace armv5 = brain::arm::isa::armv5;
+namespace aarch32 = brain::arm::execution::aarch32;
 
 /* BE32 (CP15 c1[B]) swaps the byte order inside a word: a halfword access
  * therefore sees its two bytes in the opposite order.  Keep the result to 16
  * bits - the shift-then-or form would otherwise leak the upper half. */
 ALWAYS_INLINE u32 be32_swap16(u32 v) { return ((v >> 8) | (v << 8)) & 0xFFFFu; }
-
-/* Memory-access flags.  The fault kind is derived from these: MF_FETCH raises
- * a prefetch abort, everything else a data abort.  MF_UNAL marks an access
- * that must never take an alignment fault: byte accesses and instruction
- * fetches, the two exemptions of TRM 3.5.1.  (Word and halfword accesses keep
- * their addresses even when CP15 c1[A] is clear, so they always reach the bus
- * with the effective address and no rotate is modelled - see
- * docs/ISA-COVERAGE.md.) */
-enum : u32 {
-  MF_WRITE = 1u << 0,
-  MF_FETCH = 1u << 1,
-  MF_SWP   = 1u << 2,   /* read-modify-write: needs read *and* write perms  */
-  MF_UNAL  = 1u << 3,
-  MF_SZ_M  = 3u << 4,
-  MF_SZ8   = 0u << 4,
-  MF_SZ16  = 1u << 4,
-  MF_SZ32  = 2u << 4,
-};
 
 enum : u32 {
   C0_IDCODE = 0,   /* c0,0,0: ID code, table 2-5                            */
@@ -276,8 +182,8 @@ struct CpuConfig {
 
 /* The counters are the core's `CpuStats` (they are what the C API reports),
  * spelled `Stats` here because that is what the rest of this module calls
- * them.  The exception ids are this module's, which is why the array is
- * generic-sized (16) and only EXC_COUNT entries are ever used. */
+ * them.  The exception ids are the ISA's (armv5::EXC_*), which is why the
+ * array is generic-sized (16) and only EXC_COUNT entries are ever used. */
 using Stats = CpuStats;
 
 /* ================================================================== Cpu === = */
@@ -289,78 +195,55 @@ struct Cp15Shadow {
   u32 c[CPCOUNT];
 };
 
-struct Cpu {
+struct Cpu : public armv5::IsaState {
   /* Everything a Cpu owns is released here: the TLB table, and - through
    * `jit_enable(false)` - the JIT's code cache and its arena.  `init` may run
    * more than once on the same object (a machine is rebuilt after a reset), so
    * the TLB table is replaced rather than appended to. */
   ~Cpu();
 
-  /* ------------------------- hot: shared with generated code ---------- */
-  u32 regs[16];     /* +0x00  R15 = pipeline value (cur+8 ARM / cur+4 T)   */
-  u32 npc;          /* +0x40  address of the next instruction to execute    */
-  u32 cur;          /* +0x44  address of the instruction being executed      */
-  u32 insn;         /* +0x48  instruction word (SWI/undef reporting)         */
-  u32 cpsr;         /* +0x4C                                              */
-  /* CPSR.T (bit 5) is not writable by MSR, but it must always mirror the live
-   * state: MRS reads it, an exception entry saves it into SPSR_<mode>, and the
-   * matching return restores the state from there.  Every state change in the
-   * interpreter therefore goes through set_thumb(). */
-  ALWAYS_INLINE void set_thumb(int t) {
-    thumb = (u32)t;
-    cpsr = (cpsr & ~CPSR_T) | (t ? CPSR_T : 0u);
-  }
-  u32 vflag;        /* +0x50  V flag (always materialised)                 */
-  u32 thumb;        /* +0x54  1 while in Thumb state                       */
-  u32 halted;       /* +0x58  low-power: waiting for an interrupt           */
-  u32 exit_req;     /* +0x5C  stop the run loop ASAP                        */
-  u64 cycles;       /* +0x60                                              */
-  u64 insns;        /* +0x68                                              */
-  u32 jit_flags;    /* +0x70  JITF_* maintained by generated code           */
-  u32 trans_gen;    /* +0x74  bumped on any translation-visible change;     */
-                    /*        every block stores the gen it was built with   */
-  Bus* bus;         /* +0x78  -> &bus_obj (kept so generated code has one
-                     *        indirection slot if the bus is ever relocated)  */
-  Jit* jit;         /* +0x80  null when the JIT is off                      */
-  u8* ram;          /* +0x88  flat RAM base (identity fast path)            */
-  u32 ram_gbase;    /* +0x90                                              */
-  u32 ram_mask;     /* +0x94  power-of-two size - 1 (0 => no fast path)     */
-  u32 ram_fast;     /* +0x98  MMU off and RAM window covers the address     */
-  u32 exc;          /* +0x9C  exception currently being taken               */
-  u32 exc_fsr;      /* +0xA0  value destined for DFSR/RFSR                  */
-  u32 exc_far;      /* +0xA4  value destined for FAR                       */
-  u32 smc_watch;    /* +0xA8  stores must be checked against code pages      */
-  TlbEntry* tlb_d;  /* +0xB0                                              */
-  TlbEntry* tlb_i;  /* +0xB8                                              */
-  u32 tlb_mask;     /* +0xC0                                              */
-  u32 mmu_on;       /* +0xC4                                              */
-  u32 align_chk;    /* +0xC8  (SCTLR.A | CPSR.A) enabled alignment checks   */
-  u32 be_data;      /* +0xCC  swap data accesses (BE8)                     */
-  u32 priv;         /* +0xD0  1 when mode != USR (for AP checks)           */
-  u32 domain;       /* +0xD4  CP15 c3 cache                                 */
-  u32 ttb;          /* +0xD8  CP15 c2 cache (bits [31:14])                 */
-  u32 cp15c1;       /* +0xDC  CP15 c1 cache                                 */
-  u32 jit_entry;    /* +0xE0  host addr of the block for npc (dispatcher)   */
-  u32 jit_slow;     /* +0xE4  reason the dispatcher was re-entered          */
-  u32 pad_hot[2];   /* +0xE8                                              */
-  /* --------------------------- end of hot region --------------------- */
+  /* ------------- core state (the architectural half is the base) --------
+   * The fields the JIT dispatcher touches per block entry: the architectural
+   * ones (regs, cpsr, vflag, ...) are inherited from IsaState; these are the
+   * core's own. */
+  u32 halted;       /* low-power: waiting for an interrupt                  */
+  u32 exit_req;     /* stop the run loop ASAP                               */
+  u32 jit_flags;    /* JITF_* maintained by generated code                  */
+  u32 trans_gen;    /* bumped on any translation-visible change;            */
+                    /* every block stores the gen it was built with         */
+  Bus* bus;         /* -> &bus_impl                                         */
+  Jit* jit;         /* null when the JIT is off                             */
+  u8* ram;          /* flat RAM base (identity fast path)                   */
+  u32 ram_gbase;
+  u32 ram_mask;     /* power-of-two size - 1 (0 => no fast path)            */
+  u32 ram_fast;     /* MMU off and RAM window covers the address            */
+  u32 smc_watch;    /* stores must be checked against code pages           */
+  TlbEntry* tlb_d;
+  TlbEntry* tlb_i;
+  u32 tlb_mask;
+  u32 mmu_on;
+  u32 align_chk;    /* (SCTLR.A | CPSR.A) enabled alignment checks          */
+  u32 be_data;      /* swap data accesses (BE8)                            */
+  u32 domain;       /* CP15 c3 cache                                        */
+  u32 ttb;          /* CP15 c2 cache (bits [31:14])                        */
+  u32 cp15c1;       /* CP15 c1 cache                                        */
+  u32 jit_entry;    /* host addr of the block for npc (dispatcher)          */
+  u32 jit_slow;     /* reason the dispatcher was re-entered                 */
 
-  struct Bank {
-    u32 r[16];
-    u32 spsr;
-  };
-  Bank bank[BANK_COUNT];
-  u32 bank_idx;
-  Cp15Shadow cp15;      /* see below: plain c[] array + derived bits */
+  Cp15Shadow cp15;
   u32 irq_line, fiq_line;
-  u32 exectrap;         /* pending exception that aborted an instruction */
-  TlbEntry* fetch_e;    /* validated translation of `cur` for this cycle   */
-  u32 fetch_e_vpn;      /* page it belongs to (invalidation guard)         */
+  TlbEntry* fetch_e;    /* validated translation of `cur` for this cycle      */
+  u32 fetch_e_vpn;      /* page it belongs to (invalidation guard)            */
+
+  /* The ISA engine's view of this core: the environment contract the engine
+   * (arch/arm/isa/armv5/interp*.cpp) calls through.  Wired once, in the
+   * constructor, to this object. */
+  armv5::IsaEnv env;
 
   CpuConfig cfg;
   Stats stats;
   Bus bus_impl;       /* the address space; `bus` points here (the JIT keeps a
-                         pointer slot so a device model can be swapped in)     */
+                         pointer slot so a device model can be swapped in)   */
   TlbEntry* tlb_store = nullptr;  /* owned; see ~Cpu */
   u32 trace_en;
   u32 running;
@@ -370,26 +253,10 @@ struct Cpu {
   u64 syscall_count;
 
   /* ------------------------------------------------------- methods --- */
-  Cpu() { memset((void*)this, 0, sizeof(*this)); }
-
-  u32 reg(u32 n) const { return regs[n]; }
-  u32 pc_pipeline() const { return regs[15]; }
-  u32 mode() const { return cpsr & CPSR_MODE_M; }
-  bool thumb_mode() const { return thumb != 0; }
-  u32 cur_insn_size() const { return thumb ? 2 : 4; }
-  u32 carry() const { return (cpsr >> 29) & 1; }
-  u32 overflow() const { return (cpsr >> 28) & 1; }
-  u32 qflag() const { return (cpsr >> 27) & 1; }
-
-  void set_reg(u32 n, u32 val);            /* handles PC writes + banking   */
-  void set_cpsr_flags(u32 n, u32 z, u32 c, u32 vv);
-  void set_nz(u32 res);
-  /* Q (bit 27) is sticky on ARMv5E-V7: the saturating instructions may set it, and
-   * the only thing that clears it is MSR.  So the interpreter's saturating helpers
-   * use set_q() to raise it and never write 0.  MSR is the clearer, and it already
-   * reaches bit 27 through its own F-field mask (see Cpu::apply_msr). */
-  void set_q() { cpsr |= CPSR_Q; }
-  bool condition_true(u32 cond) const;
+  Cpu() { memset((void*)this, 0, sizeof(*this)); init_env(); }
+  /* Wire `env` to this object (the IsaEnv callbacks are static functions
+   * taking the Cpu* as their context). */
+  void init_env();
 
   /* lifecycle */
   bool init(const CpuConfig& c);          /* owns its own bus (standalone use) */
@@ -409,48 +276,59 @@ struct Cpu {
   bool jit_enable(bool on);
   bool jit_enabled() const { return jit != nullptr; }
 
-  /* interpreter entry points (also used as the JIT's out-of-line helper) */
-  void exec_arm(u32 insn);
-  void exec_arm_dec(const ArmDec& d);    /* shared by both states            */
-  void exec_thumb(u32 hw);                 /* Thumb state, one halfword        */
-  void fetch_and_execute();                /* one instruction, both states      */
+  /* ------------------------- ISA engine entry points -------------------
+   * Thin forwarders into the ISA layer and the AArch32 execution state, so
+   * the JIT's out-of-line helpers and the tests name exactly one
+   * implementation of each rule.  The architectural accessors (set_thumb,
+   * condition_true, set_nz, set_cpsr_flags, set_q, set_reg, switch_mode,
+   * flush_bank, load_bank, bank_for_mode, mode, reg, pc_pipeline, carry,
+   * overflow, qflag, insn_size, pc_bias, ...) are inherited from IsaState. */
+  void exec_arm(u32 insn_word) { armv5::exec_arm(*this, insn_word, env); }
+  void exec_arm_dec(const armv5::ArmDec& d) { armv5::exec_arm_dec(*this, d, env); }
+  void exec_thumb(u32 hw) { armv5::exec_thumb(*this, hw, env); }
+  void fetch_and_execute() { aarch32::fetch_and_execute(*this, env); }
+  armv5::Shifted arm_op2(const armv5::ArmDec& d) const {
+    return armv5::arm_op2(*this, d);
+  }
+  u32 arm_ldst_offset(const armv5::ArmDec& d) const {
+    return armv5::arm_ldst_offset(*this, d);
+  }
+  void arm_block_addrs(const armv5::ArmDec& d, u32 n, u32* start, u32* wb) const {
+    armv5::arm_block_addrs(*this, d, n, start, wb);
+  }
+  void restore_cpsr_from_spsr() { armv5::restore_cpsr_from_spsr(*this, env); }
+  void load_pc(u32 value, bool from_load = false) {
+    armv5::load_pc(*this, value, from_load);
+  }
+  void apply_msr(u32 mask, u32 val, bool spsr) {
+    armv5::apply_msr(*this, mask, val, spsr, env);
+  }
 
-  /* Pipeline rule, maintained by Cpu::fetch_and_execute and mirrored by the
-   * JIT at each block entry: `cur` is the address of the instruction being
-   * executed, `npc` the address of the next one, and regs[15] the value the
-   * executing instruction reads when it names R15 (cur+8 in ARM state, cur+4
-   * in Thumb state -- A2.4.3). */
-  u32 insn_size() const;                   /* 4 in ARM state, 2 in Thumb      */
-  u32 pc_bias() const;                     /* 8 in ARM state, 4 in Thumb      */
+  /* Instruction fetch through the validated-translation cache (the slow path
+   * is the MMU + bus; the fast path is the TLB entry's host pointer). */
   ALWAYS_INLINE u32 fetch16(GAddr a);
   ALWAYS_INLINE u32 fetch32(GAddr a);
 
-  /* exceptions */
+  /* exceptions (core side: FSR/FAR into CP15, accounting, JIT notification;
+   * the architectural half is armv5::enter_exception) */
   void take_exception(u32 e);          /* raised by the instruction at `cur` */
   void take_interrupt(u32 e);          /* taken in front of `npc`            */
-  u32 exception_lr_offset(u32 e) const;
-  void raise_undef(u32 insn);
-  void raise_swi(u32 imm);
-  void raise_dabort(u32 fs, u32 va);
-  void raise_pabort(u32 fs);
+  void enter_exception(u32 e, u32 vector, u32 mode, u32 lr);
+  void raise_undef(u32 i) { armv5::raise_undef(*this, i); }
+  void raise_swi(u32 imm) { armv5::raise_swi(*this, imm); }
+  void raise_dabort(u32 fs, u32 va) { armv5::raise_dabort(*this, env, fs, va); }
+  void raise_pabort(u32 fs) { armv5::raise_pabort(*this, env, fs); }
   bool check_interrupts();
   bool prepare_fetch();                    /* prefetch abort check for `cur`  */
 
-  /* mode/bank switching */
-  void switch_mode(u32 new_mode);
-  void flush_bank();
-  void load_bank(u32 idx);
-  u32 bank_for_mode(u32 mode) const;
-  void enter_exception(u32 e, u32 vector, u32 mode, u32 lr);
-
   /* memory (MMU-aware; also used by JIT helper calls) */
-  u32 read8(u32 a) { return mem_read(a, 1, MF_SZ8); }
-  u32 read16(u32 a) { return mem_read(a, 2, MF_SZ16); }
-  u32 read32(u32 a) { return mem_read(a, 4, MF_SZ32); }
-  u32 read32_fetch(u32 a) { return mem_read(a, 4, MF_SZ32 | MF_FETCH); }
-  void write8(u32 a, u32 val) { mem_write(a, val, 1, MF_WRITE | MF_SZ8); }
-  void write16(u32 a, u32 val) { mem_write(a, val, 2, MF_WRITE | MF_SZ16); }
-  void write32(u32 a, u32 val) { mem_write(a, val, 4, MF_WRITE | MF_SZ32); }
+  u32 read8(u32 a) { return mem_read(a, 1, armv5::MF_SZ8); }
+  u32 read16(u32 a) { return mem_read(a, 2, armv5::MF_SZ16); }
+  u32 read32(u32 a) { return mem_read(a, 4, armv5::MF_SZ32); }
+  u32 read32_fetch(u32 a) { return mem_read(a, 4, armv5::MF_SZ32 | armv5::MF_FETCH); }
+  void write8(u32 a, u32 val) { mem_write(a, val, 1, armv5::MF_WRITE | armv5::MF_SZ8); }
+  void write16(u32 a, u32 val) { mem_write(a, val, 2, armv5::MF_WRITE | armv5::MF_SZ16); }
+  void write32(u32 a, u32 val) { mem_write(a, val, 4, armv5::MF_WRITE | armv5::MF_SZ32); }
 
   ALWAYS_INLINE u32 mem_read(u32 addr, u32 size, u32 flags);
   ALWAYS_INLINE void mem_write(u32 addr, u32 val, u32 size, u32 flags);
@@ -467,11 +345,19 @@ struct Cpu {
   TlbEntry* tlb_lookup(u32 va, u32 flags);
   void tlb_flush_all();
   void tlb_flush_page(u32 mva);
-  void cp15_write(u32 crn, u32 opc1, u32 rd, u32 crm, u32 opc2);
+  /* `val` is the register value to write (the ISA engine reads the source
+   * register and passes it through IsaEnv::coproc_write). */
+  void cp15_write(u32 crn, u32 opc1, u32 val, u32 crm, u32 opc2);
   u32 cp15_read(u32 crn, u32 opc1, u32 crm, u32 opc2);
   void sync_cp15_caches();
   void on_translation_env_changed(const char* why);
   void invalidate_code(u32 addr, u32 size);
+
+  /* The ISA engine's coprocessor view of CP15 (IsaEnv::coproc): which
+   * cp/opc1/alias pairs exist, and the transfers themselves. */
+  bool coproc_present(u32 cp, u32 opc1, bool second) const;
+  void coproc_write(u32 cp, u32 crn, u32 opc1, u32 crm, u32 opc2, u32 val);
+  u32 coproc_read(u32 cp, u32 crn, u32 opc1, u32 crm, u32 opc2);
 
   /* JIT helper ABI (referenced by name from generated code) */
   static void h_raise(Cpu* c, u32 e);
@@ -488,56 +374,30 @@ struct Cpu {
   static void h_branch_exchange(Cpu* c, u32 target);
   static void h_check_gen(Cpu* c, u32 gen);
 
-  /* interpreter entry points shared with the JIT (declared here so both
-   * engines use exactly one implementation of each rule). */
-  ALWAYS_INLINE Shifted arm_op2(const ArmDec& d) const;
-  u32 arm_ldst_offset(const ArmDec& d) const;
-  void arm_block_addrs(const ArmDec& d, u32 n, u32* start, u32* wb) const;
-  void restore_cpsr_from_spsr();
-  void load_pc(u32 value, bool from_load = false);
-  void apply_msr(u32 mask, u32 val, bool spsr);
-  static bool valid_mode(u32 m);
   void trace_instruction();
-
   void trace(const char* what);
-
 };
-
 
 /* ------------------------------------------------------- inline hot bits */
 
-ALWAYS_INLINE bool Cpu::condition_true(u32 cond) const {
-  switch (cond) {
-    case COND_EQ: return (cpsr & CPSR_Z) != 0;
-    case COND_NE: return (cpsr & CPSR_Z) == 0;
-    case COND_CS: return (cpsr & CPSR_C) != 0;
-    case COND_CC: return (cpsr & CPSR_C) == 0;
-    case COND_MI: return (cpsr & CPSR_N) != 0;
-    case COND_PL: return (cpsr & CPSR_N) == 0;
-    case COND_VS: return vflag != 0;
-    case COND_VC: return vflag == 0;
-    case COND_HI: return (cpsr & (CPSR_C | CPSR_Z)) == CPSR_C;
-    case COND_LS: return (cpsr & (CPSR_C | CPSR_Z)) != CPSR_C;
-    case COND_GE: return ((((cpsr >> 31) & 1) ^ vflag) == 0);
-    case COND_LT: return ((((cpsr >> 31) & 1) ^ vflag) != 0);
-    case COND_GT: return ((cpsr & CPSR_Z) == 0) && ((((cpsr >> 31) & 1) ^ vflag) == 0);
-    case COND_LE: return ((cpsr & CPSR_Z) != 0) || ((((cpsr >> 31) & 1) ^ vflag) != 0);
-    default: return true;   /* AL, and NV is treated as AL on ARMv5 */
+ALWAYS_INLINE u32 Cpu::fetch16(GAddr a) {
+  if (BRAIN_LIKELY(fetch_e != nullptr && fetch_e->host)) {
+    const u8* p = fetch_e->host + (a & 0xFFF);
+    return (u32)p[0] | ((u32)p[1] << 8);
   }
+  return mem_read(a, 2, armv5::MF_SZ16 | armv5::MF_FETCH);
 }
-
-ALWAYS_INLINE void Cpu::set_nz(u32 res) {
-  cpsr = (cpsr & ~(CPSR_N | CPSR_Z)) | (res & CPSR_N) | (res == 0 ? u32(CPSR_Z) : 0u);
-}
-
-ALWAYS_INLINE void Cpu::set_cpsr_flags(u32 n, u32 z, u32 c, u32 vv) {
-  cpsr = (cpsr & ~CPSR_FLAGS) | (n ? u32(CPSR_N) : 0u) | (z ? u32(CPSR_Z) : 0u) |
-         (c ? u32(CPSR_C) : 0u) | (vv ? u32(CPSR_V) : 0u);
-  vflag = vv ? 1 : 0;
+ALWAYS_INLINE u32 Cpu::fetch32(GAddr a) {
+  if (BRAIN_LIKELY(fetch_e != nullptr && fetch_e->host)) {
+    u32 out;
+    memcpy(&out, fetch_e->host + (a & 0xFFF), 4);
+    return out;
+  }
+  return mem_read(a, 4, armv5::MF_SZ32 | armv5::MF_FETCH);
 }
 
 ALWAYS_INLINE u32 Cpu::mem_read(u32 addr, u32 size, u32 flags) {
-  if (BRAIN_UNLIKELY(align_chk && !(flags & (MF_UNAL | MF_FETCH)) &&
+  if (BRAIN_UNLIKELY(align_chk && !(flags & (armv5::MF_UNAL | armv5::MF_FETCH)) &&
                      (addr & (size - 1))))
     return mem_read_slow(addr, size, flags);
   /* Identity fast path: MMU off and the address falls inside the RAM window. */
@@ -564,7 +424,7 @@ ALWAYS_INLINE u32 Cpu::mem_read(u32 addr, u32 size, u32 flags) {
 }
 
 ALWAYS_INLINE void Cpu::mem_write(u32 addr, u32 val, u32 size, u32 flags) {
-  if (BRAIN_UNLIKELY(align_chk && !(flags & (MF_UNAL | MF_FETCH)) &&
+  if (BRAIN_UNLIKELY(align_chk && !(flags & (armv5::MF_UNAL | armv5::MF_FETCH)) &&
                      (addr & (size - 1)))) {
     mem_write_slow(addr, val, size, flags);
     return;

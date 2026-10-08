@@ -22,14 +22,18 @@ core/
 arch/
   arm/
     execution/
-      aarch32/          32-bit Arm execution state
+      aarch32/          32-bit Arm execution state (the pipeline step)
       aarch64/          64-bit Arm execution state
     isa/
       armv4/ ... armv9/ architecture generations
+      armv5/            the ARMv5TEJ ISA: decoders, execution semantics,
+                        PSR/flags, banking, exception model (reusable by any
+                        ARMv5TEJ core)
     cpu/
       classic/arm7/     classic Arm7-family cores
       classic/arm9/     classic Arm9-family cores
-        arm926ej-s/     the current ARM926EJ-S module
+        arm926ej-s/     the current ARM926EJ-S module (core only: CP15, MMU,
+                        run loop, JIT; the ISA lives in isa/armv5/)
       classic/arm11/    classic Arm11-family cores
       cortex-a/         Cortex-A application cores
       cortex-r/         Cortex-R real-time cores
@@ -74,11 +78,14 @@ old/                     untouched legacy archive
 The relationship is:
 
 ```text
-arch/arm/isa/armv5/
+arch/arm/isa/armv5/                 the ARMv5TEJ ISA (decoders, semantics, PSR)
         |
-        |  ARM926EJ-S implements ARMv5TEJ (AArch32)
+        |  executed in
+arch/arm/execution/aarch32/     the AArch32 pipeline step (ARM/Thumb)
+        |
+        |  driven by
         v
-arch/arm/cpu/classic/arm9/arm926ej-s/
+arch/arm/cpu/classic/arm9/arm926ej-s/   the ARM926EJ-S core (CP15, MMU, JIT)
         |
         |  CPU core integrated into
         v
@@ -90,7 +97,10 @@ machine/arm/<system>/
 ```
 
 `ARM926EJ-S` is therefore **not** a machine directory and `i.MX28` is **not** a
-CPU directory.
+CPU directory. The ISA directory is not a version label either: `armv5/` holds
+the actual instruction-set implementation (an ARMv5TEJ core of any family can
+drive it), while the core directory holds only what makes the ARM926EJ-S that
+core.
 
 ## CPU module boundary
 
@@ -99,16 +109,36 @@ that contract and owns everything required to emulate that CPU accurately:
 register state, decoding, execution semantics, MMU/CP15 state where applicable,
 and CPU-specific translation/JIT code.
 
-For ARM926EJ-S the module is deliberately self-contained:
+For ARM926EJ-S the module is the *core* layer, and it is layered on the ISA
+and execution-state layers rather than containing them:
 
 ```text
-arch/arm/cpu/classic/arm9/arm926ej-s/
+arch/arm/isa/armv5/                     the ARMv5TEJ ISA (shared, core-free)
+  state.{h,cpp}          architectural state: IsaState, banking, PSR rules
+  ops.h                  barrel shifter, flag helpers, the cycle model
+  decode.{h,cpp}         the ARM-state decoder
+  decode_thumb.{h,cpp}   the Thumb-state decoder
+  exceptions.{h,cpp}    vector table, modes, LR offsets, exception entry
+  memory.h               IsaEnv: the environment contract a core fills in
+  interp.{h,cpp}         the interpreter engine (ARM + Thumb semantics)
+  interp_arm.cpp interp_thumb.cpp
+  disasm.cpp             the disassembler and the name tables
+arch/arm/execution/aarch32/             the AArch32 execution state
+  step.{h,cpp}           the pipeline step (prime cur/npc/regs[15], dispatch)
+arch/arm/cpu/classic/arm9/arm926ej-s/   the ARM926EJ-S core (this module)
   arm926.{h,cpp}       module registration/factory
-  cpu/                 CPU state, decoder and interpreter
+  cpu/                 Cpu (inherits IsaState): CP15/MMU/TLB, run loop, env
   jit/                 block cache, IR, translator and host code generators
   tests/               ISA/core/JIT/MMU regression suites and corpus
   tools/               CPU-specific development tools
 ```
+
+`Cpu` inherits the architectural state (`struct Cpu : public IsaState`) and
+forwards the engine entry points (`exec_arm`, `exec_thumb`,
+`fetch_and_execute`, ...) into those layers, so the interpreter, the JIT's
+out-of-line helpers and the tests all drive one implementation of each rule.
+The dependency direction is one-way: the core depends on the ISA and the
+execution state, never the reverse.
 
 The JIT is split one step further because `x86_64` and `aarch64` are **host
 backends**, not guest ARM architectures:

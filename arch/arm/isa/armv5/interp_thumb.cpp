@@ -1,9 +1,10 @@
-/* brain-emu: Thumb state interpreter (ARMv5T, i.e. the 16-bit instruction set).
+/* brain-emu -- ARMv5TEJ ISA: the Thumb-state interpreter entry (ARMv5T, i.e.
+ * the 16-bit instruction set).
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Design note: Thumb is not a separate machine here.  decode_thumb() maps every
  * 16-bit format onto the same ArmDec record the ARM decoder produces, and the
- * work is then done by Cpu::exec_arm_dec() in interp_arm.cpp.  That is faithful
+ * work is then done by exec_arm_dec() in interp_arm.cpp.  That is faithful
  * to the architecture -- A6.4/A6.6/A6.7 describe almost every Thumb instruction
  * as "equivalent to <ARM instruction>, encoding <word>" -- and it means one
  * barrel shifter, one flag update, one abort path and one cycle model serve both
@@ -23,17 +24,18 @@
  *   - unaligned LDR/STR addresses are UNPREDICTABLE and, with alignment
  *     checking on, fault (A7.1.49 Notes).
  */
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
+#include "arch/arm/isa/armv5/decode.h"
+#include "arch/arm/isa/armv5/decode_thumb.h"
+#include "arch/arm/isa/armv5/exceptions.h"
+#include "arch/arm/isa/armv5/interp.h"
+#include "arch/arm/isa/armv5/ops.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 
-void Cpu::exec_thumb(u32 hw) {
-  insns++;
-  stats.insns_interp++;
-  cycles += CycleModel::kIssue;
+void exec_thumb(IsaState& s, u32 hw, IsaEnv& env) {
+  s.insns++;
+  env.stats->insns_interp++;
+  s.cycles += CycleModel::kIssue;
 
   ArmDec d;
   decode_thumb(hw, &d);
@@ -42,18 +44,18 @@ void Cpu::exec_thumb(u32 hw) {
     /* Includes the encodings ARMv6 later filled in (BKPT-adjacent hints, the
      * 0xB800/0xB900 LDM/STM-without-writeback forms, REV, IT, ...) plus the
      * whole 0x0100-0x0BFF/0x41000-wide space: they are undefined on ARMv5T. */
-    raise_undef(hw);
+    raise_undef(s, hw);
     return;
   }
 
   /* Thumb has exactly one conditional branch (A6.3.1); a failed condition makes
    * it a NOP, and it is the not-taken branch the counter wants. */
-  if (d.op == AOP_B && d.kind == 3 && !condition_true(d.cond)) {
-    stats.branch_not++;
+  if (d.op == AOP_B && d.kind == 3 && !s.condition_true(d.cond)) {
+    env.stats->branch_not++;
     return;
   }
 
-  exec_arm_dec(d);
+  exec_arm_dec(s, d, env);
 }
 
-}  // namespace brain::arm926
+}  // namespace brain::arm::isa::armv5

@@ -15,7 +15,11 @@ core/include/brainemu/device.h     Device + FuncDevice/BufferDevice
 core/include/brainemu/loader.h     Loader (probe + load) and the image description
 core/include/brainemu/monitor.h    Monitor: an observer the run loop reports to
 core/src/                          the address space, the registry, the machine, the C API
-arch/arm/cpu/classic/arm9/arm926ej-s/                   the primary CPU: ARMv5TEJ, CP15 + MMU, JIT
+arch/arm/isa/armv5/                     the ARMv5TEJ ISA: decoders, interpreter
+                                        engine, PSR/flags, banking, exceptions
+arch/arm/execution/aarch32/             the AArch32 execution state (pipeline step)
+arch/arm/cpu/classic/arm9/arm926ej-s/   the primary CPU core on top of those:
+                                        CP15 + MMU, run loop, JIT
 arch/experimental/toy8/                     a second CPU, in 300 lines, on purpose
 devices/console/                   a device module: a window that collects text
 devices/system/exit/                      a device module: a store that stops the run

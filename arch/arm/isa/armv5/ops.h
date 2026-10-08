@@ -1,21 +1,24 @@
-/* brain-emu: ARMv5TE datapath primitives shared by the interpreter and the JIT.
+/* brain-emu -- ARMv5TEJ ISA: datapath primitives shared by the interpreter
+ * and the JIT.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
  *
  * Both engines MUST use these so that the flag semantics of the two paths are
  * provably identical (a divergence here is the single most likely source of
- * "the JIT disagrees with the interpreter" bugs).
+ * "the JIT disagrees with the interpreter" bugs).  They are pure ISA: the
+ * barrel shifter, ARM's carry/overflow arithmetic, the ARMv5E saturating
+ * helpers, the data-processing opcode numbering and the shared cycle model.
  *
  * Reference: ARM DDI 0100I chapter B2 (Barrel shifter B2.2.3, conditions
  * B2.2.2, saturating arithmetic B2.2.6).
  */
-#ifndef BRAINEMU_CORE_OPS_H
-#define BRAINEMU_CORE_OPS_H
+#ifndef BRAIN_ISA_ARMV5_OPS_H
+#define BRAIN_ISA_ARMV5_OPS_H
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/state.h"
+#include "arch/arm/isa/armv5/state.h"
 
-namespace brain::arm926 {
+namespace brain::arm::isa::armv5 {
 
-/* shift types (SH_*) and the Shifted result type live in core/state.h */
+/* shift types (SH_*) and the Shifted result type live in state.h */
 
 ALWAYS_INLINE u32 ror32(u32 x, u32 n) {
   n &= 31;
@@ -145,18 +148,18 @@ ALWAYS_INLINE bool dp_flags_only(u32 dp) {
 }
 
 /* Flag writes.  Logical operations leave V alone (which is why V is kept in
- * its own Cpu field rather than mirrored in a host OF flag). */
-ALWAYS_INLINE void set_logical_flags(Cpu& c, u32 res, u32 carry) {
-  c.cpsr = (c.cpsr & ~(CPSR_N | CPSR_Z | CPSR_C)) | (res & CPSR_N) |
+ * its own IsaState field rather than mirrored in a host OF flag). */
+ALWAYS_INLINE void set_logical_flags(IsaState& s, u32 res, u32 carry) {
+  s.cpsr = (s.cpsr & ~(CPSR_N | CPSR_Z | CPSR_C)) | (res & CPSR_N) |
            (res == 0 ? u32(CPSR_Z) : 0u) | (carry ? u32(CPSR_C) : 0u);
 }
-ALWAYS_INLINE void set_arith_flags(Cpu& c, u32 res, u32 carry, u32 ovf) {
-  c.cpsr = (c.cpsr & ~CPSR_FLAGS) | (res & CPSR_N) | (res == 0 ? u32(CPSR_Z) : 0u) |
+ALWAYS_INLINE void set_arith_flags(IsaState& s, u32 res, u32 carry, u32 ovf) {
+  s.cpsr = (s.cpsr & ~CPSR_FLAGS) | (res & CPSR_N) | (res == 0 ? u32(CPSR_Z) : 0u) |
            (carry ? u32(CPSR_C) : 0u) | (ovf ? u32(CPSR_V) : 0u);
-  c.vflag = ovf;
+  s.vflag = ovf;
 }
-ALWAYS_INLINE void set_nz_only(Cpu& c, u32 res) {
-  c.cpsr = (c.cpsr & ~(CPSR_N | CPSR_Z)) | (res & CPSR_N) | (res == 0 ? u32(CPSR_Z) : 0u);
+ALWAYS_INLINE void set_nz_only(IsaState& s, u32 res) {
+  s.cpsr = (s.cpsr & ~(CPSR_N | CPSR_Z)) | (res & CPSR_N) | (res == 0 ? u32(CPSR_Z) : 0u);
 }
 
 /* 64-bit signed/unsigned multiply helpers (identical in both engines). */
@@ -206,6 +209,6 @@ const char* exc_name(u32 e);
 void format_arm_insn(u32 insn, char* out, size_t n);
 void format_thumb_insn(u32 insn, char* out, size_t n);
 
-}  // namespace brain::arm926
+}  // namespace brain::arm::isa::armv5
 
-#endif  /* BRAINEMU_CORE_OPS_H */
+#endif  /* BRAIN_ISA_ARMV5_OPS_H */

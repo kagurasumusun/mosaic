@@ -21,10 +21,11 @@
 #include <cstring>
 
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"
 
 namespace brain::arm926 {
+
+using namespace brain::arm::isa::armv5;
 
 /* --------------------------------------------------------- CP15 helpers -- */
 
@@ -58,6 +59,10 @@ void Cpu::sync_cp15_caches() {
   /* The identity fast path is only valid with the MMU off (and not while the
    * core is in BE8 mode, where the swap is handled in the slow path). */
   ram_fast = (!mmu_on && ram && ram_mask) ? 1u : 0u;
+  /* The L4 policy bit (loads to PC also load the T bit) is system-control
+   * state, not ISA state, so the ISA engine reads it through the mirror the
+   * core maintains here (IsaState::l4). */
+  l4 = (c1 & SCTLR_L4) ? 1u : 0u;
 }
 
 void Cpu::on_translation_env_changed(const char* why) {
@@ -418,9 +423,8 @@ void Cpu::mem_write_slow(u32 addr, u32 val, u32 size, u32 flags) {
 
 /* ---------------------------------------------------------------- CP15 -- */
 
-void Cpu::cp15_write(u32 crn, u32 opc1, u32 rd, u32 crm, u32 opc2) {
+void Cpu::cp15_write(u32 crn, u32 opc1, u32 val, u32 crm, u32 opc2) {
   (void)opc1;
-  const u32 val = regs[rd];
 
   /* CP15 accesses from User mode are undefined (TRM 2.2.2). */
   if ((cpsr & CPSR_MODE_M) == MODE_USR) { raise_undef(insn); return; }

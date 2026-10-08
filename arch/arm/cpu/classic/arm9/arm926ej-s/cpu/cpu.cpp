@@ -1,5 +1,16 @@
-/* brain-emu: ARM926EJ-S core -- lifecycle, mode banking, exceptions, run loop.
+/* brain-emu: ARM926EJ-S core -- lifecycle, the core half of the exception
+ * model, the run loop, and the ISA environment.
  * SPDX-License-Identifier: LicenseRef-brain-emu-1.0
+ *
+ * What lives here and not in the ISA layer (arch/arm/isa/armv5/): everything
+ * that is the ARM926EJ-S rather than the ARMv5TEJ architecture.  The register
+ * banking, the PSR semantics, the instruction semantics and the architectural
+ * half of exception entry are the ISA's; taking a pending exception, writing
+ * FSR/FAR into CP15, the cycle/statistics accounting, clearing the halt state
+ * and notifying the JIT are this core's.  The run loop (budgets, halting,
+ * stop requests, interrupt lines) is this core's, and so is `env` - the
+ * IsaEnv table the ISA engine calls through for memory, translation, the
+ * coprocessor and exception entry.
  *
  * Behaviour sources:
  *   - ARM DDI 0100I A2.6 (exception model; LR values are per tables in
@@ -13,116 +24,12 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
+#include "arch/arm/isa/armv5/ops.h"          /* CycleModel: the exception charge */
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/jit/jit.h"
 
 namespace brain::arm926 {
 
-/* ---------------------------------------------------------------- names -- */
-
-const char* cond_name(u32 c) {
-  static const char* n[16] = {"EQ","NE","CS","CC","MI","PL","VS","VC","HI","LS",
-                              "GE","LT","GT","LE","AL","NV"};
-  return n[c & 15];
-}
-const char* mode_name(u32 m) {
-  switch (m & CPSR_MODE_M) {
-    case MODE_USR: return "USR";
-    case MODE_FIQ: return "FIQ";
-    case MODE_IRQ: return "IRQ";
-    case MODE_SVC: return "SVC";
-    case MODE_ABT: return "ABT";
-    case MODE_UND: return "UND";
-    case MODE_SYS: return "SYS";
-    default: return "???";
-  }
-}
-const char* exc_name(u32 e) {
-  static const char* n[EXC_COUNT + 1] = {"none", "reset", "undef", "swi",
-                                        "pabort", "dabort", "irq", "fiq"};
-  return e <= EXC_COUNT ? n[e] : "?";
-}
-
-static u32 bank_for_mode_static(u32 mode) {
-  switch (mode & CPSR_MODE_M) {
-    case MODE_FIQ: return BANK_FIQ;
-    case MODE_IRQ: return BANK_IRQ;
-    case MODE_SVC: return BANK_SVC;
-    case MODE_ABT: return BANK_ABT;
-    case MODE_UND: return BANK_UND;
-    default: return BANK_USR;   /* USR and SYS share the user bank */
-  }
-}
-
-/* ------------------------------------------------------------- banking -- */
-
-u32 Cpu::bank_for_mode(u32 mode) const { return bank_for_mode_static(mode); }
-
-/* Which registers a mode actually banks (TRM 4.1.1, "register bank"): R13 and
- * R14 in every mode, plus R8-R12 in FIQ only.  R0-R7 - and R8-R12 outside FIQ -
- * name the same physical registers in all modes, so a mode change must leave
- * them untouched.  Copying the whole bank instead made any exception wipe r0-r7
- * of the faulting thread, which is why this split is spelled out.  The shared
- * view of R8-R12 lives in the user bank, so leaving FIQ restores it. */
-static bool bank_is_fiq(u32 idx) { return idx == BANK_FIQ; }
-
-void Cpu::flush_bank() {
-  Bank& b = bank[bank_idx];
-  b.r[13] = regs[13];
-  b.r[14] = regs[14];
-  Bank& shared = bank_is_fiq(bank_idx) ? b : bank[BANK_USR];
-  for (u32 i = 8; i < 13; ++i) shared.r[i] = regs[i];
-  /* SPSR_<mode> is deliberately *not* written here.  It is not a mirror of the
-   * CPSR: it holds the value an exception saved on entry, and MRS/MSR see it as
-   * bank[bank_idx].spsr.  Saving the current CPSR on every mode change made an
-   * IRQ taken inside a Supervisor handler (or a detour through System mode)
-   * overwrite the SPSR that handler was about to return with. */
-}
-
-void Cpu::load_bank(u32 idx) {
-  bank_idx = idx;
-  const Bank& b = bank[idx];
-  regs[13] = b.r[13];
-  regs[14] = b.r[14];
-  const Bank& shared = bank_is_fiq(idx) ? b : bank[BANK_USR];
-  for (u32 i = 8; i < 13; ++i) regs[i] = shared.r[i];
-}
-
-/* Install a mode written by MSR / LDM-into-R15 / the debugger, banking the
- * registers that actually change.  The *live bank*, not the CPSR field, decides
- * whether a swap is needed: an MSR-style caller has usually written the new mode
- * into CPSR before calling here, and comparing against CPSR then makes the
- * change look like a no-op and silently keeps the old R13/R14 - which is how a
- * supervisor stack used to survive a detour through System mode. */
-void Cpu::switch_mode(u32 new_mode) {
-  new_mode &= CPSR_MODE_M;
-  cpsr = (cpsr & ~CPSR_MODE_M) | new_mode;
-  priv = (new_mode != MODE_USR);
-  const u32 idx = bank_for_mode_static(new_mode);
-  if (idx == bank_idx) return;   /* USR<->SYS share a bank: nothing to move. */
-  flush_bank();
-  load_bank(idx);
-}
-
-/* ----------------------------------------------------------- R15 writes -- */
-
-void Cpu::set_reg(u32 n, u32 val) {
-  if (n == 15) {
-    if (thumb) {
-      npc = val & ~1u;             /* bit[0] selects the state, as for BX     */
-      if (!(val & 1u)) { thumb = 0; cpsr &= ~(CPSR_T | CPSR_J); }
-    } else {
-      npc = val & ~3u;             /* bits[1:0] ignored in ARM state          */
-    }
-    /* cur/regs[15] are refreshed by the next fetch: see Cpu::fetch_and_execute */
-    return;
-  }
-  regs[n] = val;
-  /* Keep the bank of the mode we are in in step, or the next mode change (an
-   * exception, an MSR) would restore the stale value over this one.  Only
-   * R13/R14 and, in FIQ, R8-R12 are banked - see Cpu::flush_bank(). */
-  if (n >= 13 || (bank_idx == BANK_FIQ && n >= 8)) bank[bank_idx].r[n] = val;
-}
+using namespace brain::arm::isa::armv5;
 
 /* -------------------------------------------------------------- reset -- */
 
@@ -177,7 +84,7 @@ void Cpu::reset() {
   memset(regs, 0, sizeof(regs));
   memset(bank, 0, sizeof(bank));
   memset(cp15.c, 0, sizeof(cp15.c));
-  bank_idx = bank_for_mode_static(MODE_SVC);
+  bank_idx = bank_for_mode(MODE_SVC);
 
   /* TRM table 2-5: implementer 0x41, arch 0x6 (ARMv5TEJ), part 0x926, rev 5 */
   cp15.c[C0_IDCODE] = ARM926EJS_MIDR;
@@ -210,6 +117,13 @@ void Cpu::reset() {
   running = 0;
   trace_en = cfg.trace ? 1 : 0;
   stats = Stats{};
+
+  /* The core-maintained behaviour policy the ISA engine reads (IsaState):
+   * the strictness options come from the configuration, the L4 bit from
+   * CP15 c1 (sync_cp15_caches, below, mirrors it). */
+  jazelle_trap = cfg.jazelle_trap ? 1u : 0u;
+  strict_unpredictable = cfg.strict_unpredictable ? 1u : 0u;
+  l4 = 0;
 
   u32 vec = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
   npc = vec;
@@ -244,116 +158,24 @@ bool Cpu::jit_enable(bool on) {
 
 /* ---------------------------------------------------------- exceptions -- */
 
-/* R14 at exception entry.  There are two families here and they are specified
- * against different addresses, which is the single easiest thing to get wrong in
- * an exception model (DDI 0100I A2.6.3-A2.6.10 in ARM state, A6.1.2 with table
- * A6-1 in Thumb state):
- *
- *  - an exception *raised by an instruction* is reported against that
- *    instruction's address, which is `cur` while the trap is being taken:
- *
- *                     ARM  Thumb   handler return
- *      undefined       +4    +2    `MOVS PC, R14` -> the next instruction
- *      SWI             +4    +2
- *      prefetch abort  +4    +4    `SUBS PC, R14, #4` -> retry the fetch
- *      data abort      +8    +8    `SUBS PC, R14, #8` -> re-execute
- *
- *  - an interrupt (IRQ/FIQ) is taken *between* instructions, at an instruction
- *    boundary, and the ARM ARM specifies it against the instruction that has not
- *    run yet: "R14_irq = address of next instruction to be executed + 4"
- *    (A2.6.8).  That instruction is `npc` here, and the +4 is state-independent -
- *    a Thumb guest uses the same `SUBS PC, R14, #4` return, so what moves is the
- *    base address, not the offset (see take_interrupt()).
- *
- * The distinction is not academic: for a fall-through the two readings agree
- * (npc + 4 == cur + 8 in ARM state), but when the last retired instruction was a
- * *taken branch* they no longer do, and a handler built on the wrong one resumes
- * at an address the guest never intended - silently skipping or repeating one
- * instruction, in the worst case at the top of a loop.
- */
-u32 Cpu::exception_lr_offset(u32 e) const {
-  if (thumb) {
-    switch (e) {
-      case EXC_UNDEF:  return 2;   /* the next halfword                     */
-      case EXC_SWI:    return 2;
-      case EXC_PABORT: return 4;   /* aborted + 4 = retry the fetch          */
-      case EXC_DABORT: return 8;   /* aborted + 8 = re-execute               */
-      default: return 0;           /* interrupts do not use this table       */
-    }
-  }
-  switch (e) {
-    case EXC_UNDEF:  return 4;     /* the next instruction                  */
-    case EXC_SWI:    return 4;
-    case EXC_PABORT: return 4;     /* aborted + 4                           */
-    case EXC_DABORT: return 8;     /* aborted + 8                           */
-    default: return 0;             /* interrupts do not use this table       */
-  }
-}
-
-static u32 vector_offset(u32 e) {
-  switch (e) {
-    case EXC_RESET: return VEC_RESET;
-    case EXC_UNDEF: return VEC_UNDEF;
-    case EXC_SWI: return VEC_SWI;
-    case EXC_PABORT: return VEC_PABORT;
-    case EXC_DABORT: return VEC_DABORT;
-    case EXC_IRQ: return VEC_IRQ;
-    case EXC_FIQ: return VEC_FIQ;
-    default: return VEC_RSVD;
-  }
-}
-
+/* The core half of exception entry: the architectural half (banking, SPSR,
+ * LR, CPSR mode/I/F/E/T, PC := vector) is the ISA's (armv5::enter_exception);
+ * what is added here is the ARM926EJ-S's own accounting - the E bit comes
+ * from SCTLR.B, the exception count and the cycle charge go into the stats
+ * the C API reports, the halt state is cleared, and the JIT is told so it
+ * drops any block built under the pre-exception environment. */
 void Cpu::enter_exception(u32 e, u32 vector, u32 mode, u32 lr) {
-  const u32 old_cpsr = cpsr;
-  flush_bank();
-
-  const u32 idx = bank_for_mode_static(mode);
-  Bank& nb = bank[idx];
-  nb.spsr = old_cpsr;
-  nb.r[14] = lr;
-  regs[13] = nb.r[13];
-  regs[14] = nb.r[14];
-  const Bank& shared = (idx == BANK_FIQ) ? nb : bank[BANK_USR];
-  for (u32 i = 8; i < 13; ++i) regs[i] = shared.r[i];
-  bank_idx = idx;
-
-  /* Keep N,Z,C,V,Q and (ARMv5) the A bit.  Set I, and F for FIQ/reset.
-   * E <- CP15 c1[B] (BE8 config).  Force ARM state (T=0, J=0). */
-  u32 keep = old_cpsr & (CPSR_NVQC | CPSR_A);
-  u32 e_bit = (cp15.c[C1_CTRL] & SCTLR_B) ? u32(CPSR_E) : 0u;
-  u32 f_bit = (e == EXC_FIQ || e == EXC_RESET) ? CPSR_F : (old_cpsr & CPSR_F);
-  cpsr = keep | e_bit | f_bit | CPSR_I | mode;
-  thumb = 0;
-  vflag = (cpsr >> 28) & 1;
-  priv = 1;
-
-  /* The handler is the *next* instruction to fetch; cur/regs[15] are primed
-   * by the fetch, so LR keeps pointing at the faulting instruction. */
-  npc = vector;
-  insn = 0;
+  const u32 e_bit = (cp15.c[C1_CTRL] & SCTLR_B) ? u32(CPSR_E) : 0u;
+  armv5::enter_exception(*this, e, vector, mode, lr, e_bit);
   halted = 0;
-  exc = 0;
-  exectrap = 0;
   cycles += CycleModel::kExceptionCycles;
   if (e < EXC_COUNT) stats.exc[e]++;
   if (jit) jit->on_exception();
 }
 
-/* Mode and vector for an exception - the two tables of DDI 0100I A2.6 and the
- * layout of the vector page.  Shared by the traps and the interrupts. */
-static u32 exception_mode(u32 e) {
-  switch (e) {
-    case EXC_UNDEF: return MODE_UND;
-    case EXC_IRQ:   return MODE_IRQ;
-    case EXC_FIQ:   return MODE_FIQ;
-    case EXC_PABORT:
-    case EXC_DABORT: return MODE_ABT;
-    default: return MODE_SVC;   /* SWI, reset */
-  }
-}
-
 /* An exception raised by the instruction at `cur`: the abort status registers are
- * updated and R14 gets the instruction-relative offset from the table above. */
+ * updated and R14 gets the instruction-relative offset from the ISA's table
+ * (armv5::exception_lr_offset). */
 void Cpu::take_exception(u32 e) {
   if (e == EXC_DABORT) {
     cp15.c[C5_FSR] = exc_fsr;
@@ -362,8 +184,8 @@ void Cpu::take_exception(u32 e) {
     cp15.c[C5_IFSR] = exc_fsr;   /* FAR is not updated by prefetch aborts */
   }
   const u32 base = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
-  enter_exception(e, base + vector_offset(e), exception_mode(e),
-                  cur + exception_lr_offset(e));
+  enter_exception(e, base + armv5::vector_offset(e), armv5::exception_mode(e),
+                  cur + armv5::exception_lr_offset(e, thumb != 0));
 }
 
 /* An interrupt (IRQ/FIQ) taken at the instruction boundary in front of `npc`:
@@ -374,18 +196,7 @@ void Cpu::take_exception(u32 e) {
  * not the delta the return instruction assumes. */
 void Cpu::take_interrupt(u32 e) {
   const u32 base = (cp15.c[C1_CTRL] & SCTLR_V) ? VEC_HIGH_BASE : 0u;
-  enter_exception(e, base + vector_offset(e), exception_mode(e), npc + 4u);
-}
-
-void Cpu::raise_undef(u32 i) { insn = i; exc = EXC_UNDEF; exectrap = EXC_UNDEF; }
-void Cpu::raise_swi(u32 imm) { (void)imm; exc = EXC_SWI; exectrap = EXC_SWI; }
-void Cpu::raise_dabort(u32 fs, u32 va) {
-  exc = EXC_DABORT; exectrap = EXC_DABORT; exc_fsr = fs; exc_far = va;
-  stats.page_faults++;
-}
-void Cpu::raise_pabort(u32 fs) {
-  exc = EXC_PABORT; exectrap = EXC_PABORT; exc_fsr = fs; exc_far = cur;
-  stats.page_faults++;
+  enter_exception(e, base + armv5::vector_offset(e), armv5::exception_mode(e), npc + 4u);
 }
 
 bool Cpu::check_interrupts() {
@@ -398,11 +209,11 @@ bool Cpu::check_interrupts() {
   return false;
 }
 
-/* -------------------------------------------------------------- run loop -- */
+/* ---------------------------------------------------------- run loop -- */
 
 void Cpu::step_one() {
   if (BRAIN_UNLIKELY(check_interrupts())) return;
-  /* No fetch here: `cur` is only advanced inside Cpu::fetch_and_execute, so a
+  /* No fetch here: `cur` is only advanced inside the execution step, so a
    * prefetch check at this point would look at the instruction that has just
    * been executed.  A guest whose abort vector is not itself mapped then retook
    * the same abort for ever - `cur` never moved to the vector, nothing retired,
@@ -494,6 +305,86 @@ void Cpu::trace_instruction() {
           (cpsr & CPSR_N) ? 'N' : '-', (cpsr & CPSR_Z) ? 'Z' : '-',
           (cpsr & CPSR_C) ? 'C' : '-', vflag ? 'V' : '-',
           (cpsr & CPSR_Q) ? " Q" : "");
+}
+
+/* ------------------------------------------- the ISA environment (env) --
+ * The ISA engine (arch/arm/isa/armv5/interp*.cpp) calls through `env` for
+ * everything that is not the instruction set: translated memory, the
+ * instruction fetch, the coprocessor, taking a pending exception, JIT
+ * notification and the cache sync.  The trampolines adapt the engine's
+ * ctx-passing callbacks to Cpu methods; init_env wires them once, in the
+ * constructor.  The memory trampolines are not a slowdown by construction:
+ * each one is a tail call into the same inline fast path the interpreter
+ * used to call directly. */
+
+static u32 env_mem_read(void* ctx, u32 addr, u32 size, u32 flags) {
+  return static_cast<Cpu*>(ctx)->mem_read(addr, size, flags);
+}
+static void env_mem_write(void* ctx, u32 addr, u32 val, u32 size, u32 flags) {
+  static_cast<Cpu*>(ctx)->mem_write(addr, val, size, flags);
+}
+static u32 env_fetch16(void* ctx, u32 addr) {
+  return static_cast<Cpu*>(ctx)->fetch16(addr);
+}
+static u32 env_fetch32(void* ctx, u32 addr) {
+  return static_cast<Cpu*>(ctx)->fetch32(addr);
+}
+static bool env_prepare_fetch(void* ctx) {
+  return static_cast<Cpu*>(ctx)->prepare_fetch();
+}
+static void env_take_exception(void* ctx, u32 e) {
+  static_cast<Cpu*>(ctx)->take_exception(e);
+}
+static void env_notify_jit(void* ctx, const char* why) {
+  Cpu* c = static_cast<Cpu*>(ctx);
+  if (c->jit) c->jit->on_env_change(why);
+}
+static void env_sync_caches(void* ctx) {
+  static_cast<Cpu*>(ctx)->sync_cp15_caches();
+}
+static bool env_coproc_present(void* ctx, u32 cp, u32 opc1, bool second) {
+  return static_cast<Cpu*>(ctx)->coproc_present(cp, opc1, second);
+}
+static void env_coproc_write(void* ctx, u32 cp, u32 crn, u32 opc1, u32 crm,
+                             u32 opc2, u32 val) {
+  static_cast<Cpu*>(ctx)->coproc_write(cp, crn, opc1, crm, opc2, val);
+}
+static u32 env_coproc_read(void* ctx, u32 cp, u32 crn, u32 opc1, u32 crm,
+                           u32 opc2) {
+  return static_cast<Cpu*>(ctx)->coproc_read(cp, crn, opc1, crm, opc2);
+}
+
+void Cpu::init_env() {
+  env.ctx = this;
+  env.stats = &stats;
+  env.mem_read = env_mem_read;
+  env.mem_write = env_mem_write;
+  env.fetch16 = env_fetch16;
+  env.fetch32 = env_fetch32;
+  env.prepare_fetch = env_prepare_fetch;
+  env.coproc_present = env_coproc_present;
+  env.coproc_write = env_coproc_write;
+  env.coproc_read = env_coproc_read;
+  env.take_exception = env_take_exception;
+  env.notify_jit = env_notify_jit;
+  env.sync_caches = env_sync_caches;
+}
+
+/* The engine's coprocessor view of CP15: the ARM926EJ-S implements exactly
+ * CP15, opc1 0 and 1, and neither of the MCR2/MRC2 aliases - which is what
+ * the engine's UNDEF check asks about.  (cp15_write/cp15_read keep their own
+ * User-mode guard; the engine checks privilege before asking, so it never
+ * fires from the engine's path.) */
+bool Cpu::coproc_present(u32 cp, u32 opc1, bool second) const {
+  return cp == 15 && opc1 <= 1 && !second;
+}
+void Cpu::coproc_write(u32 cp, u32 crn, u32 opc1, u32 crm, u32 opc2, u32 val) {
+  (void)cp;
+  cp15_write(crn, opc1, val, crm, opc2);
+}
+u32 Cpu::coproc_read(u32 cp, u32 crn, u32 opc1, u32 crm, u32 opc2) {
+  (void)cp;
+  return cp15_read(crn, opc1, crm, opc2);
 }
 
 /* --------------------------------------------------- static JIT helpers -- */

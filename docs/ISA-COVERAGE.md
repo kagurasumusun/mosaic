@@ -1,8 +1,13 @@
 # ISA coverage
 
-Status of the ARMv5TEJ / ARM926EJ-S instruction set as implemented by
-`arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_arm.cpp`, `arch/arm/cpu/classic/arm9/arm926ej-s/cpu/decode_thumb.cpp` and the single execution
-engine in `arch/arm/cpu/classic/arm9/arm926ej-s/cpu/interp_arm.cpp`. "Checked" below means a case in
+Status of the ARMv5TEJ instruction set as implemented by the ISA layer
+(`arch/arm/isa/armv5/`): the decoders in `arch/arm/isa/armv5/decode_arm.cpp`
+and `arch/arm/isa/armv5/decode_thumb.cpp`, and the single execution engine in
+`arch/arm/isa/armv5/interp_arm.cpp` (+ `interp_thumb.cpp`). The engine runs
+against the architectural state (`IsaState`) and the environment contract
+(`IsaEnv`) only; the ARM926EJ-S core (`arch/arm/cpu/classic/arm9/arm926ej-s/`)
+supplies the environment, and the AArch32 execution state
+(`arch/arm/execution/aarch32/`) supplies the pipeline step. "Checked" below means a case in
 `arch/arm/cpu/classic/arm9/arm926ej-s/tests/data/corpus.txt` compares this core against a golden emulator for that
 encoding; 577 cases exist today (410 in ARM state, 167 in Thumb: single
 encodings, short sequences that carry a flag or a register from one instruction
@@ -238,10 +243,10 @@ caches translations agree.
    leaves standalone second halves UNPREDICTABLE (not undefined), so the model
    may legitimately resolve them to the A7.1.17 branch component as it does.
    Resolution needs DDI0100C A5.2's space tables; then either an orphan latch
-   in `Cpu::fetch_and_execute()`, or pin today's choice in `test_instr`.
+   in the execution step (`aarch32::fetch_and_execute()`), or pin today's choice in `test_instr`.
    Probe: `build/jit_emit --hex 4680,ed94,e7fe,0000 --thumb --exec --steps 4`.
 5. Nothing remains of the prefetch side: the `L4` half was closed earlier
-   (`Cpu::load_pc()` honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15 as well as for
+   (`load_pc()` in the ISA layer honours SCTLR.L4 for `LDR`/`LDM`/`POP` into R15 as well as for
    the `MOV`-style PC writes, c1[15] is writable and reads back, and
    `arch/arm/cpu/classic/arm9/arm926ej-s/tests/test_arm926.cpp` pins both settings), and device-page fetches are closed by
    the model's shape: there is no prefetch pipeline, so a fetch happens exactly once

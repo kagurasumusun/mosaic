@@ -42,6 +42,10 @@
 
 namespace brain::arm926 {
 
+/* The shift-type numbering (SH_LSL..SH_RRX) the IR uses is the ISA layer's
+ * (arch/arm/isa/armv5/state.h). */
+using namespace brain::arm::isa::armv5;
+
 /* Per-op acceptance, consulted by the front end before it appends an
  * instruction to a block (see jit/frontend.cpp). */
 bool jit_x64_accepts(const IrInsn& in) {

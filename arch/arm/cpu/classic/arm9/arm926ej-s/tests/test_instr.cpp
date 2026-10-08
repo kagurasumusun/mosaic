@@ -18,10 +18,11 @@
 #include <vector>
 
 #include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/cpu.h"
-#include "arch/arm/cpu/classic/arm9/arm926ej-s/cpu/ops.h"
+#include "arch/arm/isa/armv5/ops.h"
 
 using namespace brain;
 using namespace brain::arm926;
+using namespace brain::arm::isa::armv5;
 
 namespace {
 
