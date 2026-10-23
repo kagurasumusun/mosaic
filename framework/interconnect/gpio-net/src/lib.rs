@@ -194,7 +194,7 @@ impl GpioPort for GpioNetPort {
         };
         let pending = {
             let mut inner = lock(&self.inner);
-            Self::apply(&mut inner, self.node, drive)?
+            GpioNet::apply(&mut *inner, self.node, drive)?
         };
         GpioNet::notify(&self.inner, pending, ctx);
         Ok(())
