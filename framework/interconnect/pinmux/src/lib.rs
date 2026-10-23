@@ -77,8 +77,8 @@ impl PinMux {
             }
         }
         inner.selection[pin] = function;
-        Ok(
-    )
+        Ok(())
+    }
 
     /// Port a model drives; the multiplexer forwards to the selected function.
     pub fn pin_port(&self, pin: usize) -> Result<MuxedPin, PinMuxError> {

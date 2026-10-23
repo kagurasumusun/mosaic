@@ -351,7 +351,7 @@ impl I2cBitBang {
                 addr,
                 read: self.read,
             });
-            self.phases.push(I2cPhase::Acknowledge(self.ack_level());
+            self.phases.push(I2cPhase::Acknowledge(self.ack_level()));
             if self.read && self.target_present {
                 self.prefetch_read(ctx);
             }
