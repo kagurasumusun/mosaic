@@ -367,6 +367,7 @@ mod tests {
             _value: u64,
             _attr: &Attr,
         ) -> Result<(), BusFault> {
+            ctx.set_signal(SignalId(1), true).map_err(|_| BusFault::Device)?;
             ctx.schedule(VTime(1000), 1).map_err(|_| BusFault::Device)?;
             Ok(())
         }
