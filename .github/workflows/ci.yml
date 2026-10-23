@@ -5,13 +5,38 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  rustfmt-commit:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/arena/f1aad4a9-mosaic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa4154380b0dba6c83
+        with:
+          ref: arena/f1aad4a9-mosaic
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - name: Format
+        run: cargo fmt --all
+      - name: Commit formatting
+        run: |
+          git config user.name "rustfmt-bot"
+          git config user.email "rustfmt-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no formatting changes"
+          else
+            git commit -m "Apply rustfmt"
+            git push
+          fi
+
   fast:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
