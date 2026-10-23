@@ -8,7 +8,8 @@ use std::process::Command;
 
 mod policy;
 pub use policy::{
-    dependency_allowed, forbidden_name, kebab_case, lint_layers, validate_layer, Layer, Package,
+    dependency_allowed, external_dependency_allowed, forbidden_name, kebab_case, lint_layers,
+    validate_layer, Layer, Package,
 };
 
 pub type CheckResult<T> = Result<T, String>;
@@ -66,8 +67,11 @@ pub fn load_packages(root: &Path) -> CheckResult<Vec<Package>> {
         for dep in p["dependencies"].as_array().ok_or("missing dependencies")? {
             if let Some(path) = dep["path"].as_str() {
                 dependencies.push(Path::new(path).canonicalize().map_err(|e| e.to_string())?);
-            } else if layer.domain != "tooling" && layer.domain != "apps" {
-                // P0 allowlist is empty. New external dependencies need a reviewed policy change.
+            } else if !external_dependency_allowed(
+                &relative.to_string_lossy(),
+                &layer,
+                dep["name"].as_str().ok_or("missing dependency name")?,
+            ) {
                 return Err(format!(
                     "{name}: external dependency {} is not allowlisted",
                     dep["name"]
@@ -208,6 +212,29 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn unicorn_dependency_is_pinned_arm_only_and_unsafe_is_scoped() {
+        let root = workspace_root().unwrap();
+        let text = fs::read_to_string(root.join("framework/engine/unicorn/Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&text).unwrap();
+        let dep = &manifest["dependencies"]["unicorn-engine"];
+        assert_eq!(dep["version"].as_str(), Some("=2.1.5"));
+        assert_eq!(dep["default-features"].as_bool(), Some(false));
+        assert_eq!(
+            dep["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["arch_arm"]
+        );
+        assert_eq!(
+            manifest["lints"]["rust"]["unsafe_code"].as_str(),
+            Some("deny")
+        );
     }
 
     #[test]

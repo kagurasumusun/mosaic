@@ -12,6 +12,7 @@ members = [
     "framework/isa/arm",
     "framework/core/runtime",
     "framework/engine/conformance",
+    "framework/engine/unicorn",
     "framework/describe",
     "framework/assemble",
     "apps/cli",

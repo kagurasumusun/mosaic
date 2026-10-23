@@ -6,6 +6,8 @@
 `[package.metadata.layer]` を更新します。workspace の version / edition /
 rust-version / lints を継承し、ライセンス決定までは `publish = false` にします。
 ライブラリの先頭には `#![forbid(unsafe_code)]` を置きます。
+唯一の例外は engine/unicorn の所有権ラッパーで、deny + 局所 allow による unsafe Send を 1 箇所持ちます。
+変更前に ADR 0007 の不変条件を確認してください。
 
 ```toml
 [package.metadata.layer]
@@ -50,8 +52,9 @@ workspace 外の未分類 path 依存を拒否します。
 - catalog は prim / types / contract / modelkit / isa のみを利用できます。
 - catalog の横依存は `ip-lib` 宛てのみ許可します。
 - composite の glue は types / contract だけを利用できます。
-- VM 層の外部依存許可リストは現在空です。必要な依存は policy のレビューとともに追加します。
-  xtask と apps にはこの空の許可リストを適用しません。
+- VM 層の外部依存は専用 engine の unicorn-engine だけを暫定許可します。
+  vendor crate の直接参照を app / tooling / catalog / 他 framework に広げることは禁止します。
+  その他の外部依存は xtask / apps のみが利用できます。
 
 `lint-names` はソースディレクトリ名とクレート名を検査します。
 禁止語は kebab-case の単語単位で検出します（`uart-utils` は違反、`newton` は違反ではない）。
@@ -111,7 +114,7 @@ CI は OS 移行の影響を避けて ubuntu-24.04 に固定し、checkout は N
 
 ## P1 に進む前の確認
 
-1. 最初の実機・ISA を選ぶ（設計書は MCU 級を推奨するが、未決定）。
+1. 最初の実機・MCU を選ぶ（開発用の初期 engine 検証は ARM A32。ボードは未決定）。
 2. ライセンス、公開・配布時期、貢献規約を決める。
 3. 決定論を既定とする暫定 ADR の要件を確認する。
 4. 最小 machine テストの UART 期待出力と、ファームウェアの出自・ビルド手順を定める。

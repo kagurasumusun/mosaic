@@ -1,0 +1,23 @@
+[package]
+name = "mosaic-engine-unicorn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "engine"
+level = 3
+
+# One reviewed unsafe Send implementation; everything else denies unsafe.
+[lints.rust]
+unsafe_code = "deny"
+[lints.clippy]
+all = "warn"
+
+[dependencies]
+mosaic-core-types = { path = "../../core/types" }
+mosaic-contract-cpu-engine = { path = "../../contract/cpu-engine" }
+mosaic-isa-arm = { path = "../../isa/arm" }
+unicorn-engine = { version = "=2.1.5", default-features = false, features = ["arch_arm"] }

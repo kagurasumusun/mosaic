@@ -98,6 +98,18 @@ pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
     }
 }
 
+/// R7: only this exact engine boundary may bring in the native CPU backend.
+pub fn external_dependency_allowed(path: &str, layer: &Layer, dependency: &str) -> bool {
+    if matches!(dependency, "unicorn-engine" | "unicorn-engine-sys") {
+        return path == "framework/engine/unicorn"
+            && layer.domain == "framework"
+            && layer.kind == "engine"
+            && layer.level == 3
+            && dependency == "unicorn-engine";
+    }
+    matches!(layer.domain.as_str(), "tooling" | "apps")
+}
+
 pub fn lint_layers(packages: &[Package]) -> Vec<String> {
     let by_dir: BTreeMap<_, _> = packages.iter().map(|p| (p.dir.clone(), p)).collect();
     let mut errors = Vec::new();
@@ -150,6 +162,40 @@ mod tests {
     }
     fn cat(kind: &str) -> Layer {
         layer("catalog", kind, 3)
+    }
+
+    #[test]
+    fn unicorn_is_allowlisted_only_at_its_adapter_boundary() {
+        assert!(external_dependency_allowed(
+            "framework/engine/unicorn",
+            &fw("engine"),
+            "unicorn-engine"
+        ));
+        assert!(!external_dependency_allowed(
+            "apps/cli",
+            &layer("apps", "app", 6),
+            "unicorn-engine"
+        ));
+        assert!(!external_dependency_allowed(
+            "framework/engine/native",
+            &fw("engine"),
+            "unicorn-engine"
+        ));
+        assert!(!external_dependency_allowed(
+            "catalog/cpu/arm/cortex-a9",
+            &cat("cpu"),
+            "unicorn-engine"
+        ));
+        assert!(!external_dependency_allowed(
+            "framework/engine/unicorn",
+            &fw("engine"),
+            "unicorn-engine-sys"
+        ));
+        assert!(!external_dependency_allowed(
+            "framework/engine/unicorn",
+            &fw("engine"),
+            "rand"
+        ));
     }
 
     #[test]

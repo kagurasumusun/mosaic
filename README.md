@@ -18,7 +18,14 @@ cargo test --locked --workspace --all-features
 cargo xtask doctor
 ```
 
-`cargo run --locked -p mosaic-apps-cli` は状態表示だけを行う仮の CLI です。
+通常の CLI は開発用ヘルプを表示します。Unicorn を使用する場合だけ明示的に opt-in します。
+
+```sh
+cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
+```
+
+これは FlatView のコード・データ領域で A32 の 4 命令を実行し、レジスタとメモリを検査する smoke test です。
+必要な native ビルド依存、GPL-2.0 と制限は [Unicorn ガイド](docs/guides/unicorn.md) を参照してください。
 
 ## 構造
 
@@ -30,13 +37,15 @@ cargo xtask doctor
 
 ### 実装済み
 
-- 15 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
+- 16 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
 - `lint-layers`: framework の逆依存、L3 間依存、catalog 横依存、glue の依存を検査。
 - `lint-names`: 禁止語、kebab-case、クレート名、正規の出自を検査。
 - `check` / `doctor`、fast CI（fmt、構成 lint、Clippy、単体テスト）。
 - `Addr` / `VTime` / `Attr` / `BusFault` / 型付き Snapshot の境界。
 - 最小限の model context、MMIO、signal、clock、CPU-engine contract（暫定 API）。
 - 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
+- Region 木 → FlatView、優先度 overlay、境界・permission・device offset 解決。
+- ARM のみの Unicorn アダプタ（2.1.5）、ISA の register ID と初期 engine 契約、backend 非依存の A32 検証。
 - 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
 
 CPU やファームウェアを使わないイベント実行例:
@@ -50,8 +59,9 @@ cargo run --locked --package mosaic-core-runtime --example events
 
 ### 次の実装
 
-P1 の最初の ISA・MCU・ボードを決め、Region / FlatView、モデルのディスパッチ、
-エンジンアダプタ、UART とタイマ、SoC / ボード宣言をイベント基盤へ縦につなぎます。
+最初の MCU・ボードを決め、モデルのディスパッチ、MMIO / AddressView、UART とタイマ、
+SoC / ボード宣言をイベント・アドレス・engine 基盤へ縦につなぎます。
+現在の Unicorn memory は instance ごとの private page であり、全機械の共有メモリではありません。
 実機モデルを増やす前に、決定論と MMIO の machine テストを整備します。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
@@ -59,5 +69,6 @@ P1 の最初の ISA・MCU・ボードを決め、Region / FlatView、モデル�
 ## ライセンス・貢献規約
 
 **オーナー判断待ちです。** ライセンスをエージェントが選択することはせず、全クレートを
-`publish = false` にしています。Unicorn は未導入です。
+`publish = false` にしています。Unicorn は明示的な導入指示に基づき開発・CI 検証へ導入しましたが、
+プロジェクトライセンスや配布条件の確認が完了したという意味ではありません。
 公開・配布と外部貢献の受け入れ前に [ADR 0006](docs/adr/0006-license.md) を解決してください。

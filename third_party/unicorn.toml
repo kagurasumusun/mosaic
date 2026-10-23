@@ -1,0 +1,11 @@
+# Provenance metadata only. No upstream source is vendored in this repository.
+[unicorn]
+crate = "unicorn-engine"
+version = "2.1.5"
+upstream = "https://github.com/unicorn-engine/unicorn"
+registry = "https://crates.io/crates/unicorn-engine/2.1.5"
+declared_license = "GPL-2.0"
+features = ["arch_arm"]
+default_features = false
+binding_reference = "https://github.com/unicorn-engine/unicorn/tree/2.1.4/bindings/rust/unicorn-engine"
+notes = "Release tag 2.1.4 declares Rust workspace version 2.1.5. Cargo.lock pins registry checksums."

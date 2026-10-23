@@ -15,3 +15,5 @@ workspace = true
 
 [dependencies]
 mosaic-contract-cpu-engine = { path = "../../contract/cpu-engine" }
+mosaic-core-types = { path = "../../core/types" }
+mosaic-isa-arm = { path = "../../isa/arm" }

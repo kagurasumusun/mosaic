@@ -2,6 +2,9 @@
 #![forbid(unsafe_code)]
 //! Shared VM vocabulary. No runtime or host services belong here.
 
+mod memory;
+pub use memory::{Mapping, MemoryKind, Permissions};
+
 /// An address in the address space's declared address unit (initially 8 bits).
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Addr(pub u64);
@@ -20,6 +23,10 @@ impl VTime {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NodeId(pub u32);
+
+/// An ISA-defined register identifier, never a vendor backend enum value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RegId(pub u32);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EventId(pub u64);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
