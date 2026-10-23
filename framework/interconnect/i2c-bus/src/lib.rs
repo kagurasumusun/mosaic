@@ -426,7 +426,9 @@ impl I2cBus {
         };
         match self.targets[index].target_read(ctx, &addr, buf)? {
             Ack::Ack => Ok(()),
-            Ack::Nack => Err(I2cError::Nack),
+            // Ack is non_exhaustive: any future acknowledgement variant is
+            // conservatively treated as a failed transfer.
+            Ack::Nack | _ => Err(I2cError::Nack),
         }
     }
 }

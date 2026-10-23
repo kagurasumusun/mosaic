@@ -1,0 +1,50 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node.js 24)
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+      - name: Native engine build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config libclang-dev
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Architecture checks
+        run: cargo xtask check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Build
+        run: cargo build --locked --workspace --all-targets --all-features
+      - name: Unit and integration tests
+        run: cargo test --locked --workspace --all-features
+      - name: Runtime trace and snapshot replay smoke test
+        shell: bash
+        run: |
+          cargo run --locked --package mosaic-core-runtime --example events > "$RUNNER_TEMP/runtime-events.stdout"
+          diff -u tests/runtime-events.stdout "$RUNNER_TEMP/runtime-events.stdout"
+      - name: Machine MMIO dispatch smoke test
+        shell: bash
+        run: |
+          cargo run --locked --package mosaic-core-runtime --example machine > "$RUNNER_TEMP/machine-mmio.stdout"
+          diff -u tests/machine-mmio.stdout "$RUNNER_TEMP/machine-mmio.stdout"
+      - name: Unicorn ARM execution smoke test
+        shell: bash
+        run: |
+          cargo run --locked --package mosaic-apps-cli --features unicorn -- unicorn-smoke > "$RUNNER_TEMP/unicorn-arm.stdout"
+          diff -u tests/unicorn-arm.stdout "$RUNNER_TEMP/unicorn-arm.stdout"
+      - name: Workspace diagnostics
+        run: cargo xtask doctor

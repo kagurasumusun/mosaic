@@ -85,12 +85,14 @@ impl GpioNet {
             match state.drive {
                 NetDrive::StrongLow | NetDrive::OpenDrainLow => strong_low = true,
                 NetDrive::StrongHigh => strong_high = true,
-                NetDrive::HighZ => {}
+                // HighZ and any future drive variant contribute no level.
+                _ => {}
             }
             match state.pull {
                 NetPull::Up => pull_up = true,
                 NetPull::Down => pull_down = true,
-                NetPull::None => {}
+                // None and any future pull variant leave the net unpulled.
+                _ => {}
             }
         }
         // Deterministic tie-breaks keep simulations reproducible: on an
@@ -187,6 +189,8 @@ impl GpioPort for GpioNetPort {
             (DriveMode::OpenDrain, PinLevel::High) => NetDrive::HighZ,
             (_, PinLevel::Low) => NetDrive::StrongLow,
             (_, PinLevel::High) => NetDrive::StrongHigh,
+            // PinLevel is non_exhaustive; an unknown future level is rejected.
+            _ => return Err(GpioError::Unsupported),
         };
         let pending = {
             let mut inner = lock(&self.inner);
