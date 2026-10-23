@@ -1,0 +1,17 @@
+[identity]
+id = 'cpu:arm/arm926ej-s'
+summary = 'ARM926EJ-S processor core model'
+spec = ['ARM DDI 0193E']
+variants = []
+
+[tags]
+function = ['cpu-core']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'sink', pins = ['irq', 'fiq'] }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

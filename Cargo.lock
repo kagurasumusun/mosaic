@@ -308,6 +308,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-cpu-arm-arm926ej-s"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
 name = "mosaic-core-runtime"
 version = "0.1.0"
 dependencies = [
