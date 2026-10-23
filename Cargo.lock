@@ -206,6 +206,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-contract-can"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+]
+
+[[package]]
 name = "mosaic-contract-clock"
 version = "0.1.0"
 dependencies = [
@@ -217,6 +224,20 @@ name = "mosaic-contract-cpu-engine"
 version = "0.1.0"
 dependencies = [
  "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-contract-gpio"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-contract-i2c"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
 ]
 
 [[package]]
@@ -235,10 +256,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-contract-net"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-gpio",
+ "mosaic-contract-model",
+]
+
+[[package]]
 name = "mosaic-contract-signal"
 version = "0.1.0"
 dependencies = [
  "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-contract-spi"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-contract-stream"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-contract-uart-line"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
 ]
 
 [[package]]

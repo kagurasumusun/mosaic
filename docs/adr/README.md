@@ -13,3 +13,4 @@
 | [0005](0005-manifest.md) | TOML → MachineGraph、識別子の統一 | 暫定採用、実装は P1 |
 | [0006](0006-license.md) | ライセンス・貢献規約 | 未決定・配布をブロック |
 | [0007](0007-unicorn-arm.md) | Unicorn ARM、実行契約、Send 境界 | 暫定採用 |
+| [0008](0008-serial-pin-contracts.md) | シリアルバス・ピン・ネット契約とポート注入 | 暫定採用 |
