@@ -77,12 +77,22 @@ impl PinConfig {
 
     /// Conventional push-pull output starting at the given level.
     pub const fn output(initial: PinLevel) -> Self {
-        Self::new(PinDirection::Output, Pull::None, DriveMode::PushPull, initial)
+        Self::new(
+            PinDirection::Output,
+            Pull::None,
+            DriveMode::PushPull,
+            initial,
+        )
     }
 
     /// Conventional high-impedance input with the given pull.
     pub const fn input(pull: Pull) -> Self {
-        Self::new(PinDirection::Input, pull, DriveMode::PushPull, PinLevel::Low)
+        Self::new(
+            PinDirection::Input,
+            pull,
+            DriveMode::PushPull,
+            PinLevel::Low,
+        )
     }
 }
 

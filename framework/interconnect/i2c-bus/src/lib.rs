@@ -11,9 +11,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use mosaic_contract_gpio::{GpioSink, PinLevel};
-use mosaic_contract_i2c::{
-    Ack, I2cAddr, I2cError, I2cInitiator, I2cPhase, I2cSpeed, I2cTarget,
-};
+use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cInitiator, I2cPhase, I2cSpeed, I2cTarget};
 use mosaic_contract_model::Ctx;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -111,17 +109,9 @@ impl I2cInitiator for I2cBus {
         self.set_speed(speed);
     }
 
-    fn write(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        addr: I2cAddr,
-        bytes: &[u8],
-    ) -> Result<(), I2cError> {
+    fn write(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, bytes: &[u8]) -> Result<(), I2cError> {
         self.phases.push(I2cPhase::Start);
-        self.phases.push(I2cPhase::Address {
-            addr,
-            read: false,
-        });
+        self.phases.push(I2cPhase::Address { addr, read: false });
         for byte in bytes {
             self.phases.push(I2cPhase::Data(*byte));
         }
@@ -130,12 +120,7 @@ impl I2cInitiator for I2cBus {
         result
     }
 
-    fn read(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        addr: I2cAddr,
-        buf: &mut [u8],
-    ) -> Result<(), I2cError> {
+    fn read(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, buf: &mut [u8]) -> Result<(), I2cError> {
         self.phases.push(I2cPhase::Start);
         self.phases.push(I2cPhase::Address { addr, read: true });
         let result = self.dispatch_read(ctx, addr, buf);
@@ -154,10 +139,7 @@ impl I2cInitiator for I2cBus {
         input: &mut [u8],
     ) -> Result<(), I2cError> {
         self.phases.push(I2cPhase::Start);
-        self.phases.push(I2cPhase::Address {
-            addr,
-            read: false,
-        });
+        self.phases.push(I2cPhase::Address { addr, read: false });
         for byte in out {
             self.phases.push(I2cPhase::Data(*byte));
         }
@@ -519,12 +501,7 @@ mod tests {
     }
 
     /// Drive one byte (MSB first) plus an ACK slot using raw pin edges.
-    fn pulse_byte(
-        sda: &mut BitBangLine,
-        scl: &mut BitBangLine,
-        ctx: &mut dyn Ctx,
-        byte: u8,
-    ) {
+    fn pulse_byte(sda: &mut BitBangLine, scl: &mut BitBangLine, ctx: &mut dyn Ctx, byte: u8) {
         for bit in (0..8).rev() {
             let level = if byte & (1 << bit) != 0 {
                 PinLevel::High
@@ -563,12 +540,8 @@ mod tests {
             writes: Vec::new(),
         }));
         let mut ctx = DummyCtx;
-        bus.write(
-            &mut ctx,
-            I2cAddr::seven(0x40).unwrap(),
-            &[0x0D, 0x01],
-        )
-        .unwrap();
+        bus.write(&mut ctx, I2cAddr::seven(0x40).unwrap(), &[0x0D, 0x01])
+            .unwrap();
         let mut data = [0u8; 2];
         bus.read(&mut ctx, I2cAddr::seven(0x40).unwrap(), &mut data)
             .unwrap();

@@ -44,12 +44,7 @@ impl SpiBus {
 }
 
 impl SpiInitiator for SpiBus {
-    fn select(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        cs: SpiCs,
-        assert: bool,
-    ) -> Result<(), SpiError> {
+    fn select(&mut self, ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError> {
         if assert {
             let target = self.target(cs)?;
             target.selected(ctx, true);
@@ -105,8 +100,8 @@ impl SpiBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
     use mosaic_contract_model::ContextError;
+    use std::sync::{Arc, Mutex};
 
     /// Recorded select/frame traffic, shared so the test can inspect the
     /// target while the bus owns it behind a trait object.

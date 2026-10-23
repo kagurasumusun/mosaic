@@ -9,9 +9,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use mosaic_contract_gpio::{
-    DriveMode, GpioError, GpioPort, GpioSink, PinConfig, PinLevel,
-};
+use mosaic_contract_gpio::{DriveMode, GpioError, GpioPort, GpioSink, PinConfig, PinLevel};
 use mosaic_contract_model::Ctx;
 use mosaic_contract_net::{DigitalNet, NetDrive, NetLevel, NetNode, NetPull};
 
@@ -60,11 +58,7 @@ impl GpioNet {
     }
 
     /// Begin notifying `node` whenever the resolved level changes.
-    pub fn attach_sink(
-        &mut self,
-        node: NetNode,
-        sink: Box<dyn GpioSink>,
-    ) -> Result<(), GpioError> {
+    pub fn attach_sink(&mut self, node: NetNode, sink: Box<dyn GpioSink>) -> Result<(), GpioError> {
         let mut inner = lock(&self.inner);
         if !inner.nodes.contains_key(&node.0) {
             return Err(GpioError::Disconnected);
@@ -139,11 +133,7 @@ impl GpioNet {
             .collect())
     }
 
-    fn notify(
-        inner: &Arc<Mutex<NetInner>>,
-        pending: Vec<(u32, PinLevel)>,
-        ctx: &mut dyn Ctx,
-    ) {
+    fn notify(inner: &Arc<Mutex<NetInner>>, pending: Vec<(u32, PinLevel)>, ctx: &mut dyn Ctx) {
         for (node, level) in pending {
             let mut guard = lock(inner);
             let Some(sink) = guard.sinks.get_mut(&node) else {
@@ -312,10 +302,7 @@ mod tests {
         net.drive(&mut DummyCtx, driver, NetDrive::StrongLow);
         net.drive(&mut DummyCtx, driver, NetDrive::StrongLow);
         net.drive(&mut DummyCtx, driver, NetDrive::HighZ);
-        assert_eq!(
-            lock(&changes).as_slice(),
-            &[PinLevel::Low, PinLevel::High]
-        );
+        assert_eq!(lock(&changes).as_slice(), &[PinLevel::Low, PinLevel::High]);
     }
 
     #[test]

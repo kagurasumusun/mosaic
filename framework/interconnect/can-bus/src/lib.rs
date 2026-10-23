@@ -82,11 +82,7 @@ impl CanBus {
 }
 
 impl CanController for CanBus {
-    fn transmit(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        frame: CanFrame,
-    ) -> Result<(), CanError> {
+    fn transmit(&mut self, ctx: &mut dyn Ctx, frame: CanFrame) -> Result<(), CanError> {
         self.deliver(ctx, &frame);
         Ok(())
     }
@@ -95,8 +91,8 @@ impl CanController for CanBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
     use mosaic_contract_model::ContextError;
+    use std::sync::{Arc, Mutex};
 
     /// Receiver with an identifier allow-list and an external delivery log.
     struct FilteredReceiver {
@@ -180,9 +176,6 @@ mod tests {
     fn the_queue_is_bounded() {
         let mut bus = CanBus::new(1);
         bus.enqueue(frame(0x1, &[])).unwrap();
-        assert_eq!(
-            bus.enqueue(frame(0x2, &[])),
-            Err(CanError::Full)
-        );
+        assert_eq!(bus.enqueue(frame(0x2, &[])), Err(CanError::Full));
     }
 }

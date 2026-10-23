@@ -145,19 +145,11 @@ impl UartLine for UartEndpoint {
 }
 
 impl ByteStream for UartEndpoint {
-    fn write_bytes(
-        &mut self,
-        _ctx: &mut dyn Ctx,
-        bytes: &[u8],
-    ) -> Result<usize, StreamError> {
+    fn write_bytes(&mut self, _ctx: &mut dyn Ctx, bytes: &[u8]) -> Result<usize, StreamError> {
         Ok(self.push_peer(bytes))
     }
 
-    fn read_bytes(
-        &mut self,
-        _ctx: &mut dyn Ctx,
-        buf: &mut [u8],
-    ) -> Result<usize, StreamError> {
+    fn read_bytes(&mut self, _ctx: &mut dyn Ctx, buf: &mut [u8]) -> Result<usize, StreamError> {
         Ok(self.pull_local(buf))
     }
 }

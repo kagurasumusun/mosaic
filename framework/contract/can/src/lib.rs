@@ -105,11 +105,7 @@ pub enum CanError {
 
 /// Transmit-side role implemented by a CAN controller model.
 pub trait CanController: Send {
-    fn transmit(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        frame: CanFrame,
-    ) -> Result<(), CanError>;
+    fn transmit(&mut self, ctx: &mut dyn Ctx, frame: CanFrame) -> Result<(), CanError>;
 }
 
 /// Receive-side role implemented by ECU models and transceivers.

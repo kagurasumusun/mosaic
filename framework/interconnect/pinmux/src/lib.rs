@@ -62,11 +62,7 @@ impl PinMux {
     }
 
     /// Route `pin` to `function`, or disconnect with [`None`].
-    pub fn select(
-        &mut self,
-        pin: usize,
-        function: Option<usize>,
-    ) -> Result<(), PinMuxError> {
+    pub fn select(&mut self, pin: usize, function: Option<usize>) -> Result<(), PinMuxError> {
         let mut inner = lock(&self.inner);
         if pin >= inner.selection.len() {
             return Err(PinMuxError::PinOutOfRange);
@@ -216,10 +212,7 @@ mod tests {
     #[test]
     fn geometry_errors_are_bounds_checked() {
         let mut mux = PinMux::new(1, 1);
-        assert_eq!(
-            mux.pin_port(4).err(),
-            Some(PinMuxError::PinOutOfRange)
-        );
+        assert_eq!(mux.pin_port(4).err(), Some(PinMuxError::PinOutOfRange));
         assert_eq!(
             mux.select(0, Some(3)).err(),
             Some(PinMuxError::FunctionOutOfRange)

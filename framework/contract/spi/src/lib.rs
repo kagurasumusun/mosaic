@@ -56,12 +56,7 @@ pub enum SpiError {
 /// Controller-side port implemented by the interconnect bus.
 pub trait SpiInitiator: Send {
     /// Assert or release one chip-select line independently of a transfer.
-    fn select(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        cs: SpiCs,
-        assert: bool,
-    ) -> Result<(), SpiError>;
+    fn select(&mut self, ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError>;
 
     /// Full-duplex frame: `mosi` and `miso` must share a length, the selected
     /// target exchanges one byte pair per clock.
@@ -81,12 +76,8 @@ pub trait SpiTarget: Send {
     fn selected(&mut self, ctx: &mut dyn Ctx, assert: bool);
 
     /// Exchange one byte under the given clock mode.
-    fn exchange_byte(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        mode: SpiMode,
-        mosi: u8,
-    ) -> Result<u8, SpiError>;
+    fn exchange_byte(&mut self, ctx: &mut dyn Ctx, mode: SpiMode, mosi: u8)
+        -> Result<u8, SpiError>;
 }
 
 #[cfg(test)]

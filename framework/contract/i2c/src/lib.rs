@@ -103,20 +103,10 @@ pub trait I2cInitiator: Send {
     fn set_speed(&mut self, speed: I2cSpeed);
 
     /// START, address-W, bytes, STOP. A NACK ends the transfer early.
-    fn write(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        addr: I2cAddr,
-        bytes: &[u8],
-    ) -> Result<(), I2cError>;
+    fn write(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, bytes: &[u8]) -> Result<(), I2cError>;
 
     /// START, address-R, fill `buf`, NACK on the final byte, STOP.
-    fn read(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        addr: I2cAddr,
-        buf: &mut [u8],
-    ) -> Result<(), I2cError>;
+    fn read(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, buf: &mut [u8]) -> Result<(), I2cError>;
 
     /// WRITE followed by a repeated START and READ without releasing the bus.
     fn write_read(

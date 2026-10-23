@@ -24,18 +24,10 @@ pub enum StreamError {
 /// Unframed byte stream, the transport shape of UART lines and pipes.
 pub trait ByteStream: Send {
     /// Push as many bytes as fit; returns the number accepted.
-    fn write_bytes(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        bytes: &[u8],
-    ) -> Result<usize, StreamError>;
+    fn write_bytes(&mut self, ctx: &mut dyn Ctx, bytes: &[u8]) -> Result<usize, StreamError>;
 
     /// Pull up to `buf.len()` buffered bytes; zero means no data is waiting.
-    fn read_bytes(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        buf: &mut [u8],
-    ) -> Result<usize, StreamError>;
+    fn read_bytes(&mut self, ctx: &mut dyn Ctx, buf: &mut [u8]) -> Result<usize, StreamError>;
 }
 
 /// Datagram-style link for network frames.
@@ -44,18 +36,10 @@ pub trait FrameStream: Send {
     fn mtu(&self) -> usize;
 
     /// Deliver one complete frame. Oversized input is an error, not a split.
-    fn send_frame(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        frame: &[u8],
-    ) -> Result<(), StreamError>;
+    fn send_frame(&mut self, ctx: &mut dyn Ctx, frame: &[u8]) -> Result<(), StreamError>;
 
     /// Copy one received frame into `buf`; returns its length.
-    fn recv_frame(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        buf: &mut [u8],
-    ) -> Result<usize, StreamError>;
+    fn recv_frame(&mut self, ctx: &mut dyn Ctx, buf: &mut [u8]) -> Result<usize, StreamError>;
 }
 
 #[cfg(test)]
