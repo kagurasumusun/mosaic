@@ -144,7 +144,7 @@ impl MmioTarget for Arm926ejS {
         &mut self,
         _ctx: &mut dyn Ctx,
         offset: u64,
-        size: AccessSize,
+        _size: AccessSize,
         value: u64,
         _attr: &Attr,
     ) -> Result<(), BusFault> {
