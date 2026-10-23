@@ -1,32 +1,32 @@
 [1m[32m Downloading[0m crates ...
-[1m[32m  Downloaded[0m cmake v0.1.58
-[1m[32m  Downloaded[0m heck v0.5.0
-[1m[32m  Downloaded[0m rustc-hash v2.1.3
-[1m[32m  Downloaded[0m bitflags v2.13.2
-[1m[32m  Downloaded[0m log v0.4.34
-[1m[32m  Downloaded[0m shlex v2.0.1
-[1m[32m  Downloaded[0m cc v1.9.0
-[1m[32m  Downloaded[0m nom v7.1.3
-[1m[32m  Downloaded[0m unicode-ident v1.0.27
-[1m[32m  Downloaded[0m prettyplease v0.2.37
-[1m[32m  Downloaded[0m clang-sys v1.9.1
-[1m[32m  Downloaded[0m itertools v0.13.0
-[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
-[1m[32m  Downloaded[0m shlex v1.3.0
-[1m[32m  Downloaded[0m unicorn-engine v2.1.5
-[1m[32m  Downloaded[0m proc-macro2 v1.0.107
-[1m[32m  Downloaded[0m minimal-lexical v0.2.1
-[1m[32m  Downloaded[0m aho-corasick v1.1.5
-[1m[32m  Downloaded[0m pkg-config v0.3.34
-[1m[32m  Downloaded[0m libloading v0.8.9
-[1m[32m  Downloaded[0m quote v1.0.47
-[1m[32m  Downloaded[0m regex v1.13.1
-[1m[32m  Downloaded[0m glob v0.3.4
-[1m[32m  Downloaded[0m syn v2.0.119
-[1m[32m  Downloaded[0m either v1.19.0
-[1m[32m  Downloaded[0m bindgen v0.71.1
 [1m[32m  Downloaded[0m cfg-if v1.0.5
+[1m[32m  Downloaded[0m rustc-hash v2.1.3
+[1m[32m  Downloaded[0m heck v0.5.0
 [1m[32m  Downloaded[0m cexpr v0.6.0
+[1m[32m  Downloaded[0m cmake v0.1.58
+[1m[32m  Downloaded[0m shlex v1.3.0
+[1m[32m  Downloaded[0m glob v0.3.4
+[1m[32m  Downloaded[0m quote v1.0.47
+[1m[32m  Downloaded[0m either v1.19.0
+[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
+[1m[32m  Downloaded[0m pkg-config v0.3.34
+[1m[32m  Downloaded[0m shlex v2.0.1
+[1m[32m  Downloaded[0m libloading v0.8.9
+[1m[32m  Downloaded[0m clang-sys v1.9.1
+[1m[32m  Downloaded[0m unicode-ident v1.0.27
+[1m[32m  Downloaded[0m bitflags v2.13.2
+[1m[32m  Downloaded[0m unicorn-engine v2.1.5
+[1m[32m  Downloaded[0m log v0.4.34
+[1m[32m  Downloaded[0m proc-macro2 v1.0.107
+[1m[32m  Downloaded[0m prettyplease v0.2.37
+[1m[32m  Downloaded[0m minimal-lexical v0.2.1
+[1m[32m  Downloaded[0m bindgen v0.71.1
+[1m[32m  Downloaded[0m regex v1.13.1
+[1m[32m  Downloaded[0m itertools v0.13.0
+[1m[32m  Downloaded[0m aho-corasick v1.1.5
+[1m[32m  Downloaded[0m nom v7.1.3
+[1m[32m  Downloaded[0m cc v1.9.0
+[1m[32m  Downloaded[0m syn v2.0.119
 [1m[32m  Downloaded[0m regex-syntax v0.8.11
 [1m[32m  Downloaded[0m regex-automata v0.4.18
 [1m[32m  Downloaded[0m libc v0.2.191
@@ -36,72 +36,79 @@
 [1m[32m   Compiling[0m glob v0.3.4
 [1m[32m   Compiling[0m quote v1.0.47
 [1m[32m    Checking[0m mosaic-core-types v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/types)
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::clone::Clone` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:10[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m-----[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `Clone` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::marker::Copy` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:17[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[38;5;12m----[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[38;5;9m^^^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `Copy` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::fmt::Debug` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:23[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                       [0m[0m[1m[38;5;12m-----[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                       [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `Debug` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::cmp::Eq` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:30[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12m--[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;9m^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `Eq` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::marker::StructuralPartialEq` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:34[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `PartialEq` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1m[38;5;9merror[E0119][0m[0m[1m: conflicting implementations of trait `core::cmp::PartialEq` for type `BusFault`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/core/types/src/lib.rs:69:34[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mfirst implementation here[0m
-[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[non_exhaustive][0m
-[0m[1m[38;5;12m69[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m#[derive(Clone, Copy, Debug, Eq, PartialEq)][0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mconflicting implementation for `BusFault`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: this error originates in the derive macro `PartialEq` (in Nightly builds, run with -Z macro-backtrace for more info)[0m
-
-[0m[1mFor more information about this error, try `rustc --explain E0119`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-core-types` (lib) due to 6 previous errors
-[1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
+[1m[32m    Checking[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
+[1m[32m   Compiling[0m unicode-ident v1.0.27
+[1m[32m    Checking[0m mosaic-contract-mmio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/mmio)
+[1m[32m   Compiling[0m libc v0.2.191
+[1m[32m   Compiling[0m prettyplease v0.2.37
+[1m[32m   Compiling[0m clang-sys v1.9.1
+[1m[32m   Compiling[0m minimal-lexical v0.2.1
+[1m[32m   Compiling[0m memchr v2.8.3
+[1m[32m   Compiling[0m regex-syntax v0.8.11
+[1m[32m   Compiling[0m cfg-if v1.0.5
+[1m[32m   Compiling[0m libloading v0.8.9
+[1m[32m   Compiling[0m syn v2.0.119
+[1m[32m   Compiling[0m nom v7.1.3
+[1m[32m   Compiling[0m regex-automata v0.4.18
+[1m[32m   Compiling[0m bindgen v0.71.1
+[1m[32m   Compiling[0m either v1.19.0
+[1m[32m   Compiling[0m shlex v2.0.1
+[1m[32m   Compiling[0m find-msvc-tools v0.1.15
+[1m[32m   Compiling[0m itertools v0.13.0
+[1m[32m   Compiling[0m cc v1.9.0
+[1m[32m   Compiling[0m regex v1.13.1
+[1m[32m   Compiling[0m cexpr v0.6.0
+[1m[32m   Compiling[0m bitflags v2.13.2
+[1m[32m   Compiling[0m shlex v1.3.0
+[1m[32m   Compiling[0m log v0.4.34
+[1m[32m   Compiling[0m rustc-hash v2.1.3
+[1m[32m   Compiling[0m cmake v0.1.58
+[1m[32m   Compiling[0m pkg-config v0.3.34
+[1m[32m   Compiling[0m heck v0.5.0
+[1m[32m    Checking[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/arm)
+[1m[32m    Checking[0m mosaic-contract-cpu-engine v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine)
+[1m[32m    Checking[0m mosaic-contract-signal v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/signal)
+[1m[32m    Checking[0m serde_core v1.0.229
+[1m[32m    Checking[0m mosaic-contract-stream v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/stream)
+[1m[32m    Checking[0m mosaic-core-runtime v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/runtime)
+[1m[32m    Checking[0m mosaic-describe v0.1.0 (/home/runner/work/mosaic/mosaic/framework/describe)
+[1m[32m    Checking[0m mosaic-ip-arm-primecell-id v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/primecell-id)
+[1m[32m    Checking[0m mosaic-contract-gpio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/gpio)
+[1m[32m    Checking[0m mosaic-contract-uart-line v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/uart-line)
+[1m[32m    Checking[0m mosaic-modelkit-fifo v0.1.0 (/home/runner/work/mosaic/mosaic/framework/modelkit/fifo)
+[1m[32m    Checking[0m equivalent v1.0.3
+[1m[32m    Checking[0m hashbrown v0.17.1
+[1m[32m    Checking[0m toml_write v0.1.2
+[1m[32m    Checking[0m winnow v0.7.15
+[1m[32m    Checking[0m indexmap v2.14.2
+[1m[32m    Checking[0m zmij v1.0.23
+[1m[32m    Checking[0m serde v1.0.229
+[1m[32m    Checking[0m mosaic-ip-arm-pl011 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl011)
+[1m[32m    Checking[0m mosaic-interconnect-uart-pair v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/uart-pair)
+[1m[32m    Checking[0m mosaic-ip-arm-sp804 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/sp804)
+[1m[32m    Checking[0m serde_spanned v0.6.9
+[1m[32m    Checking[0m toml_datetime v0.6.11
+[1m[32m    Checking[0m toml_edit v0.22.27
+[1m[32m    Checking[0m itoa v1.0.18
+[1m[32m    Checking[0m serde_json v1.0.154
+[1m[32m    Checking[0m mosaic-contract-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/net)
+[1m[32m    Checking[0m mosaic-contract-i2c v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/i2c)
+[1m[32m    Checking[0m mosaic-contract-can v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/can)
+[1m[32m    Checking[0m mosaic-contract-spi v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/spi)
+[1m[32m    Checking[0m mosaic-engine-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/conformance)
+[1m[32m    Checking[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
+[1m[32m    Checking[0m mosaic-interconnect-can-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/can-bus)
+[1m[32m    Checking[0m mosaic-interconnect-i2c-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/i2c-bus)
+[1m[32m    Checking[0m mosaic-interconnect-gpio-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/gpio-net)
+[1m[32m    Checking[0m mosaic-interconnect-pinmux v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/pinmux)
+[1m[32m    Checking[0m toml v0.8.23
+[1m[32m    Checking[0m mosaic-cpu-arm-arm926ej-s v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/arm/arm926ej-s)
+[1m[32m    Checking[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
+[1m[32m    Checking[0m mosaic-contract-clock v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/clock)
+[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
+[1m[32m    Checking[0m unicorn-engine v2.1.5
+[1m[32m    Checking[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
+[1m[32m    Checking[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
+[1m[32m    Checking[0m mosaic-apps-bringup v0.1.0 (/home/runner/work/mosaic/mosaic/apps/bringup)
+[1m[32m    Checking[0m mosaic-apps-cli v0.1.0 (/home/runner/work/mosaic/mosaic/apps/cli)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 21.71s
