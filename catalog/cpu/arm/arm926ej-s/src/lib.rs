@@ -75,7 +75,7 @@ pub enum UnmappedPolicy {
 }
 
 /// ARM926EJ-S コアモデル。IRQ/FIQ ラインのレベルは set_irq / set_fiq で
-//! SoC 側の配線または glue から供給され、ステータスレジスタ経由で読み出せます。
+/// SoC 側の配線または glue から供給され、ステータスレジスタ経由で読み出せます。
 pub struct Arm926ejS {
     state: Arm926ejSState,
     params: Arm926ejSParams,
