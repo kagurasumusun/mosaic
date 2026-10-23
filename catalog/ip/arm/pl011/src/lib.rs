@@ -218,7 +218,10 @@ impl Pl011 {
                     // Debug reads never consume data or refill from the peer.
                     return Ok(self.rx.peek().map_or(0, u32::from));
                 }
-                self.refill_rx(ctx);
+                // Hardware ignores the receive FIFO while RXE is clear.
+                if self.enabled(cr::RXE) {
+                    self.refill_rx(ctx);
+                }
                 let byte = self.rx.pop().unwrap_or(0);
                 if self.rx.is_empty() {
                     self.state.raw_interrupts &= !ris::RX;

@@ -1,0 +1,14 @@
+[identity]
+id = 'ip-lib:arm/primecell-id'
+summary = 'Shared ARM PrimeCell peripheral identification window'
+spec = ['ARM DDI 0273']
+variants = []
+
+[tags]
+function = ['identity']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+
+[params]

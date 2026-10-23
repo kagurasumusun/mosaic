@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:arm/pl011'
+summary = 'ARM PrimeCell UART (PL011) functional register model'
+spec = ['ARM DDI 0183']
+variants = []
+
+[tags]
+function = ['uart']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['combined'] }
+stream = { contract = 'stream/byte', role = 'endpoint', optional = true }
+
+[params]
+fifo_depth = { type = 'u8', default = 16 }
+unmapped = { type = 'policy', default = 'raz-wi' }

@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:arm/sp804'
+summary = 'ARM Dual-Timer Module (SP804) event-driven functional model'
+spec = ['ARM DDI 0271']
+variants = []
+
+[tags]
+function = ['timer']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['timer1', 'timer2'] }
+clk = { role = 'sink', names = ['timclk'] }
+
+[params]
+tick_ps = { type = 'u64', default = 1000 }
+unmapped = { type = 'policy', default = 'raz-wi' }
