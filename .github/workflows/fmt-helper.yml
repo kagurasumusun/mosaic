@@ -5,7 +5,7 @@ on:
       - arena/f1aad4a9-mosaic
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fmt:
@@ -13,15 +13,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa4154380b0dba6c83
+        with:
+          ref: arena/f1aad4a9-mosaic
       - uses: dtolnay/rust-toolchain@1.85.0
         with:
           components: rustfmt
       - name: Format
         run: cargo fmt --all
-      - name: Emit formatting patch
-        run: git diff --binary > fmt.patch
-      - name: Upload patch
-        uses: actions/upload-artifact@v4
-        with:
-          name: fmt-patch
-          path: fmt.patch
+      - name: Commit formatting
+        run: |
+          git config user.name "rustfmt-bot"
+          git config user.email "rustfmt-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no formatting changes"
+          else
+            git commit -m "Apply rustfmt to P2 crates"
+            git push
+          fi
