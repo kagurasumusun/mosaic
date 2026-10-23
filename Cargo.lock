@@ -340,6 +340,7 @@ version = "0.1.0"
 dependencies = [
  "mosaic-contract-can",
  "mosaic-contract-model",
+ "mosaic-core-types",
 ]
 
 [[package]]
@@ -349,6 +350,7 @@ dependencies = [
  "mosaic-contract-gpio",
  "mosaic-contract-model",
  "mosaic-contract-net",
+ "mosaic-core-types",
 ]
 
 [[package]]
@@ -358,6 +360,7 @@ dependencies = [
  "mosaic-contract-gpio",
  "mosaic-contract-i2c",
  "mosaic-contract-model",
+ "mosaic-core-types",
 ]
 
 [[package]]
@@ -366,6 +369,7 @@ version = "0.1.0"
 dependencies = [
  "mosaic-contract-gpio",
  "mosaic-contract-model",
+ "mosaic-core-types",
 ]
 
 [[package]]
@@ -374,6 +378,7 @@ version = "0.1.0"
 dependencies = [
  "mosaic-contract-model",
  "mosaic-contract-spi",
+ "mosaic-core-types",
 ]
 
 [[package]]
@@ -383,6 +388,7 @@ dependencies = [
  "mosaic-contract-model",
  "mosaic-contract-stream",
  "mosaic-contract-uart-line",
+ "mosaic-core-types",
 ]
 
 [[package]]

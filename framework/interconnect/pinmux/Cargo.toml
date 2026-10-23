@@ -16,3 +16,6 @@ workspace = true
 [dependencies]
 mosaic-contract-gpio = { path = "../../contract/gpio" }
 mosaic-contract-model = { path = "../../contract/model" }
+
+[dev-dependencies]
+mosaic-core-types = { path = "../../core/types" }

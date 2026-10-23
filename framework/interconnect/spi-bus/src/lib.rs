@@ -122,7 +122,8 @@ mod tests {
             let mut probe = self.probe.lock().unwrap_or_else(|e| e.into_inner());
             probe.selects.push(assert);
             if !assert && !probe.current.is_empty() {
-                probe.frames.push(core::mem::take(&mut probe.current));
+                let frame = core::mem::take(&mut probe.current);
+                probe.frames.push(frame);
             }
         }
 
