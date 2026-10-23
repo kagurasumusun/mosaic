@@ -80,8 +80,9 @@ contract も 2 つ目の実装で検証するまで安定 API ではありませ
 
 ```sh
 git push origin arena/d8b11562-mosaic
-gh run list --branch arena/d8b11562-mosaic --commit "$(git rev-parse HEAD)" \
-  --json databaseId,status,conclusion,url
+gh run list --branch arena/d8b11562-mosaic \
+  --json databaseId,headSha,status,conclusion,url \
+  --jq ".[] | select(.headSha == \"$(git rev-parse HEAD)\")"
 gh run view <run-id> --json headSha,status,conclusion,jobs,url
 gh run watch <run-id> --interval 15 --exit-status
 # 失敗した場合
@@ -95,7 +96,11 @@ workflow_dispatch でも起動可能です。新しい push では同一 ref の
 P0 の初回全体検証は [Actions run 39885634799](https://github.com/kagurasumusun/mosaic/actions/runs/39885634799)
 （commit `9dc2cde`）で成功しています。前回ローカルで未実行だった xtask CLI、
 Clippy、metadata 読み込み・命名のテストも、この run で確認できました。
-追加したランタイムの検証状況は、その変更の commit に紐づく最新の run を参照してください。
+イベント基盤の追加は [Actions run 39886095476](https://github.com/kagurasumusun/mosaic/actions/runs/39886095476)
+（commit `990755a`）で、fmt / xtask / Clippy / build / 全テスト / 期待出力比較 / doctor が成功しました。
+テスト定義は既存 12 件 + ランタイム 21 件で計 33 件です。
+後続変更の検証状況は、その commit に紐づく最新の run を参照してください。
+CI は OS 移行の影響を避けて ubuntu-24.04 に固定し、checkout は Node.js 24 対応版を SHA 固定しています。
 ローカルにはツールチェーン本体・依存キャッシュ・検証生成物をコミットしません。
 
 ## イベント基盤
