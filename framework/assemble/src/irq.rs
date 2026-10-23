@@ -36,7 +36,10 @@ impl IrqMailbox {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.edges
+            .lock()
+            .expect("IRQ mailbox mutex poisoned")
+            .is_empty()
     }
 
     /// Forward every queued edge to `engine` in FIFO order. On an engine error

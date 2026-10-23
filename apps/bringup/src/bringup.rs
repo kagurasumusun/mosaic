@@ -130,7 +130,7 @@ pub fn run_bringup() -> Result<BringupReport, String> {
     // ADR 0008 wiring: the UART owns one contract endpoint, the harness the
     // other; neither side names a concrete model.
     let pair = UartPair::new(64);
-    let (uart_peer, console) = pair.endpoints();
+    let (uart_peer, mut console) = pair.endpoints();
 
     let mut machine = Machine::new(view.clone(), 32);
     machine

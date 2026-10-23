@@ -10,7 +10,7 @@
 
 use std::collections::VecDeque;
 
-use mosaic_contract_can::{CanController, CanError, CanFrame, CanId, CanReceiver};
+use mosaic_contract_can::{CanController, CanError, CanFrame, CanReceiver};
 use mosaic_contract_model::Ctx;
 
 struct QueuedFrame {
@@ -91,6 +91,7 @@ impl CanController for CanBus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mosaic_contract_can::CanId;
     use mosaic_contract_model::ContextError;
     use std::sync::{Arc, Mutex};
 

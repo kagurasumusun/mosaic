@@ -162,11 +162,11 @@ impl Pl011 {
                 Ok(accepted) if accepted > 0 => {
                     self.tx.pop();
                 }
-                Ok(_) | Err(StreamError::Full) => break,
-                // A closed, detached or future-named peer condition applies
-                // backpressure: the bytes stay in the FIFO so re-attachment
-                // cannot lose guest output. StreamError is non_exhaustive.
-                Err(_) => break,
+                // No progress (zero-length write) or any peer error including
+                // Full/Closed/NotConnected applies backpressure: the byte stays
+                // in the FIFO so re-attachment cannot lose guest output.
+                // StreamError is non_exhaustive, so a wildcard is required.
+                _ => break,
             }
         }
         if self.tx.is_empty() {
