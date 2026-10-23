@@ -77,7 +77,7 @@ impl PrimeCellId {
             0xFFC => CELL_ID[3],
             _ => return None,
         };
-        Some(u32::from(byte))
+        Some(byte as u32)
     }
 }
 

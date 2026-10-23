@@ -30,6 +30,7 @@ members = [
     "framework/interconnect/can-bus",
     "catalog/ip/arm/primecell-id",
     "catalog/ip/arm/pl011",
+    "catalog/ip/arm/sp804",
     "apps/cli",
     "xtask",
 ]

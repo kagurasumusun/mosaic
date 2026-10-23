@@ -408,6 +408,16 @@ name = "mosaic-ip-arm-primecell-id"
 version = "0.1.0"
 
 [[package]]
+name = "mosaic-ip-arm-sp804"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+ "mosaic-ip-arm-primecell-id",
+]
+
+[[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
