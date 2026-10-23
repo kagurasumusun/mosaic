@@ -12,10 +12,8 @@ use mosaic_assemble::{bind_flat_view, EngineIrqSink, IrqMailbox, MachineDriver};
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_contract_stream::ByteStream;
 use mosaic_core_runtime::{FlatView, Machine, Region};
-use mosaic_core_types::{
-    Addr, EventId, Mapping, MemoryKind, NodeId, Permissions, SignalId, VTime,
-};
-use mosaic_engine_unicorn::{ARM_IRQ, UnicornArm};
+use mosaic_core_types::{Addr, EventId, Mapping, MemoryKind, NodeId, Permissions, SignalId, VTime};
+use mosaic_engine_unicorn::{UnicornArm, ARM_IRQ};
 use mosaic_interconnect_uart_pair::UartPair;
 use mosaic_ip_arm_pl011::{Pl011, Pl011Params};
 use mosaic_ip_arm_sp804::{Sp804, Sp804Params};
@@ -141,7 +139,10 @@ pub fn run_bringup() -> Result<BringupReport, String> {
     machine
         .register_device(
             UART,
-            Box::new(Pl011::new(Pl011Params::new(UART_IRQ), Some(Box::new(uart_peer)))),
+            Box::new(Pl011::new(
+                Pl011Params::new(UART_IRQ),
+                Some(Box::new(uart_peer)),
+            )),
         )
         .map_err(|error| format!("uart register: {error:?}"))?;
     machine
@@ -175,9 +176,8 @@ pub fn run_bringup() -> Result<BringupReport, String> {
         .map_err(|error| format!("load: {error:?}"))?;
 
     let mut engine = UnicornArm::new().map_err(|error| format!("engine: {error:?}"))?;
-    let shared =
-        bind_flat_view(&mut engine, &view, Arc::new(Mutex::new(machine)), CPU)
-            .map_err(|error| format!("bind: {error:?}"))?;
+    let shared = bind_flat_view(&mut engine, &view, Arc::new(Mutex::new(machine)), CPU)
+        .map_err(|error| format!("bind: {error:?}"))?;
     engine
         .reg_write(Register::Pc.into(), RAM_BASE)
         .map_err(|error| format!("pc: {error:?}"))?;
