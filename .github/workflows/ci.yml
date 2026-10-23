@@ -14,7 +14,7 @@ concurrency:
 jobs:
   fast:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node.js 24)
       - uses: dtolnay/rust-toolchain@1.85.0
@@ -24,43 +24,149 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config libclang-dev
-      # rustfmt で全ソースを構文チェック・整形する。
-      # 注意: この環境の GITHUB_TOKEN ではブランチへの push が行えず、
-      # rustfmt-bot による commit/push が失敗するため、ここでは整形のみ行う。
-      # コミットされるコードは rustfmt 適用済みであること。
+
+      # 全チェックは if: always() で独立に実行し、結果を ci-reports/ に集約する。
+      # Actions のログはホスト外から取得できないことがあるため、レポートは
+      # ブランチへ commit/push して正本にする（GITHUB_TOKEN の push は再トリガーしない）。
+      - name: Report header
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "commit: ${{ github.sha }}"
+            echo "ref: ${{ github.ref }}"
+            echo "started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > ci-reports/status.txt
+
+      # rustfmt は適用のみ行い、差分をレポートに記録する（コミットはしない）。
       - name: Formatting
-        run: cargo fmt --all
-      - name: Architecture checks
-        run: cargo xtask check
-      - name: Clippy
+        if: always()
         run: |
           set +e
-          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings > clippy.log 2>&1
+          cargo fmt --all > ci-reports/fmt.log 2>&1
           code=$?
-          git config user.name "rustfmt-bot"
-          git config user.email "rustfmt-bot@users.noreply.github.com"
-          git add clippy.log
-          git commit -m "Add temporary clippy report" || true
-          git push || true
-          exit $code
+          git diff > ci-reports/rustfmt.diff
+          if [ $code -eq 0 ] && [ ! -s ci-reports/rustfmt.diff ]; then
+            echo "formatting: ok" >> ci-reports/status.txt
+          else
+            echo "formatting: fail (code=$code, see rustfmt.diff)" >> ci-reports/status.txt
+          fi
+          exit 0
+
+      - name: Architecture checks
+        if: always()
+        run: |
+          set +e
+          cargo xtask check > ci-reports/xtask.log 2>&1
+          code=$?
+          echo "xtask: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
+      - name: Clippy
+        if: always()
+        run: |
+          set +e
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings > ci-reports/clippy.log 2>&1
+          code=$?
+          echo "clippy: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Build
-        run: cargo build --locked --workspace --all-targets --all-features
+        if: always()
+        run: |
+          set +e
+          cargo build --locked --workspace --all-targets --all-features > ci-reports/build.log 2>&1
+          code=$?
+          echo "build: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Unit and integration tests
-        run: cargo test --locked --workspace --all-features
+        if: always()
+        env:
+          RUST_BACKTRACE: 1
+        run: |
+          set +e
+          cargo test --locked --workspace --all-features > ci-reports/test.log 2>&1
+          code=$?
+          echo "test: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          # 失敗したテスト名と panic メッセージを先頭に抜き出しておく。
+          grep -n -E "^failures:$|panicked at|^test .* FAILED|^error(\[|:)" ci-reports/test.log \
+            | head -80 > ci-reports/test-summary.txt || true
+          exit 0
+
       - name: Runtime trace and snapshot replay smoke test
-        shell: bash
+        if: always()
         run: |
-          cargo run --locked --package mosaic-core-runtime --example events > "$RUNNER_TEMP/runtime-events.stdout"
-          diff -u tests/runtime-events.stdout "$RUNNER_TEMP/runtime-events.stdout"
+          set +e
+          cargo run --locked --package mosaic-core-runtime --example events > ci-reports/runtime-events.stdout 2> ci-reports/runtime-events.log
+          code=$?
+          diff -u tests/runtime-events.stdout ci-reports/runtime-events.stdout >> ci-reports/runtime-events.log 2>&1
+          dcode=$?
+          echo "smoke-events: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Machine MMIO dispatch smoke test
-        shell: bash
+        if: always()
         run: |
-          cargo run --locked --package mosaic-core-runtime --example machine > "$RUNNER_TEMP/machine-mmio.stdout"
-          diff -u tests/machine-mmio.stdout "$RUNNER_TEMP/machine-mmio.stdout"
+          set +e
+          cargo run --locked --package mosaic-core-runtime --example machine > ci-reports/machine-mmio.stdout 2> ci-reports/machine-mmio.log
+          code=$?
+          diff -u tests/machine-mmio.stdout ci-reports/machine-mmio.stdout >> ci-reports/machine-mmio.log 2>&1
+          dcode=$?
+          echo "smoke-machine: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Unicorn ARM execution smoke test
-        shell: bash
+        if: always()
         run: |
-          cargo run --locked --package mosaic-apps-cli --features unicorn -- unicorn-smoke > "$RUNNER_TEMP/unicorn-arm.stdout"
-          diff -u tests/unicorn-arm.stdout "$RUNNER_TEMP/unicorn-arm.stdout"
+          set +e
+          cargo run --locked --package mosaic-apps-cli --features unicorn -- unicorn-smoke > ci-reports/unicorn-arm.stdout 2> ci-reports/unicorn-arm.log
+          code=$?
+          diff -u tests/unicorn-arm.stdout ci-reports/unicorn-arm.stdout >> ci-reports/unicorn-arm.log 2>&1
+          dcode=$?
+          echo "smoke-unicorn: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          exit 0
+
+      - name: P1 bring-up golden test
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-apps-bringup --features unicorn > ci-reports/bringup.log 2>&1
+          code=$?
+          echo "bringup: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Workspace diagnostics
-        run: cargo xtask doctor
+        if: always()
+        run: |
+          set +e
+          cargo xtask doctor > ci-reports/doctor.log 2>&1
+          code=$?
+          echo "doctor: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
+      - name: Publish report to the branch
+        if: always() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        run: |
+          branch="${GITHUB_REF#refs/heads/}"
+          echo "finished: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ci-reports/status.txt
+          git config user.name "ci-report-bot"
+          git config user.email "ci-report-bot@users.noreply.github.com"
+          git add ci-reports
+          if git diff --cached --quiet; then
+            echo "report unchanged; nothing to push"
+            exit 0
+          fi
+          git commit -m "CI report for ${GITHUB_SHA::7}"
+          git fetch origin "$branch" || true
+          git rebase FETCH_HEAD || git rebase --abort || true
+          git push origin "HEAD:$branch" || echo "report push failed (branch moved?)"
+
+      - name: Conclusion
+        if: always()
+        run: |
+          cat ci-reports/status.txt
+          if grep -q "fail" ci-reports/status.txt; then
+            echo "one or more checks failed; see ci-reports/ on the branch"
+            exit 1
+          fi
