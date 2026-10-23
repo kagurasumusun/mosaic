@@ -11,4 +11,8 @@ jobs:
   probe:
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "probe-ok"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa4154380b0dba6c83
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
