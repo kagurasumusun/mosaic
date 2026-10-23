@@ -294,7 +294,7 @@ mod tests {
     fn wired_signal_reaches_the_engine_irq_line() {
         // MOV r0,#1; STR r0,[r2] — the device write queues one signal edge.
         let code = [0x01u8, 0, 0xa0, 0xe3, 0, 0, 0x82, 0xe5];
-        let view = FlatView::build([
+        let view = FlatView::build(&[
             leaf(0, 0x1000, ROM, MemoryKind::Rom, Permissions::RX),
             leaf(0x2000, 0x1000, DEVICE, MemoryKind::Mmio, Permissions::RW),
         ])
@@ -367,7 +367,8 @@ mod tests {
             _value: u64,
             _attr: &Attr,
         ) -> Result<(), BusFault> {
-            ctx.schedule(VTime(1000), 1).map_err(|_| BusFault::Device)
+            ctx.schedule(VTime(1000), 1).map_err(|_| BusFault::Device)?;
+            Ok(())
         }
     }
 

@@ -9,6 +9,7 @@ use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
 use mosaic_assemble::{bind_flat_view, EngineIrqSink, IrqMailbox, MachineDriver};
+use mosaic_contract_cpu_engine::CpuEngine;
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_contract_stream::ByteStream;
 use mosaic_core_runtime::{FlatView, Machine, Region};
