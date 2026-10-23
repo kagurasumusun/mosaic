@@ -24,16 +24,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config libclang-dev
+      # rustfmt で全ソースを構文チェック・整形する。
+      # 注意: この環境の GITHUB_TOKEN ではブランチへの push が行えず、
+      # rustfmt-bot による commit/push が失敗するため、ここでは整形のみ行う。
+      # コミットされるコードは rustfmt 適用済みであること。
       - name: Formatting
-        run: |
-          cargo fmt --all
-          git config user.name "rustfmt-bot"
-          git config user.email "rustfmt-bot@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Apply rustfmt"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
+        run: cargo fmt --all
       - name: Architecture checks
         run: cargo xtask check
       - name: Clippy
