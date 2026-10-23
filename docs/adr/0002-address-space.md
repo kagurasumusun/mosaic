@@ -16,7 +16,12 @@ debug read は副作用を起こさない。
 高優先度 container の未マップの穴は低優先度の兄弟へ fall through する。
 別々の FlatView を各視点用に生成できるが、security/master 属性による自動 view 選択は未実装。
 
-未実装: alias / IOMMU、RAM backing、DMI、動的無効化、MMIO dispatcher。
+マシン基盤での実装: `BackingStore` が Ram/Rom ノードのバイト列を所有し、`Machine` の
+`bus_read` / `bus_write` が FlatView 解決 → バッキングまたは MMIO callback へディスパッチします。
+バス層はアライメントを検査し（違反は `Misaligned`）、endian は Attr に従ってバッキングが
+符号化します。MMIO デバイスは take-out 中の再入を `Reentrant` として拒否します。
+`loader_write` は Rom を初期化できますが、view のゲスト permission は緩めません。
+
+未実装: alias / IOMMU、DMI（ホストポインタ経路）、動的無効化、エンジンへの view 結合。
 転送は単一 FlatView segment に収まるものだけを受け付け、境界をまたぐ転送は Unmapped とする。
-alignment / endian / Attr の最終処理はバス・デバイス適合層の責務として残す。
 検証: 境界・オーバーフロー・重なり・ROM overlay・CPU 別 view・DMA のテストを P1 で追加する。

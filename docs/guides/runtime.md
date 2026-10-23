@@ -88,7 +88,69 @@ GitHub Actions は `tests/runtime-events.stdout` との比較も行います。
 | §13.5, ADR 0004: 版付き State、復元前検証 | `events.rs` の往復・不正 State・入力順序・ID 枯渇テスト |
 | §19 T8: 同じ入力と実行区間分割 | `identical_inputs_produce_identical_traces` / `time_window_partition_does_not_change_event_trace` |
 
-Region / FlatView と開発用 Unicorn ARM アダプタを追加しました。
+## マシン: アリーナ・RAM バッキング・MMIO ディスパッチ
+
+`Machine` は FlatView・デバイスアリーナ・RAM/ROM バッキング・イベントキュー・
+signal 配線を 1 つにまとめた、CPU を含まない単一スレッドの実行基盤です。
+ファームウェア起動の前段となる決定論・MMIO の machine テストをこの層で整備します。
+
+```rust
+use mosaic_core_runtime::{bus_attr, FlatView, Machine, Region};
+use mosaic_core_types::{Addr, AccessSize, Mapping, MemoryKind, NodeId, Permissions, SignalId};
+
+let view = FlatView::build(&[/* Rom / Ram / Mmio のリーフ */]).unwrap();
+let mut machine = Machine::new(view, /* queue capacity */ 32);
+machine.add_backing(NodeId(1), 0x1000).unwrap();
+machine.register_device(NodeId(3), Box::new(model)).unwrap();
+machine.register_sink(NodeId(4), Box::new(sink)).unwrap();
+machine.connect(NodeId(3), SignalId(1), NodeId(4)).unwrap();
+machine.verify().unwrap();
+
+let attr = bus_attr(NodeId(2));
+machine.bus_write(Addr(0x2000), AccessSize::Word, 3, &attr).unwrap();
+machine.run_until(VTime(1000), 32).unwrap();
+```
+
+- **アリーナと take-out**: デバイスは `NodeId` で索引付けられ、MMIO callback の間だけ
+  アリーナから取り出されます。取り出し中の同一ノードへの入れ子アクセスは
+  `BusFault::Reentrant` です。`Rc<RefCell>` は使いません（設計書 §20、ADR 0001 の検証項目）。
+- **MMIO ディスパッチ**: `bus_read` / `bus_write` は FlatView でアドレスを解決し、
+  Ram/Rom はバッキングブロック、Mmio はデバイスの device-local offset へ転送します。
+  Attr は変更せず callback へ渡り、Debug 読み出しの副作用禁止は契約上モデルが守ります。
+  アライメント違反はバス層で `BusFault::Misaligned` にします。
+- **RAM/ROM バッキング**: FlatView は記号的なままで、バイト列は `BackingStore` が所有します。
+  `loader_write` は Rom も初期化できますが、view のゲスト permission は緩めません。
+  エンディアンは Attr に従います。
+- **イベントと signal**: モデルは `EventTarget::on_timer` を実装します。`MachineDevice` は
+  `MmioTarget + EventTarget` のランタイム合成 trait で、1 個の box が両 callback を担います。
+  signal は配線表 `(source, signal) -> sink` に従い、callback 復帰後に `SignalSink` へ届きます。
+  未接続の出力はオプションポートとして無視し、配線ミスは `connect` / `verify` が構築時に失敗させます。
+- **実行予算**: `run_until(deadline, budget)` は期限までイベントを配送します。
+  同時刻の無限再予約は `budget` で止まり `MachineError::EventBudgetExceeded` を返します。
+  キューが空なら deadline まで時刻を進めます。
+- **キューの snapshot**: `save_queue` / `load_queue` で EventQueue の版付き State を引き継げます。
+  デバイス State・RAM・全機械ヘッダはまだ保存対象ではありません。
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example machine
+```
+
+この例は Rom/Ram 権限、MMIO 経由のタイマ予約、signal 配送、各種 BusFault をトレースし、
+同一構成を 2 回実行して結果が一致することを確認します。CI は
+`tests/machine-mmio.stdout` と出力を比較します。実ファームウェアや実在デバイスの検査ではありません。
+手動のスループット測定は `mmio_throughput_probe`（`-- --ignored`）です。
+
+### 仕様との対応（マシン基盤）
+
+| 設計書 | 実装・テスト |
+| --- | --- |
+| §10, §13.4, ADR 0001: アリーナ + take-out、再入拒否 | `arena.rs`、`taken_device_reports_reentrant_and_is_restored_afterward` |
+| §13.1, ADR 0002: FlatView 解決、permission、Attr 透過 | `machine.rs` の権限・Attr・アライメントのテスト |
+| §19 T8: 決定論、checkpoint 復元 | 同一入力トレース、queue checkpoint replay のテスト |
+| §13.3: signal の遅延配送と配線 | timer→signal の順序テストと machine 実行例 |
+
+残るのは CPU エンジンとの MMIO / DMI 連携、CPU とイベントの協調スケジューリング、
+最初の MCU・ボードの選定、catalog 上の UART / タイマ IP、実ファームウェアの machine テストです。
+
+Region / FlatView と開発用 Unicorn ARM アダプタについては
 [Unicorn ガイド](unicorn.md) と ADR 0002 / 0007 を参照してください。
-残りの主要な P1 基盤はデバイスのアリーナと dispatch、MMIO / AddressView、CPU とイベントの
-協調スケジューリング、最初の MCU・ボードの選定、UART / タイマ、実ファームウェアの machine テストです。

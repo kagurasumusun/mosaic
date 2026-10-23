@@ -46,6 +46,8 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
 - Region 木 → FlatView、優先度 overlay、境界・permission・device offset 解決。
 - ARM のみの Unicorn アダプタ（2.1.5）、ISA の register ID と初期 engine 契約、backend 非依存の A32 検証。
+- デバイスアリーナ（take-out と再入拒否）、RAM/ROM バッキング、FlatView 経由の MMIO ディスパッチ、
+  タイマ・signal の配線と配送を持つ `Machine`。
 - 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
 
 CPU やファームウェアを使わないイベント実行例:
@@ -57,12 +59,22 @@ cargo run --locked --package mosaic-core-runtime --example events
 同時刻イベントと遅延 signal のトレースを表示し、保存状態からの再実行が一致することを確認します。
 これは VM 全体の起動・スナップショット機能ではありません。
 
+MMIO・タイマ・signal を縦に通すマシン実行例:
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example machine
+```
+
+Rom/Ram 権限、MMIO 経由のタイマ予約、signal 配送、BusFault と決定論をトレースします。
+CPU エンジンとの連携や実ファームウェアの起動はまだ含みません。
+
 ### 次の実装
 
-最初の MCU・ボードを決め、モデルのディスパッチ、MMIO / AddressView、UART とタイマ、
-SoC / ボード宣言をイベント・アドレス・engine 基盤へ縦につなぎます。
+最初の MCU・ボードを決め、catalog 上の UART とタイマ IP、SoC / ボード宣言を
+イベント・アドレス・engine 基盤へ縦につなぎます。そのために CPU エンジンの MMIO hook と
+AddressView / DMI 結合、CPU とイベントの協調スケジューリングが必要です。
 現在の Unicorn memory は instance ごとの private page であり、全機械の共有メモリではありません。
-実機モデルを増やす前に、決定論と MMIO の machine テストを整備します。
+実機モデルを増やす前に、決定論と MMIO の machine テストを引き続き整備します。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 

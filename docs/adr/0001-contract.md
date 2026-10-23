@@ -21,4 +21,17 @@ Ctx の schedule / cancel はそのノードのタイマだけを扱い、set_si
 
 Ctx に object-safe な既定メソッド `schedule_after` を追加しました。時刻加算の overflow は
 `TimeOverflow` で失敗し、キューを変更しません。絶対時刻予約・signal 通知とも、その場では
-dispatch しません。アリーナ + take-out による実際のモデル dispatch と再入検出は未実装です。
+dispatch しません。
+
+## マシン dispatch での具体化
+
+`contract/model` に object-safe な `EventTarget::on_timer` を追加しました。ノードが予約した
+タイマイベントは、キューから pop されたあとでだけ callback へ届きます。callback 内の
+`Ctx` 効果はすべてキューへ積まれ、callback 中の再入は発生しません。
+
+runtime の `DeviceArena` は `NodeId` で索引付けた box を保持し、MMIO callback の間だけ
+デバイスを take-out します。取り出し中の同一ノードへの入れ子アクセスは
+`BusFault::Reentrant` です。`Rc<RefCell>` は使いません。`MachineDevice`
+（`MmioTarget + EventTarget` のランタイム合成 trait）により、1 個の box がバスとタイマの
+両 callback を担い、モデルの状態が trait object 間で分割されることはありません。
+DMA 経由の実再入シナリオは Ctx の DMA サービスと合わせて後続で検証します。

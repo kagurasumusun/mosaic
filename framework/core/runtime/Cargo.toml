@@ -16,3 +16,5 @@ workspace = true
 [dependencies]
 mosaic-core-types = { path = "../types" }
 mosaic-contract-model = { path = "../../contract/model" }
+mosaic-contract-mmio = { path = "../../contract/mmio" }
+mosaic-contract-signal = { path = "../../contract/signal" }

@@ -92,7 +92,7 @@ gh run watch <run-id> --interval 15 --exit-status
 gh run view <run-id> --log-failed
 ```
 
-CI は fmt、xtask、Clippy、明示的な build、workspace テスト、イベント実行例の
+CI は fmt、xtask、Clippy、明示的な build、workspace テスト、イベント・マシン実行例の
 期待出力比較、doctor を実行します。テストは `--locked` を用い、Cargo.lock と一致させます。
 workflow_dispatch でも起動可能です。新しい push では同一 ref の古い run をキャンセルします。
 
@@ -110,11 +110,17 @@ Unicorn / FlatView の追加は [Actions run 39887319724](https://github.com/kag
 CI は OS 移行の影響を避けて ubuntu-24.04 に固定し、checkout は Node.js 24 対応版を SHA 固定しています。
 ローカルにはツールチェーン本体・依存キャッシュ・検証生成物をコミットしません。
 
-## イベント基盤
+## イベント・マシン基盤
 
 詳細と未実装範囲は [runtime ガイド](runtime.md) を参照してください。
-最初の実機・ISA を選ぶ前でも、CPU に依存しないイベント基盤を検証できます。
+最初の実機・ISA を選ぶ前でも、CPU に依存しないイベント基盤と、アリーナ・MMIO・
+signal を統合した `Machine` を検証できます。
 これは P1 のファームウェア起動という出口条件を満たすものではありません。
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example events
+cargo run --locked --package mosaic-core-runtime --example machine
+```
 
 ## P1 に進む前の確認
 

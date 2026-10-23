@@ -36,3 +36,13 @@ pub trait Ctx: Send {
     /// Queue an outgoing signal at now. Never invoke its sink synchronously.
     fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError>;
 }
+
+/// Receives node-local timer events after the runtime pops them from the queue.
+///
+/// A model may implement this alongside its bus and signal contracts. The
+/// runtime calls it only between queue pops, never inside another callback, so
+/// effects produced through [`Ctx`] stay deferred and cannot re-enter the model.
+/// Timer tokens are model-defined values from the model's own reservations.
+pub trait EventTarget: Send {
+    fn on_timer(&mut self, ctx: &mut dyn Ctx, token: u64) -> Result<(), ContextError>;
+}

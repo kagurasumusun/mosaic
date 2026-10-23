@@ -34,7 +34,8 @@ A32 スモークの成功は ARM ISA 全体や実在 MCU への適合性を意�
 - 未マップ・permission・命令障害は Fault。精密な例外分類・例外配送は未実装。
 - guest write / execute permission と loader/debug write を区別する。
 - loader/debug read/write は単一のマップ区間に収まることが必要。空の転送は no-op。
-- MMIO / DMI / AddressView / IRQ / engine snapshot / shared RAM / SMP は未実装。
+- エンジン側の MMIO hook / DMI / AddressView 結合 / IRQ / engine snapshot / shared RAM / SMP は未実装。
+  runtime 側には FlatView 経由の MMIO ディスパッチと RAM バッキングがあります（[runtime ガイド](runtime.md)）。
 - instruction_count は true、precise_exceptions / exclusive_monitor は false。
 - native handle・vendor enum・Context・user hook は公開しない。
 

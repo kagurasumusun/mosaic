@@ -3,11 +3,19 @@
 //!
 //! The event queue is single-threaded. Events are delivered only by an explicit
 //! caller-driven pop; scheduling an event or signal never invokes a model.
+//! The [`machine::Machine`] composes the queue, the symbolic [`FlatView`], the
+//! device arena and RAM/ROM backing into one MMIO and event dispatch path.
 
 mod address;
+mod arena;
+mod backing;
 mod context;
 mod events;
+mod machine;
 
 pub use address::{Access, AddressError, FlatView, Region, Resolved};
+pub use arena::DeviceArena;
+pub use backing::BackingStore;
 pub use context::ModelContext;
 pub use events::{Event, EventKind, EventQueue, QueueState};
+pub use machine::{bus_attr, Machine, MachineDevice, MachineError};
