@@ -66,7 +66,6 @@ pub struct Attr {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BusFault {
     Unmapped,
     Misaligned,
