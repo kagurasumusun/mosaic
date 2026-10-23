@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use mosaic_contract_model::Ctx;
 use mosaic_contract_stream::{ByteStream, StreamError};
-use mosaic_contract_uart_line::{Parity, UartConfig, UartError, UartLine};
+use mosaic_contract_uart_line::{UartConfig, UartError, UartLine};
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poison| poison.into_inner())
@@ -161,6 +161,7 @@ impl ByteStream for UartEndpoint {
 mod tests {
     use super::*;
     use mosaic_contract_model::ContextError;
+    use mosaic_contract_uart_line::Parity;
 
     struct DummyCtx;
     impl Ctx for DummyCtx {
