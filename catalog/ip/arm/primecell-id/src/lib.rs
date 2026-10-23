@@ -30,12 +30,7 @@ pub struct PrimeCellId {
 
 impl PrimeCellId {
     /// Validate the field widths used by the peripheral ID registers.
-    pub const fn new(
-        part_number: u16,
-        designer: u8,
-        revision: u8,
-        patch: u8,
-    ) -> Option<Self> {
+    pub const fn new(part_number: u16, designer: u8, revision: u8, patch: u8) -> Option<Self> {
         if part_number > 0xFFF || designer > 0x7F || revision > 0x7 || patch > 0xF {
             return None;
         }
@@ -54,9 +49,7 @@ impl PrimeCellId {
 
     /// True for the eight word-aligned identification register offsets.
     pub const fn covers(offset: u64) -> bool {
-        offset >= ID_WINDOW_BASE
-            && offset <= ID_WINDOW_END
-            && (offset - ID_WINDOW_BASE) % 4 == 0
+        offset >= ID_WINDOW_BASE && offset <= ID_WINDOW_END && (offset - ID_WINDOW_BASE) % 4 == 0
     }
 
     /// Read one identification word. Returns `None` outside the window so the

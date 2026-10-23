@@ -203,12 +203,7 @@ impl Pl011 {
         }
     }
 
-    fn read_word(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        offset: u64,
-        debug: bool,
-    ) -> Result<u32, BusFault> {
+    fn read_word(&mut self, ctx: &mut dyn Ctx, offset: u64, debug: bool) -> Result<u32, BusFault> {
         if offset % 4 != 0 {
             return self.unmapped(offset);
         }
@@ -259,12 +254,7 @@ impl Pl011 {
         Ok(value)
     }
 
-    fn write_word(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        offset: u64,
-        value: u32,
-    ) -> Result<(), BusFault> {
+    fn write_word(&mut self, ctx: &mut dyn Ctx, offset: u64, value: u32) -> Result<(), BusFault> {
         if offset % 4 != 0 {
             return self.unmapped(offset).map(|_| ());
         }
@@ -328,7 +318,11 @@ impl MmioTarget for Pl011 {
         attr: &Attr,
     ) -> Result<u64, BusFault> {
         let width = u32::from(size.bytes()) * 8;
-        let mask = if width >= 32 { u32::MAX } else { (1u32 << width) - 1 };
+        let mask = if width >= 32 {
+            u32::MAX
+        } else {
+            (1u32 << width) - 1
+        };
         let debug = attr.kind == AccessKind::Debug;
         let word = self.read_word(ctx, offset, debug)?;
         Ok(u64::from(word & mask))
@@ -378,7 +372,9 @@ mod tests {
         fn read_bytes(&mut self, _ctx: &mut dyn Ctx, buf: &mut [u8]) -> Result<usize, StreamError> {
             let mut count = 0;
             for slot in buf.iter_mut() {
-                let Some(byte) = self.rx.pop_front() else { break };
+                let Some(byte) = self.rx.pop_front() else {
+                    break;
+                };
                 *slot = byte;
                 count += 1;
             }
@@ -437,7 +433,8 @@ mod tests {
         assert!(uart.tx.is_empty());
         // TX raw interrupt is asserted once the FIFO drains.
         assert_eq!(
-            uart.read(&mut ctx, reg::RIS, AccessSize::Word, &word_attr()).unwrap(),
+            uart.read(&mut ctx, reg::RIS, AccessSize::Word, &word_attr())
+                .unwrap(),
             u64::from(ris::TX)
         );
     }
@@ -446,7 +443,14 @@ mod tests {
     fn disabled_transmit_is_ignored_and_status_reports_the_fifo() {
         let mut uart = Pl011::new(Pl011Params::new(IRQ), None);
         let mut ctx = StubCtx;
-        uart.write(&mut ctx, reg::DR, AccessSize::Word, b'x'.into(), &word_attr()).unwrap();
+        uart.write(
+            &mut ctx,
+            reg::DR,
+            AccessSize::Word,
+            b'x'.into(),
+            &word_attr(),
+        )
+        .unwrap();
         let flags = uart
             .read(&mut ctx, reg::FR, AccessSize::Word, &word_attr())
             .unwrap();
@@ -492,7 +496,8 @@ mod tests {
         };
         uart.state.cr = cr::UARTEN | cr::TXE;
         // Mask TX before the first write: the drained FIFO asserts the line.
-        uart.write_word(&mut ctx, reg::IMSC, ris::TX | ris::ERROR).unwrap();
+        uart.write_word(&mut ctx, reg::IMSC, ris::TX | ris::ERROR)
+            .unwrap();
         uart.write_word(&mut ctx, reg::DR, u64::from(b'q')).unwrap();
         assert_eq!(*levels.lock().unwrap(), vec![true]);
         // Clearing the raw status deasserts the single combined IRQ.
@@ -505,11 +510,13 @@ mod tests {
         let mut uart = Pl011::new(Pl011Params::new(IRQ), None);
         let mut ctx = StubCtx;
         assert_eq!(
-            uart.read(&mut ctx, 0xFE0, AccessSize::Word, &word_attr()).unwrap(),
+            uart.read(&mut ctx, 0xFE0, AccessSize::Word, &word_attr())
+                .unwrap(),
             0x11
         );
         assert_eq!(
-            uart.read(&mut ctx, 0x900, AccessSize::Word, &word_attr()).unwrap(),
+            uart.read(&mut ctx, 0x900, AccessSize::Word, &word_attr())
+                .unwrap(),
             0
         );
         let mut strict = Pl011Params::new(IRQ);
