@@ -113,11 +113,11 @@ mod tests {
     #[test]
     fn only_the_word_aligned_identification_window_is_covered() {
         let id = PrimeCellId::arm(1, 0, 0).unwrap();
-        assert!(id.covers(0xFE0));
-        assert!(id.covers(0xFFC));
-        assert!(!id.covers(0xFDC));
-        assert!(!id.covers(0x1000));
-        assert!(!id.covers(0xFE2));
+        assert!(PrimeCellId::covers(0xFE0));
+        assert!(PrimeCellId::covers(0xFFC));
+        assert!(!PrimeCellId::covers(0xFDC));
+        assert!(!PrimeCellId::covers(0x1000));
+        assert!(!PrimeCellId::covers(0xFE2));
         assert_eq!(id.read_word(0x1000), None);
     }
 }
