@@ -1,30 +1,30 @@
 [1m[32m Downloading[0m crates ...
 [1m[32m  Downloaded[0m cfg-if v1.0.5
-[1m[32m  Downloaded[0m cc v1.9.0
 [1m[32m  Downloaded[0m heck v0.5.0
-[1m[32m  Downloaded[0m cexpr v0.6.0
 [1m[32m  Downloaded[0m rustc-hash v2.1.3
-[1m[32m  Downloaded[0m cmake v0.1.58
-[1m[32m  Downloaded[0m pkg-config v0.3.34
-[1m[32m  Downloaded[0m either v1.19.0
-[1m[32m  Downloaded[0m shlex v1.3.0
-[1m[32m  Downloaded[0m shlex v2.0.1
-[1m[32m  Downloaded[0m unicode-ident v1.0.27
-[1m[32m  Downloaded[0m quote v1.0.47
-[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
-[1m[32m  Downloaded[0m glob v0.3.4
-[1m[32m  Downloaded[0m unicorn-engine v2.1.5
-[1m[32m  Downloaded[0m log v0.4.34
-[1m[32m  Downloaded[0m proc-macro2 v1.0.107
-[1m[32m  Downloaded[0m clang-sys v1.9.1
-[1m[32m  Downloaded[0m prettyplease v0.2.37
 [1m[32m  Downloaded[0m bitflags v2.13.2
-[1m[32m  Downloaded[0m nom v7.1.3
-[1m[32m  Downloaded[0m minimal-lexical v0.2.1
+[1m[32m  Downloaded[0m cmake v0.1.58
+[1m[32m  Downloaded[0m cexpr v0.6.0
+[1m[32m  Downloaded[0m shlex v1.3.0
 [1m[32m  Downloaded[0m libloading v0.8.9
+[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
+[1m[32m  Downloaded[0m pkg-config v0.3.34
+[1m[32m  Downloaded[0m shlex v2.0.1
+[1m[32m  Downloaded[0m quote v1.0.47
+[1m[32m  Downloaded[0m unicode-ident v1.0.27
+[1m[32m  Downloaded[0m unicorn-engine v2.1.5
+[1m[32m  Downloaded[0m glob v0.3.4
+[1m[32m  Downloaded[0m clang-sys v1.9.1
+[1m[32m  Downloaded[0m either v1.19.0
+[1m[32m  Downloaded[0m proc-macro2 v1.0.107
+[1m[32m  Downloaded[0m log v0.4.34
+[1m[32m  Downloaded[0m prettyplease v0.2.37
+[1m[32m  Downloaded[0m minimal-lexical v0.2.1
+[1m[32m  Downloaded[0m nom v7.1.3
+[1m[32m  Downloaded[0m cc v1.9.0
+[1m[32m  Downloaded[0m itertools v0.13.0
 [1m[32m  Downloaded[0m regex v1.13.1
 [1m[32m  Downloaded[0m aho-corasick v1.1.5
-[1m[32m  Downloaded[0m itertools v0.13.0
 [1m[32m  Downloaded[0m bindgen v0.71.1
 [1m[32m  Downloaded[0m syn v2.0.119
 [1m[32m  Downloaded[0m regex-syntax v0.8.11
@@ -33,41 +33,41 @@
 [1m[32m  Downloaded[0m unicorn-engine-sys v2.1.5
 [1m[32m    Checking[0m mosaic-prim-bits v0.1.0 (/home/runner/work/mosaic/mosaic/framework/prim/bits)
 [1m[32m   Compiling[0m proc-macro2 v1.0.107
-[1m[32m   Compiling[0m unicode-ident v1.0.27
-[1m[32m   Compiling[0m quote v1.0.47
 [1m[32m   Compiling[0m glob v0.3.4
+[1m[32m   Compiling[0m quote v1.0.47
 [1m[32m    Checking[0m mosaic-core-types v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/types)
 [1m[32m    Checking[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
+[1m[32m   Compiling[0m unicode-ident v1.0.27
 [1m[32m    Checking[0m mosaic-contract-mmio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/mmio)
 [1m[32m   Compiling[0m prettyplease v0.2.37
 [1m[32m   Compiling[0m libc v0.2.191
 [1m[32m   Compiling[0m clang-sys v1.9.1
-[1m[32m   Compiling[0m regex-syntax v0.8.11
 [1m[32m   Compiling[0m memchr v2.8.3
-[1m[32m   Compiling[0m cfg-if v1.0.5
 [1m[32m   Compiling[0m minimal-lexical v0.2.1
-[1m[32m   Compiling[0m libloading v0.8.9
-[1m[32m   Compiling[0m syn v2.0.119
+[1m[32m   Compiling[0m cfg-if v1.0.5
+[1m[32m   Compiling[0m regex-syntax v0.8.11
 [1m[32m   Compiling[0m nom v7.1.3
+[1m[32m   Compiling[0m syn v2.0.119
+[1m[32m   Compiling[0m libloading v0.8.9
 [1m[32m   Compiling[0m regex-automata v0.4.18
-[1m[32m   Compiling[0m find-msvc-tools v0.1.15
-[1m[32m   Compiling[0m either v1.19.0
-[1m[32m   Compiling[0m bindgen v0.71.1
 [1m[32m   Compiling[0m shlex v2.0.1
-[1m[32m   Compiling[0m cc v1.9.0
+[1m[32m   Compiling[0m bindgen v0.71.1
+[1m[32m   Compiling[0m either v1.19.0
+[1m[32m   Compiling[0m find-msvc-tools v0.1.15
 [1m[32m   Compiling[0m itertools v0.13.0
+[1m[32m   Compiling[0m cc v1.9.0
 [1m[32m   Compiling[0m regex v1.13.1
 [1m[32m   Compiling[0m cexpr v0.6.0
-[1m[32m   Compiling[0m shlex v1.3.0
+[1m[32m   Compiling[0m log v0.4.34
 [1m[32m   Compiling[0m rustc-hash v2.1.3
 [1m[32m   Compiling[0m bitflags v2.13.2
-[1m[32m   Compiling[0m log v0.4.34
+[1m[32m   Compiling[0m shlex v1.3.0
 [1m[32m   Compiling[0m cmake v0.1.58
 [1m[32m   Compiling[0m heck v0.5.0
 [1m[32m   Compiling[0m pkg-config v0.3.34
-[1m[32m    Checking[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/arm)
 [1m[32m    Checking[0m mosaic-contract-signal v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/signal)
 [1m[32m    Checking[0m mosaic-contract-cpu-engine v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine)
+[1m[32m    Checking[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/arm)
 [1m[32m    Checking[0m mosaic-core-runtime v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/runtime)
 [1m[32m    Checking[0m serde_core v1.0.229
 [1m[32m    Checking[0m mosaic-contract-stream v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/stream)
@@ -75,140 +75,110 @@
 [1m[32m    Checking[0m mosaic-ip-arm-primecell-id v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/primecell-id)
 [1m[32m    Checking[0m mosaic-contract-gpio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/gpio)
 [1m[32m    Checking[0m mosaic-contract-uart-line v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/uart-line)
+[1m[32m    Checking[0m hashbrown v0.17.1
 [1m[32m    Checking[0m mosaic-modelkit-fifo v0.1.0 (/home/runner/work/mosaic/mosaic/framework/modelkit/fifo)
 [1m[32m    Checking[0m equivalent v1.0.3
-[1m[32m    Checking[0m hashbrown v0.17.1
+[1m[32m    Checking[0m indexmap v2.14.2
 [1m[32m    Checking[0m toml_write v0.1.2
 [1m[32m    Checking[0m winnow v0.7.15
-[1m[32m    Checking[0m indexmap v2.14.2
 [1m[32m    Checking[0m serde v1.0.229
-[1m[32m    Checking[0m toml_datetime v0.6.11
-[1m[32m    Checking[0m serde_spanned v0.6.9
 [1m[32m    Checking[0m zmij v1.0.23
-[1m[32m    Checking[0m toml_edit v0.22.27
+[1m[32m    Checking[0m serde_spanned v0.6.9
+[1m[32m    Checking[0m toml_datetime v0.6.11
 [1m[32m    Checking[0m mosaic-ip-arm-pl011 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl011)
 [1m[32m    Checking[0m mosaic-interconnect-uart-pair v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/uart-pair)
 [1m[32m    Checking[0m mosaic-ip-arm-sp804 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/sp804)
 [1m[32m    Checking[0m itoa v1.0.18
 [1m[32m    Checking[0m mosaic-contract-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/net)
-[1m[32m    Checking[0m mosaic-contract-spi v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/spi)
 [1m[32m    Checking[0m mosaic-contract-can v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/can)
 [1m[32m    Checking[0m mosaic-contract-i2c v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/i2c)
-[1m[32m    Checking[0m mosaic-engine-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/conformance)
+[1m[32m    Checking[0m mosaic-contract-spi v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/spi)
 [1m[32m    Checking[0m serde_json v1.0.154
+[1m[32m    Checking[0m mosaic-engine-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/conformance)
+[1m[32m    Checking[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
+[1m[32m    Checking[0m toml_edit v0.22.27
 [1m[32m    Checking[0m mosaic-interconnect-i2c-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/i2c-bus)
 [1m[32m    Checking[0m mosaic-interconnect-can-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/can-bus)
-[1m[32m    Checking[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
 [1m[32m    Checking[0m mosaic-interconnect-gpio-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/gpio-net)
-[1m[32m    Checking[0m toml v0.8.23
 [1m[32m    Checking[0m mosaic-interconnect-pinmux v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/pinmux)
-[1m[32m    Checking[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
 [1m[32m    Checking[0m mosaic-cpu-arm-arm926ej-s v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/arm/arm926ej-s)
+[1m[32m    Checking[0m toml v0.8.23
 [1m[32m    Checking[0m mosaic-contract-clock v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/clock)
+[1m[32m    Checking[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
 [1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
 [1m[32m    Checking[0m unicorn-engine v2.1.5
 [1m[32m    Checking[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
 [1m[32m    Checking[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
 [1m[32m    Checking[0m mosaic-apps-bringup v0.1.0 (/home/runner/work/mosaic/mosaic/apps/bringup)
 [1m[32m    Checking[0m mosaic-apps-cli v0.1.0 (/home/runner/work/mosaic/mosaic/apps/cli)
-[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/assemble/src/driver.rs:297:36[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m297[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m        let view = FlatView::build([[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m ____________________[0m[0m[1m[38;5;12m---------------[0m[0m[1m[38;5;9m_^[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m                    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m                    [0m[0m[1m[38;5;12marguments to this function are incorrect[0m
-[0m[1m[38;5;12m298[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            leaf(0, 0x1000, ROM, MemoryKind::Rom, Permissions::RX),[0m
-[0m[1m[38;5;12m299[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            leaf(0x2000, 0x1000, DEVICE, MemoryKind::Mmio, Permissions::RW),[0m
-[0m[1m[38;5;12m300[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        ])[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mexpected `&[Region]`, found `[Region; 2]`[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: expected reference `[0m[0m[1m[35m&[mosaic_core_runtime::Region][0m[0m`[0m
-[0m                   found array `[0m[0m[1m[35m[mosaic_core_runtime::Region; 2][0m[0m`[0m
-[0m[1m[38;5;10mnote[0m[0m: associated function defined here[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0m/home/runner/work/mosaic/mosaic/framework/core/runtime/src/address.rs:164:12[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m164[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn build(regions: &[Region]) -> Result<Self, AddressError> {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;10m^^^^^[0m
-[0m[1m[38;5;14mhelp[0m[0m: consider borrowing here[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m297[0m[0m [0m[0m[1m[38;5;12m| [0m[0m        let view = FlatView::build([0m[0m[38;5;10m&[0m[0m[[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                                    [0m[0m[38;5;10m+[0m
+[0m[1m[38;5;9merror[E0432][0m[0m[1m: unresolved import `mosaic_contract_cpu_engine`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:12:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m12[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse mosaic_contract_cpu_engine::CpuEngine;[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9muse of undeclared crate or module `mosaic_contract_cpu_engine`[0m
 
-[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/assemble/src/driver.rs:370:13[0m
+[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:183:10[0m
 [0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m369[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        ) -> Result<(), BusFault> {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m--------------------[0m[0m [0m[0m[1m[38;5;12mexpected `std::result::Result<(), mosaic_core_types::BusFault>` because of return type[0m
-[0m[1m[38;5;12m370[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            ctx.schedule(VTime(1000), 1).map_err(|_| BusFault::Device)[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m             [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mexpected `Result<(), BusFault>`, found `Result<EventId, BusFault>`[0m
+[0m[1m[38;5;12m182[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
+[0m[1m[38;5;12m183[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::Pc.into(), RAM_BASE)[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
 [0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: expected enum `std::result::Result<[0m[0m[1m[35m()[0m[0m, _>`[0m
-[0m               found enum `std::result::Result<[0m[0m[1m[35mmosaic_core_types::EventId[0m[0m, _>`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
+[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
 
-[0m[1mFor more information about this error, try `rustc --explain E0308`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-assemble` (lib test) due to 2 previous errors
+[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:186:10[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m185[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
+[0m[1m[38;5;12m186[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::R2.into(), UART_BASE)[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
+[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:189:10[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m188[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
+[0m[1m[38;5;12m189[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::R3.into(), 36)[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
+[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1mSome errors have detailed explanations: E0432, E0599.[0m
+[0m[1mFor more information about an error, try `rustc --explain E0432`.[0m
+[1m[31merror[0m[1m:[0m could not compile `mosaic-apps-bringup` (lib) due to 4 previous errors
 [1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
-[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:182:10[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m181[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
-[0m[1m[38;5;12m182[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::Pc.into(), RAM_BASE)[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
-[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-
-[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:185:10[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m184[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
-[0m[1m[38;5;12m185[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::R2.into(), UART_BASE)[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
-[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-
-[0m[1m[38;5;9merror[E0599][0m[0m[1m: no method named `reg_write` found for struct `mosaic_engine_unicorn::UnicornArm` in the current scope[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mapps/bringup/src/bringup.rs:188:10[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m187[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m    engine[0m
-[0m[1m[38;5;12m188[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .reg_write(Register::R3.into(), 36)[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;12m-[0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mmethod not found in `UnicornArm`[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|_________|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m::: [0m[0m/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine/src/lib.rs:112:8[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mthe method is available for `mosaic_engine_unicorn::UnicornArm` here[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: items from traits can only be used if the trait is in scope[0m
-[0m[1m[38;5;14mhelp[0m[0m: trait `CpuEngine` which provides `reg_write` is implemented but not in scope; perhaps you want to import it[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m8[0m[0m   [0m[0m[38;5;10m+ use mosaic_contract_cpu_engine::CpuEngine;[0m
-[0m    [0m[0m[1m[38;5;12m|[0m
-
-[0m[1mFor more information about this error, try `rustc --explain E0599`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-apps-bringup` (lib) due to 3 previous errors
-[1m[31merror[0m[1m:[0m could not compile `mosaic-apps-bringup` (lib test) due to 3 previous errors
+[1m[31merror[0m[1m:[0m could not compile `mosaic-apps-bringup` (lib test) due to 4 previous errors
