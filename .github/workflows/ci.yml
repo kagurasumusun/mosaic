@@ -32,7 +32,7 @@ jobs:
           git add -A
           if ! git diff --cached --quiet; then
             git commit -m "Apply rustfmt"
-            git push
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
       - name: Architecture checks
         run: cargo xtask check

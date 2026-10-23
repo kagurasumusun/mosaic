@@ -18,131 +18,153 @@ pub enum PrimError {
 
 /// u16 をリトルエンディアンで読む。
 pub fn read_u16_le(bytes: &[u8]) -> Result<u16, PrimError> {
-    let [b0, b1, ..] = bytes else {
+    if bytes.len() < 2 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u16::from_le_bytes([b0, b1]))
+    }
+    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
 /// u16 をビッグエンディアンで読む。
 pub fn read_u16_be(bytes: &[u8]) -> Result<u16, PrimError> {
-    let [b0, b1, ..] = bytes else {
+    if bytes.len() < 2 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u16::from_be_bytes([b0, b1]))
+    }
+    Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
 /// u32 をリトルエンディアンで読む。
 pub fn read_u32_le(bytes: &[u8]) -> Result<u32, PrimError> {
-    let [b0, b1, b2, b3, ..] = bytes else {
+    if bytes.len() < 4 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u32::from_le_bytes([b0, b1, b2, b3]))
+    }
+    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
 /// u32 をビッグエンディアンで読む。
 pub fn read_u32_be(bytes: &[u8]) -> Result<u32, PrimError> {
-    let [b0, b1, b2, b3, ..] = bytes else {
+    if bytes.len() < 4 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u32::from_be_bytes([b0, b1, b2, b3]))
+    }
+    Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
 /// u64 をリトルエンディアンで読む。
 pub fn read_u64_le(bytes: &[u8]) -> Result<u64, PrimError> {
-    let [b0, b1, b2, b3, b4, b5, b6, b7, ..] = bytes else {
+    if bytes.len() < 8 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]))
+    }
+    Ok(u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ]))
 }
 
 /// u64 をビッグエンディアンで読む。
 pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
-    let [b0, b1, b2, b3, b4, b5, b6, b7, ..] = bytes else {
+    if bytes.len() < 8 {
         return Err(PrimError::BufferTooSmall);
-    };
-    Ok(u64::from_be_bytes([b0, b1, b2, b3, b4, b5, b6, b7]))
+    }
+    Ok(u64::from_be_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ]))
 }
 
 /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
-pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
-    let [b0, b1, ..] = buf else {
+pub fn write_u16_le(
+    buf: &mut [u8],
+    value: u16,
+) -> Result<(), PrimError> {
+    if buf.len() < 2 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_le_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
     Ok(())
 }
 
 /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
-pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
-    let [b0, b1, ..] = buf else {
+pub fn write_u16_be(
+    buf: &mut [u8],
+    value: u16,
+) -> Result<(), PrimError> {
+    if buf.len() < 2 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_be_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
     Ok(())
 }
 
 /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
-pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
-    let [b0, b1, b2, b3, ..] = buf else {
+pub fn write_u32_le(
+    buf: &mut [u8],
+    value: u32,
+) -> Result<(), PrimError> {
+    if buf.len() < 4 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_le_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
-    *b2 = bytes[2];
-    *b3 = bytes[3];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
+    buf[2] = bytes[2];
+    buf[3] = bytes[3];
     Ok(())
 }
 
 /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
-pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
-    let [b0, b1, b2, b3, ..] = buf else {
+pub fn write_u32_be(
+    buf: &mut [u8],
+    value: u32,
+) -> Result<(), PrimError> {
+    if buf.len() < 4 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_be_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
-    *b2 = bytes[2];
-    *b3 = bytes[3];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
+    buf[2] = bytes[2];
+    buf[3] = bytes[3];
     Ok(())
 }
 
 /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
-pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
-    let [b0, b1, b2, b3, b4, b5, b6, b7, ..] = buf else {
+pub fn write_u64_le(
+    buf: &mut [u8],
+    value: u64,
+) -> Result<(), PrimError> {
+    if buf.len() < 8 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_le_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
-    *b2 = bytes[2];
-    *b3 = bytes[3];
-    *b4 = bytes[4];
-    *b5 = bytes[5];
-    *b6 = bytes[6];
-    *b7 = bytes[7];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
+    buf[2] = bytes[2];
+    buf[3] = bytes[3];
+    buf[4] = bytes[4];
+    buf[5] = bytes[5];
+    buf[6] = bytes[6];
+    buf[7] = bytes[7];
     Ok(())
 }
 
 /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
-pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
-    let [b0, b1, b2, b3, b4, b5, b6, b7, ..] = buf else {
+pub fn write_u64_be(
+    buf: &mut [u8],
+    value: u64,
+) -> Result<(), PrimError> {
+    if buf.len() < 8 {
         return Err(PrimError::BufferTooSmall);
-    };
+    }
     let bytes = value.to_be_bytes();
-    *b0 = bytes[0];
-    *b1 = bytes[1];
-    *b2 = bytes[2];
-    *b3 = bytes[3];
-    *b4 = bytes[4];
-    *b5 = bytes[5];
-    *b6 = bytes[6];
-    *b7 = bytes[7];
+    buf[0] = bytes[0];
+    buf[1] = bytes[1];
+    buf[2] = bytes[2];
+    buf[3] = bytes[3];
+    buf[4] = bytes[4];
+    buf[5] = bytes[5];
+    buf[6] = bytes[6];
+    buf[7] = bytes[7];
     Ok(())
 }
 
