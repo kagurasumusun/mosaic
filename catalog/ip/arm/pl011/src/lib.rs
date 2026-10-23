@@ -163,9 +163,10 @@ impl Pl011 {
                     self.tx.pop();
                 }
                 Ok(_) | Err(StreamError::Full) => break,
-                // A closed or detached peer applies backpressure: the bytes
-                // stay in the FIFO so re-attachment cannot lose guest output.
-                Err(StreamError::Closed) | Err(StreamError::NotConnected) => break,
+                // A closed, detached or future-named peer condition applies
+                // backpressure: the bytes stay in the FIFO so re-attachment
+                // cannot lose guest output. StreamError is non_exhaustive.
+                Err(_) => break,
             }
         }
         if self.tx.is_empty() {
@@ -362,6 +363,7 @@ mod tests {
     use super::*;
     use mosaic_core_types::{EventId, VTime};
     use std::sync::{Arc, Mutex};
+    use std::vec;
 
     const IRQ: SignalId = SignalId(1);
 
@@ -505,7 +507,7 @@ mod tests {
         // Mask TX before the first write: the drained FIFO asserts the line.
         uart.write_word(&mut ctx, reg::IMSC, ris::TX | ris::ERROR)
             .unwrap();
-        uart.write_word(&mut ctx, reg::DR, u64::from(b'q')).unwrap();
+        uart.write_word(&mut ctx, reg::DR, u32::from(b'q')).unwrap();
         assert_eq!(*levels.lock().unwrap(), vec![true]);
         // Clearing the raw status deasserts the single combined IRQ.
         uart.write_word(&mut ctx, reg::ICR, ris::TX).unwrap();

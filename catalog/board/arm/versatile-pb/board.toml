@@ -1,0 +1,13 @@
+# P1 ボード記述。実在する Versatile Platform Baseboard の名称を使う。
+# センサなどの実部品は P2 で [[part]] として追加する。
+[board]
+id = 'board:arm/versatile-pb'
+soc = 'soc:arm/versatile/arm926ej-s'
+summary = 'Minimal P1 bring-up board: UART console plus dual timer'
+
+# uart0 の ByteStream ポートはボード上の 1 対 1 シリアル回線に終端する。
+[[conn]]
+name = 'uart0-console'
+port = 'soc.uart0.stream'
+to = 'wire:uart-console'
+kind = 'stream/byte'

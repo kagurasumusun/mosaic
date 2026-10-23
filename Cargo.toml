@@ -31,6 +31,7 @@ members = [
     "catalog/ip/arm/primecell-id",
     "catalog/ip/arm/pl011",
     "catalog/ip/arm/sp804",
+    "apps/bringup",
     "apps/cli",
     "xtask",
 ]

@@ -385,6 +385,7 @@ mod tests {
 
     use super::*;
     use std::collections::VecDeque;
+    use std::vec;
 
     const IRQ1: SignalId = SignalId(2);
     const IRQ2: SignalId = SignalId(3);

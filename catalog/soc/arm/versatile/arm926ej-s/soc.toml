@@ -1,0 +1,47 @@
+# ARM Versatile/PB926EJ-S の最小 P1 縦スライス記述。
+# 値は ARM DUI 0224 (Versatile/PB TRM) の sysbus アドレスと VIC 番号に基づく。
+# 現フェーズは宣言のみで、消費するパーサは後続フェーズで導入する。
+[soc]
+id = 'soc:arm/versatile/arm926ej-s'
+summary = 'Versatile/PB peripheral fabric around an ARM926EJ-S core (P1 slice)'
+
+[[cpu]]
+name = 'core0'
+use = 'cpu:arm/arm926ej-s'
+view = 'sysbus'
+
+# PL011 UART0: Versatile/PB では 0x101F1000、VIC 割り込み 12。
+[[block]]
+name = 'uart0'
+use = 'ip:arm/pl011'
+at = { space = 'sysbus', base = 0x101f1000 }
+irq = { pin = 'combined', to = ['core0.vic:12'] }
+clk = { uartclk = 'clk_uart', pclk = 'clk_pclk' }
+
+# SP804 dual timer: Versatile/PB では 0x101E2000、timer1/2 が VIC 4/5。
+[[block]]
+name = 'timer0'
+use = 'ip:arm/sp804'
+at = { space = 'sysbus', base = 0x101e2000 }
+irq = { pin = 'timer1', to = ['core0.vic:4'] }
+
+[[view]]
+name = 'sysbus'
+
+[[view.region]]
+name = 'ram'
+base = 0x00000000
+size = 0x00100000
+kind = 'ram'
+
+[[view.region]]
+name = 'timer0-mmio'
+base = 0x101e2000
+size = 0x00001000
+kind = 'mmio'
+
+[[view.region]]
+name = 'uart0-mmio'
+base = 0x101f1000
+size = 0x00001000
+kind = 'mmio'
