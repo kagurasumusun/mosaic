@@ -8,3 +8,7 @@ GitHub Actions がビルドした例を実行し、このファイルとの一�
 実行例の内部では、キューの保存状態を別インスタンスへ復元した場合も出力と最終 State が
 一致することを検査します。これは CPU を使わない runtime smoke test であり、
 実機やファームウェアの仕様準拠を検証する machine test ではありません。
+
+`unicorn-arm.stdout` は CLI の opt-in `unicorn-smoke` の期待出力です。
+FlatView 由来の RX コード / RW データ領域で A32 の MOV / ADD / STR / LDR を実行し、
+4 回の命令フック、レジスタ、PC、メモリを検査します。これも実機の machine test ではありません。

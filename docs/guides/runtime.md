@@ -88,5 +88,7 @@ GitHub Actions は `tests/runtime-events.stdout` との比較も行います。
 | §13.5, ADR 0004: 版付き State、復元前検証 | `events.rs` の往復・不正 State・入力順序・ID 枯渇テスト |
 | §19 T8: 同じ入力と実行区間分割 | `identical_inputs_produce_identical_traces` / `time_window_partition_does_not_change_event_trace` |
 
-残りの主要な P1 基盤は Region / FlatView、デバイスのアリーナと dispatch、CPU 実行予算、
-最初の ISA・MCU の選定、UART / タイマ、実ファームウェアの machine テストです。
+Region / FlatView と開発用 Unicorn ARM アダプタを追加しました。
+[Unicorn ガイド](unicorn.md) と ADR 0002 / 0007 を参照してください。
+残りの主要な P1 基盤はデバイスのアリーナと dispatch、MMIO / AddressView、CPU とイベントの
+協調スケジューリング、最初の MCU・ボードの選定、UART / タイマ、実ファームウェアの machine テストです。

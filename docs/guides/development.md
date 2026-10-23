@@ -102,6 +102,10 @@ Clippy、metadata 読み込み・命名のテストも、この run で確認で
 イベント基盤の追加は [Actions run 39886095476](https://github.com/kagurasumusun/mosaic/actions/runs/39886095476)
 （commit `990755a`）で、fmt / xtask / Clippy / build / 全テスト / 期待出力比較 / doctor が成功しました。
 テスト定義は既存 12 件 + ランタイム 21 件で計 33 件です。
+Unicorn / FlatView の追加は [Actions run 39887319724](https://github.com/kagurasumusun/mosaic/actions/runs/39887319724)
+（commit `80e54ac`）で全ステージ成功。54 件のテスト、通常ビルド、Clippy、runtime / Unicorn の
+両期待出力比較を含みます。ARM native build の前提パッケージは CI でインストールします。
+
 後続変更の検証状況は、その commit に紐づく最新の run を参照してください。
 CI は OS 移行の影響を避けて ubuntu-24.04 に固定し、checkout は Node.js 24 対応版を SHA 固定しています。
 ローカルにはツールチェーン本体・依存キャッシュ・検証生成物をコミットしません。
