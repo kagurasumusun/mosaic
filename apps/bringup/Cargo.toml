@@ -23,6 +23,7 @@ unicorn = [
 
 [dependencies]
 mosaic-assemble = { path = "../../framework/assemble" }
+mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
 mosaic-contract-model = { path = "../../framework/contract/model" }
 mosaic-contract-stream = { path = "../../framework/contract/stream" }
 mosaic-core-runtime = { path = "../../framework/core/runtime" }

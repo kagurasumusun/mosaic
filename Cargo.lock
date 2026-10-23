@@ -182,6 +182,7 @@ name = "mosaic-apps-bringup"
 version = "0.1.0"
 dependencies = [
  "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
  "mosaic-contract-model",
  "mosaic-contract-stream",
  "mosaic-core-runtime",
