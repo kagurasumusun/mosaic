@@ -105,10 +105,13 @@ impl UartEndpoint {
     fn push_peer(&self, bytes: &[u8]) -> usize {
         let mut inner = lock(&self.inner);
         let peer = Self::index(self.side.peer());
-        let queue = &mut inner.endpoints[peer].rx;
-        let room = inner.capacity.saturating_sub(queue.len());
+        let room = inner
+            .capacity
+            .saturating_sub(inner.endpoints[peer].rx.len());
         let accepted = room.min(bytes.len());
-        queue.extend(bytes[..accepted].iter().copied());
+        inner.endpoints[peer]
+            .rx
+            .extend(bytes[..accepted].iter().copied());
         accepted
     }
 

@@ -1,0 +1,14 @@
+[package]
+name = "mosaic-ip-arm-primecell-id"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "catalog"
+kind = "ip-lib"
+level = 3
+
+[lints]
+workspace = true

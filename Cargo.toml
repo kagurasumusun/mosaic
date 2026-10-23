@@ -28,6 +28,8 @@ members = [
     "framework/interconnect/spi-bus",
     "framework/interconnect/uart-pair",
     "framework/interconnect/can-bus",
+    "catalog/ip/arm/primecell-id",
+    "catalog/ip/arm/pl011",
     "apps/cli",
     "xtask",
 ]

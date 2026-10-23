@@ -392,6 +392,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-arm-pl011"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-contract-stream",
+ "mosaic-core-types",
+ "mosaic-ip-arm-primecell-id",
+ "mosaic-modelkit-fifo",
+]
+
+[[package]]
+name = "mosaic-ip-arm-primecell-id"
+version = "0.1.0"
+
+[[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
