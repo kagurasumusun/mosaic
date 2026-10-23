@@ -1,0 +1,18 @@
+[package]
+name = "mosaic-interconnect-can-bus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "interconnect"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-contract-can = { path = "../../contract/can" }
+mosaic-contract-model = { path = "../../contract/model" }

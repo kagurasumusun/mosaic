@@ -22,6 +22,12 @@ members = [
     "framework/engine/unicorn",
     "framework/describe",
     "framework/assemble",
+    "framework/interconnect/gpio-net",
+    "framework/interconnect/pinmux",
+    "framework/interconnect/i2c-bus",
+    "framework/interconnect/spi-bus",
+    "framework/interconnect/uart-pair",
+    "framework/interconnect/can-bus",
     "apps/cli",
     "xtask",
 ]

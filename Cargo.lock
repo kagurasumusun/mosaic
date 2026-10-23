@@ -335,6 +335,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-interconnect-can-bus"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-can",
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-interconnect-gpio-net"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-gpio",
+ "mosaic-contract-model",
+ "mosaic-contract-net",
+]
+
+[[package]]
+name = "mosaic-interconnect-i2c-bus"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-gpio",
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-interconnect-pinmux"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-gpio",
+ "mosaic-contract-model",
+]
+
+[[package]]
+name = "mosaic-interconnect-spi-bus"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+ "mosaic-contract-spi",
+]
+
+[[package]]
+name = "mosaic-interconnect-uart-pair"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-model",
+ "mosaic-contract-stream",
+ "mosaic-contract-uart-line",
+]
+
+[[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
