@@ -14,7 +14,7 @@ use alloc::boxed::Box;
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
-use mosaic_contract_stream::{ByteStream, StreamError};
+use mosaic_contract_stream::ByteStream;
 use mosaic_core_types::{AccessKind, AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 use mosaic_modelkit_fifo::ByteFifo;
@@ -361,6 +361,7 @@ impl EventTarget for Pl011 {
 #[cfg(test)]
 mod tests {
     extern crate std;
+    use mosaic_contract_stream::StreamError;
     use std::prelude::v1::*;
 
     use super::*;
