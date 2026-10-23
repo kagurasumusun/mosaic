@@ -11,10 +11,12 @@
 use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
-use mosaic_contract_cpu_engine::{CpuEngine, EngineBusFault, RunOutcome, StopReason};
+use mosaic_contract_cpu_engine::{CpuEngine, EngineBusFault, EngineError, RunOutcome, StopReason};
 use mosaic_core_runtime::{Machine, MachineError};
 use mosaic_core_types::VTime;
 use mosaic_engine_unicorn::UnicornArm;
+
+use crate::IrqMailbox;
 
 /// Failures surfaced by a cooperative step.
 #[derive(Debug)]
@@ -27,6 +29,8 @@ pub enum DriverError {
     EngineFault(RunOutcome),
     /// Event delivery failed, e.g. an exhausted event budget.
     Machine(MachineError),
+    /// The engine rejected a delivered interrupt line (ADR 0009).
+    Engine(EngineError),
     /// Converting the instruction quantum to virtual time overflowed.
     TimeOverflow,
     /// The shared machine mutex was poisoned.
@@ -45,11 +49,32 @@ pub struct StepReport {
 pub struct MachineDriver {
     engine: UnicornArm,
     machine: Arc<Mutex<Machine>>,
+    irq: Option<Arc<IrqMailbox>>,
 }
 
 impl MachineDriver {
     pub fn new(engine: UnicornArm, machine: Arc<Mutex<Machine>>) -> Self {
-        Self { engine, machine }
+        Self {
+            engine,
+            machine,
+            irq: None,
+        }
+    }
+
+    /// Route CPU-bound interrupt edges through `mailbox`. The same mailbox backs
+    /// the [`crate::EngineIrqSink`] nodes registered with the runtime.
+    pub fn attach_irq(&mut self, mailbox: Arc<IrqMailbox>) {
+        self.irq = Some(mailbox);
+    }
+
+    /// Forward every queued interrupt edge to the engine, in FIFO order.
+    fn flush_irq(&mut self) -> Result<(), DriverError> {
+        if let Some(mailbox) = &self.irq {
+            mailbox
+                .drain_into(&mut self.engine)
+                .map_err(DriverError::Engine)?;
+        }
+        Ok(())
     }
 
     pub fn engine(&self) -> &UnicornArm {
@@ -83,6 +108,8 @@ impl MachineDriver {
         let events_delivered = machine
             .run_until(now, event_budget)
             .map_err(DriverError::Machine)?;
+        drop(machine);
+        self.flush_irq()?;
         Ok(StepReport {
             engine: outcome,
             events_delivered,
@@ -121,6 +148,8 @@ impl MachineDriver {
         let events_delivered = machine
             .run_until(VTime(deadline), event_budget)
             .map_err(DriverError::Machine)?;
+        drop(machine);
+        self.flush_irq()?;
         Ok(StepReport {
             engine: outcome,
             events_delivered,
@@ -132,9 +161,12 @@ impl MachineDriver {
     /// boards whose timers are not yet driven by instruction-count time.
     pub fn advance(&mut self, deadline: VTime, event_budget: usize) -> Result<usize, DriverError> {
         let mut machine = self.machine.lock().map_err(|_| DriverError::Poisoned)?;
-        machine
+        let delivered = machine
             .run_until(deadline, event_budget)
-            .map_err(DriverError::Machine)
+            .map_err(DriverError::Machine)?;
+        drop(machine);
+        self.flush_irq()?;
+        Ok(delivered)
     }
 }
 
@@ -153,7 +185,8 @@ mod tests {
     use mosaic_isa_arm::Register;
 
     use super::*;
-    use crate::bind_flat_view;
+    use crate::{bind_flat_view, EngineIrqSink, IrqMailbox};
+    use mosaic_engine_unicorn::ARM_IRQ;
 
     const ROM: NodeId = NodeId(1);
     const DEVICE: NodeId = NodeId(3);
@@ -255,6 +288,47 @@ mod tests {
         assert_eq!(report.events_delivered, 1);
         assert_eq!(report.now, VTime::ZERO);
         assert_eq!(*probe.levels.lock().unwrap(), vec![true]);
+    }
+
+    #[test]
+    fn wired_signal_reaches_the_engine_irq_line() {
+        // MOV r0,#1; STR r0,[r2] — the device write queues one signal edge.
+        let code = [0x01u8, 0, 0xa0, 0xe3, 0, 0, 0x82, 0xe5];
+        let view = FlatView::build([
+            leaf(0, 0x1000, ROM, MemoryKind::Rom, Permissions::RX),
+            leaf(0x2000, 0x1000, DEVICE, MemoryKind::Mmio, Permissions::RW),
+        ])
+        .unwrap();
+        let mailbox = Arc::new(IrqMailbox::new());
+        let mut machine = Machine::new(view.clone(), 16);
+        machine.add_backing(ROM, 0x1000).unwrap();
+        machine
+            .register_device(DEVICE, Box::new(SignalDevice))
+            .unwrap();
+        machine
+            .register_sink(
+                SINK,
+                Box::new(EngineIrqSink::new(ARM_IRQ, Arc::clone(&mailbox))),
+            )
+            .unwrap();
+        machine.connect(DEVICE, SignalId(1), SINK).unwrap();
+        machine.verify().unwrap();
+        machine.loader_write(ROM, 0, &code).unwrap();
+
+        let mut engine = UnicornArm::new().unwrap();
+        let shared =
+            bind_flat_view(&mut engine, &view, Arc::new(Mutex::new(machine)), CPU).unwrap();
+        engine.reg_write(Register::Pc.into(), 0).unwrap();
+        engine.reg_write(Register::R2.into(), 0x2000).unwrap();
+        let mut driver = MachineDriver::new(engine, shared);
+        driver.attach_irq(Arc::clone(&mailbox));
+
+        let report = driver
+            .step(NonZeroU64::new(2).unwrap(), 8)
+            .unwrap();
+        assert_eq!(report.events_delivered, 1);
+        assert!(mailbox.is_empty());
+        assert_eq!(driver.engine().irq_edges(), &[(ARM_IRQ, true)]);
     }
 
     #[test]

@@ -49,6 +49,9 @@ pub struct EngineCaps {
     pub instruction_count: bool,
     pub precise_exceptions: bool,
     pub exclusive_monitor: bool,
+    /// Whether [`CpuEngine::set_line`] reaches the guest's exception input.
+    /// When false, line levels are recorded but cannot preempt guest code.
+    pub line_injection: bool,
 }
 
 impl EngineCaps {
@@ -57,8 +60,15 @@ impl EngineCaps {
         instruction_count: true,
         precise_exceptions: false,
         exclusive_monitor: false,
+        line_injection: false,
     };
 }
+
+/// Architecture-neutral logical interrupt line. Numbering is owned by the ISA
+/// vocabulary or the board composition; the contract assigns no ARM-specific
+/// meaning to any value (see ADR 0009).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct IrqLine(pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -71,6 +81,9 @@ pub enum EngineError {
     Backend,
     BusNotAttached,
     BusAlreadyAttached,
+    /// The engine does not accept this interrupt line, for example an unknown
+    /// line number on a single-core ARM adapter.
+    LineNotSupported,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +118,10 @@ pub trait CpuEngine: Send {
         size: u64,
         permissions: Permissions,
     ) -> Result<(), EngineError>;
+    /// Drive one logical interrupt line (see ADR 0009). Delivery happens only
+    /// between run quanta; an engine that cannot inject external interrupts
+    /// records the level and reports `EngineCaps::line_injection == false`.
+    fn set_line(&mut self, line: IrqLine, high: bool) -> Result<(), EngineError>;
     /// Loader/debug access, not guest access: writes may initialize ROM and code
     /// pages. Patching executable bytes must invalidate translated code.
     fn write_memory(&mut self, base: Addr, data: &[u8]) -> Result<(), EngineError>;

@@ -19,6 +19,7 @@ unicorn = ["dep:mosaic-engine-unicorn"]
 
 [dependencies]
 mosaic-contract-cpu-engine = { path = "../contract/cpu-engine" }
+mosaic-contract-signal = { path = "../contract/signal" }
 mosaic-core-runtime = { path = "../core/runtime" }
 mosaic-core-types = { path = "../core/types" }
 mosaic-describe = { path = "../describe" }
@@ -27,5 +28,4 @@ mosaic-engine-unicorn = { path = "../engine/unicorn", optional = true }
 [dev-dependencies]
 mosaic-contract-mmio = { path = "../contract/mmio" }
 mosaic-contract-model = { path = "../contract/model" }
-mosaic-contract-signal = { path = "../contract/signal" }
 mosaic-isa-arm = { path = "../isa/arm" }

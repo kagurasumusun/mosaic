@@ -6,7 +6,8 @@ mod ownership;
 
 use core::num::NonZeroU64;
 use mosaic_contract_cpu_engine::{
-    CpuEngine, EngineBus, EngineBusFault, EngineCaps, EngineError, RegId, RunOutcome, StopReason,
+    CpuEngine, EngineBus, EngineBusFault, EngineCaps, EngineError, IrqLine, RegId, RunOutcome,
+    StopReason,
 };
 use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 use ownership::{Counters, OwnedUnicorn};
@@ -18,6 +19,11 @@ use unicorn_engine::{
 /// Deliberate safety limit on an individual synchronous run, not a timing model.
 pub const MAX_QUANTUM: u64 = 1_000_000;
 pub const PAGE_SIZE: u64 = 4096;
+
+/// ARM physical IRQ input, line 0.
+pub const ARM_IRQ: IrqLine = IrqLine(0);
+/// ARM physical FIQ input, line 1.
+pub const ARM_FIQ: IrqLine = IrqLine(1);
 
 /// Per-instance backend data. The bus port is installed once, before any MMIO
 /// region is mapped, and hooks reach it only through this owned data.
@@ -34,6 +40,10 @@ pub struct UnicornArm {
     mappings: Vec<(u64, u64)>,
     /// Callback-backed MMIO pages; never reachable through loader access.
     mmio: Vec<(u64, u64)>,
+    /// External interrupt edges in delivery order. Unicorn 2.1.x exposes no
+    /// public ARM IRQ injection API, so levels are recorded, not injected
+    /// (ADR 0009); the edge log stays observable for wiring tests.
+    irq_edges: Vec<(IrqLine, bool)>,
 }
 
 impl UnicornArm {
@@ -54,6 +64,7 @@ impl UnicornArm {
             inner: OwnedUnicorn(uc),
             mappings: Vec::new(),
             mmio: Vec::new(),
+            irq_edges: Vec::new(),
         })
     }
 
@@ -115,6 +126,20 @@ impl UnicornArm {
     /// Take and clear the first bus fault recorded since the previous call.
     pub fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
         self.inner.0.get_data_mut().fault.take()
+    }
+
+    /// All external interrupt edges delivered to this core, in FIFO order.
+    pub fn irq_edges(&self) -> &[(IrqLine, bool)] {
+        &self.irq_edges
+    }
+
+    /// Most recently recorded level of one line, if it has ever been driven.
+    pub fn irq_level(&self, line: IrqLine) -> Option<bool> {
+        self.irq_edges
+            .iter()
+            .rev()
+            .find(|(candidate, _)| *candidate == line)
+            .map(|(_, high)| *high)
     }
 
     fn validate_region(&self, base: Addr, size: u64) -> Result<(), EngineError> {
@@ -277,6 +302,16 @@ impl CpuEngine for UnicornArm {
             .0
             .mem_read(base.0, data)
             .map_err(|_| EngineError::Backend)
+    }
+
+    fn set_line(&mut self, line: IrqLine, high: bool) -> Result<(), EngineError> {
+        // ARMv7-A exposes the physical IRQ and FIQ inputs; any other number is
+        // a composition error, not a guest fault.
+        if line.0 > 1 {
+            return Err(EngineError::LineNotSupported);
+        }
+        self.irq_edges.push((line, high));
+        Ok(())
     }
 }
 
@@ -662,6 +697,24 @@ mod tests {
         assert_eq!(
             engine.write_memory(Addr(0x2000), &[1]),
             Err(EngineError::Unmapped)
+        );
+    }
+
+    #[test]
+    fn set_line_records_edges_and_rejects_unknown_arm_lines() {
+        let mut engine = UnicornArm::new().unwrap();
+        assert!(!engine.caps().line_injection);
+        engine.set_line(ARM_IRQ, true).unwrap();
+        engine.set_line(ARM_FIQ, true).unwrap();
+        engine.set_line(ARM_IRQ, false).unwrap();
+        assert_eq!(
+            engine.irq_edges(),
+            &[(ARM_IRQ, true), (ARM_FIQ, true), (ARM_IRQ, false)]
+        );
+        assert_eq!(engine.irq_level(ARM_IRQ), Some(false));
+        assert_eq!(
+            engine.set_line(IrqLine(9), true),
+            Err(EngineError::LineNotSupported)
         );
     }
 }

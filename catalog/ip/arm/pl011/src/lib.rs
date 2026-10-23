@@ -8,6 +8,10 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_contract_stream::{ByteStream, StreamError};
@@ -352,6 +356,9 @@ impl EventTarget for Pl011 {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+    use std::prelude::v1::*;
+
     use super::*;
     use mosaic_core_types::{EventId, VTime};
     use std::sync::{Arc, Mutex};
