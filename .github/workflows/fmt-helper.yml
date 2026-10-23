@@ -1,0 +1,27 @@
+name: fmt-helper
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa4154380b0dba6c83
+        with:
+          ref: arena/f1aad4a9-mosaic
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - name: Format
+        run: cargo fmt --all
+      - name: Emit formatting patch
+        run: git diff --binary > fmt.patch
+      - name: Upload patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: fmt-patch
+          path: fmt.patch
