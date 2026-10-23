@@ -153,10 +153,11 @@ impl MmioTarget for Arm926ejS {
         }
         // レジスタ幅は 32 ビット。64 ビット転送の値は下位 32 ビットを採用する
         //（pl011/sp804 と同じくゲスト入力でパニックさせない）。
-        let value = value as u32;
+        let reg_value =
+            u32::try_from(value & 0xFFFF_FFFF).expect("下位 32 ビットは常に u32 に収まる");
         match offset {
             reg::CONTROL => {
-                self.state.control = value & control::ENABLE;
+                self.state.control = reg_value & control::ENABLE;
                 Ok(())
             }
             // 読み出し専用レジスタへの書き込みは無視（ハードウェアと同等）。
