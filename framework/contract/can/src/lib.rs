@@ -37,7 +37,8 @@ impl CanId {
     /// Numeric priority: lower identifiers win arbitration first.
     pub const fn priority(self) -> u32 {
         match self {
-            Self::Base(value) => u32::from(value),
+            // u16 -> u32 widening cast, const-safe and lossless.
+            Self::Base(value) => value as u32,
             Self::Extended(value) => value,
         }
     }
