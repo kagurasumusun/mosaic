@@ -32,10 +32,7 @@ impl IrqMailbox {
 
     /// Edges waiting for the next engine flush.
     pub fn len(&self) -> usize {
-        self.edges
-            .lock()
-            .expect("IRQ mailbox mutex poisoned")
-            .len()
+        self.edges.lock().expect("IRQ mailbox mutex poisoned").len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -153,11 +150,7 @@ mod tests {
         assert!(mailbox.is_empty());
         assert_eq!(
             engine.edges,
-            vec![
-                (IrqLine(0), true),
-                (IrqLine(1), true),
-                (IrqLine(0), false),
-            ]
+            vec![(IrqLine(0), true), (IrqLine(1), true), (IrqLine(0), false),]
         );
     }
 

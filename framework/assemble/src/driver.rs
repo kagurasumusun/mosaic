@@ -323,9 +323,7 @@ mod tests {
         let mut driver = MachineDriver::new(engine, shared);
         driver.attach_irq(Arc::clone(&mailbox));
 
-        let report = driver
-            .step(NonZeroU64::new(2).unwrap(), 8)
-            .unwrap();
+        let report = driver.step(NonZeroU64::new(2).unwrap(), 8).unwrap();
         assert_eq!(report.events_delivered, 1);
         assert!(mailbox.is_empty());
         assert_eq!(driver.engine().irq_edges(), &[(ARM_IRQ, true)]);
