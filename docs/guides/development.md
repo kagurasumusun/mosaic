@@ -72,24 +72,37 @@ workspace 外の未分類 path 依存を拒否します。
 P0 の技術的骨格を追加した段階であり、上記と初日の未決判断を含む P0 全体の完了は宣言しません。
 contract も 2 つ目の実装で検証するまで安定 API ではありません。
 
-## 初期構築時の検証
+## GitHub Actions によるビルド・テスト
 
-この開発環境は Rust が初期状態では未導入で、ネットワークの許可先も限定されています。
-リポジトリ外に一時的に用意した Rust 1.85.0 を使い、以下を確認しました。
-ツールチェーン本体・キャッシュ・検証用生成物は Git に含めていません。
+ローカル環境のネットワーク制限を回避するため、ビルド・テストは GitHub Actions を正本にします。
+このセッションの作業ブランチへコミット・push し、**その commit SHA の run** を確認します。
+古い run の成功を、新しい変更の成功として扱わないでください。
 
-- `cargo fmt --all -- --check` 成功。
-- 共通型 2 件、純粋な層・命名 policy 7 件を `rustc --test` で実行し、計 9 件成功。
-- xtask を除く 14 クレートを `rustc --deny warnings` で依存順にコンパイルし成功。
-- `cargo metadata --no-deps --locked` で 15 クレートを確認し、実際のグラフを Rust の層 policy に通して成功。
-- 仮 CLI が「P0 skeleton / no machine execution」と表示することを確認。
-- Cargo.lock は公式 crates.io-index の GitHub ミラーから取得した index と checksum で生成。
-  一時的なローカル registry 設定はリポジトリに含めず、lock の source は通常の crates.io のまま。
+```sh
+git push origin arena/d8b11562-mosaic
+gh run list --branch arena/d8b11562-mosaic --commit "$(git rev-parse HEAD)" \
+  --json databaseId,status,conclusion,url
+gh run view <run-id> --json headSha,status,conclusion,jobs,url
+gh run watch <run-id> --interval 15 --exit-status
+# 失敗した場合
+gh run view <run-id> --log-failed
+```
 
-crates.io の取得先がネットワーク制限で利用できず、**workspace 全体の cargo test、
-Clippy、xtask CLI 本体の実行は未検証**です。metadata 読み込みと名前 lint の追加テスト 3 件も
-この未実行部分に含まれます。通常のネットワーク環境または GitHub Actions で、README の
-一式を必ず実行してください。CI の定義追加と CI 通過は別です。
+CI は fmt、xtask、Clippy、明示的な build、workspace テスト、イベント実行例の
+期待出力比較、doctor を実行します。テストは `--locked` を用い、Cargo.lock と一致させます。
+workflow_dispatch でも起動可能です。新しい push では同一 ref の古い run をキャンセルします。
+
+P0 の初回全体検証は [Actions run 39885634799](https://github.com/kagurasumusun/mosaic/actions/runs/39885634799)
+（commit `9dc2cde`）で成功しています。前回ローカルで未実行だった xtask CLI、
+Clippy、metadata 読み込み・命名のテストも、この run で確認できました。
+追加したランタイムの検証状況は、その変更の commit に紐づく最新の run を参照してください。
+ローカルにはツールチェーン本体・依存キャッシュ・検証生成物をコミットしません。
+
+## イベント基盤
+
+詳細と未実装範囲は [runtime ガイド](runtime.md) を参照してください。
+最初の実機・ISA を選ぶ前でも、CPU に依存しないイベント基盤を検証できます。
+これは P1 のファームウェア起動という出口条件を満たすものではありません。
 
 ## P1 に進む前の確認
 

@@ -2,7 +2,7 @@
 
 Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、現在は **P0（骨格と強制）の初期実装**です。
+[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤と P1 のイベント実行基盤**を構築しています。
 **ファームウェアや実機のエミュレーションはまだ実行できません。**
 
 ## 開発を始める
@@ -36,11 +36,22 @@ cargo xtask doctor
 - `check` / `doctor`、fast CI（fmt、構成 lint、Clippy、単体テスト）。
 - `Addr` / `VTime` / `Attr` / `BusFault` / 型付き Snapshot の境界。
 - 最小限の model context、MMIO、signal、clock、CPU-engine contract（暫定 API）。
+- 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
+- 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
+
+CPU やファームウェアを使わないイベント実行例:
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example events
+```
+
+同時刻イベントと遅延 signal のトレースを表示し、保存状態からの再実行が一致することを確認します。
+これは VM 全体の起動・スナップショット機能ではありません。
 
 ### 次の実装
 
-P1 の最初の ISA・MCU・ボードを決め、Region / FlatView、イベントキュー、
-エンジンアダプタ、UART とタイマ、SoC / ボード宣言を縦につなぎます。
+P1 の最初の ISA・MCU・ボードを決め、Region / FlatView、モデルのディスパッチ、
+エンジンアダプタ、UART とタイマ、SoC / ボード宣言をイベント基盤へ縦につなぎます。
 実機モデルを増やす前に、決定論と MMIO の machine テストを整備します。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。

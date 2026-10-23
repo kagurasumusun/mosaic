@@ -11,3 +11,14 @@
 
 検証: P1 でアリーナ + take-out を試作し、再入と借用競合をテストする。
 2 つ目のモデル・実装が通るまでは API を凍結しない。破壊的変更時は本 ADR を更新する。
+
+## イベント基盤での具体化
+
+`ModelContext` をコールバックのスコープでノードと出力 signal 集合に束縛します。
+Ctx の schedule / cancel はそのノードのタイマだけを扱い、set_signal は許可された
+出力だけを現在時刻のイベントとしてキューへ積みます。出力先ノードへの参照は渡しません。
+`cancel` は自ノードの pending イベントに限定し、他ノード・消費済み ID には false を返します。
+
+Ctx に object-safe な既定メソッド `schedule_after` を追加しました。時刻加算の overflow は
+`TimeOverflow` で失敗し、キューを変更しません。絶対時刻予約・signal 通知とも、その場では
+dispatch しません。アリーナ + take-out による実際のモデル dispatch と再入検出は未実装です。

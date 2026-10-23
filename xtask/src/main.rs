@@ -28,7 +28,7 @@ fn run() -> CheckResult<()> {
     }
     println!("{command}: OK ({} workspace crates)", packages.len());
     if command == "doctor" {
-        println!("P0 skeleton only: no executable machine, no Unicorn dependency.");
+        println!("Core event runtime available; no executable machine or Unicorn dependency.");
         println!("License/contribution policy and initial ISA/board require owner decisions.");
     }
     Ok(())
