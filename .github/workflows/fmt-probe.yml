@@ -1,0 +1,14 @@
+name: fmt-probe
+on:
+  push:
+    branches:
+      - arena/f1aad4a9-mosaic
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "probe-ok"
