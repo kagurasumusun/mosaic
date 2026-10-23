@@ -29,7 +29,7 @@ fn run() -> CheckResult<()> {
     println!("{command}: OK ({} workspace crates)", packages.len());
     if command == "doctor" {
         println!(
-            "Event/MMIO machine runtime and opt-in Unicorn ARM smoke available; no complete machine."
+            "Event/MMIO machine runtime with an opt-in Unicorn ARM MMIO binding; no complete machine."
         );
         println!("License/contribution policy and initial ISA/board require owner decisions.");
     }

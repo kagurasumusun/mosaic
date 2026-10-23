@@ -6,9 +6,9 @@ mod ownership;
 
 use core::num::NonZeroU64;
 use mosaic_contract_cpu_engine::{
-    CpuEngine, EngineCaps, EngineError, RegId, RunOutcome, StopReason,
+    CpuEngine, EngineBus, EngineBusFault, EngineCaps, EngineError, RegId, RunOutcome, StopReason,
 };
-use mosaic_core_types::{Addr, Permissions};
+use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 use ownership::{Counters, OwnedUnicorn};
 use unicorn_engine::{
     unicorn_const::{Arch, Mode, Prot},
@@ -19,9 +19,21 @@ use unicorn_engine::{
 pub const MAX_QUANTUM: u64 = 1_000_000;
 pub const PAGE_SIZE: u64 = 4096;
 
+/// Per-instance backend data. The bus port is installed once, before any MMIO
+/// region is mapped, and hooks reach it only through this owned data.
+#[derive(Default)]
+pub struct EngineData {
+    counters: Counters,
+    bus: Option<Box<dyn EngineBus>>,
+    fault: Option<EngineBusFault>,
+}
+
 pub struct UnicornArm {
     inner: OwnedUnicorn,
+    /// Native RAM/ROM pages eligible for loader access.
     mappings: Vec<(u64, u64)>,
+    /// Callback-backed MMIO pages; never reachable through loader access.
+    mmio: Vec<(u64, u64)>,
 }
 
 impl UnicornArm {
@@ -29,19 +41,100 @@ impl UnicornArm {
         let mut uc = Unicorn::new_with_data(
             Arch::ARM,
             Mode::ARM | Mode::LITTLE_ENDIAN,
-            Counters::default(),
+            EngineData::default(),
         )
         .map_err(|_| EngineError::Backend)?;
         // Capture-free: no Rc/host reference can escape the engine through a hook.
         // Native count and MAX_QUANTUM bound the addition below to <= 1_000_000.
         uc.add_code_hook(1, 0, |uc, _, _| {
-            uc.get_data_mut().instructions += 1;
+            uc.get_data_mut().counters.instructions += 1;
         })
         .map_err(|_| EngineError::Backend)?;
         Ok(Self {
             inner: OwnedUnicorn(uc),
             mappings: Vec::new(),
+            mmio: Vec::new(),
         })
+    }
+
+    /// Install the callback bus used by every MMIO region. One port serves all
+    /// regions; the port resolves guest addresses itself. Re-attaching fails so
+    /// stale callbacks can never alias a new bus.
+    pub fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        if self.inner.0.get_data().bus.is_some() {
+            return Err(EngineError::BusAlreadyAttached);
+        }
+        self.inner.0.get_data_mut().bus = Some(bus);
+        Ok(())
+    }
+
+    /// Map a page-aligned callback region. Guest accesses inside it are routed
+    /// to the attached bus; a bus fault stops emulation and is retained for
+    /// [`Self::take_bus_fault`].
+    ///
+    /// Unicorn hands its MMIO callbacks region-relative offsets, so each pair
+    /// of closures captures only the region's Copy base address and re-adds it
+    /// before reaching the bus, which speaks absolute guest addresses.
+    pub fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        if self.inner.0.get_data().bus.is_none() {
+            return Err(EngineError::BusNotAttached);
+        }
+        self.validate_region(base, size)?;
+        let region_base = base.0;
+        self.inner
+            .0
+            .mmio_map(
+                base.0,
+                size,
+                Some(
+                    move |uc: &mut Unicorn<'_, EngineData>, offset: u64, width: usize| {
+                        let Some(address) = region_base.checked_add(offset) else {
+                            return stop_with_bus_fault(uc, u64::MAX, width, BusFault::Unmapped);
+                        };
+                        mmio_read_at(uc, address, width)
+                    },
+                ),
+                Some(
+                    move |uc: &mut Unicorn<'_, EngineData>,
+                          offset: u64,
+                          width: usize,
+                          value: u64| {
+                        let Some(address) = region_base.checked_add(offset) else {
+                            stop_with_bus_fault(uc, u64::MAX, width, BusFault::Unmapped);
+                            return;
+                        };
+                        mmio_write_at(uc, address, width, value);
+                    },
+                ),
+            )
+            .map_err(|_| EngineError::Backend)?;
+        self.mmio.push((base.0, size));
+        Ok(())
+    }
+
+    /// Take and clear the first bus fault recorded since the previous call.
+    pub fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
+        self.inner.0.get_data_mut().fault.take()
+    }
+
+    fn validate_region(&self, base: Addr, size: u64) -> Result<(), EngineError> {
+        if size == 0
+            || base.0 % PAGE_SIZE != 0
+            || size % PAGE_SIZE != 0
+            || u128::from(base.0) + u128::from(size) > (1u128 << 32)
+        {
+            return Err(EngineError::InvalidMapping);
+        }
+        let end = base.0 + size;
+        if self
+            .mappings
+            .iter()
+            .chain(self.mmio.iter())
+            .any(|&(start, len)| base.0 < start + len && start < end)
+        {
+            return Err(EngineError::Overlap);
+        }
+        Ok(())
     }
 
     fn register(reg: RegId) -> Result<RegisterARM, EngineError> {
@@ -102,10 +195,10 @@ impl CpuEngine for UnicornArm {
             return outcome(StopReason::Fault, 0);
         };
         let begin = pc | ((cpsr >> 5) & 1);
-        self.inner.0.get_data_mut().instructions = 0;
+        self.inner.0.get_data_mut().counters.instructions = 0;
         let result = self.inner.0.emu_start(begin, u64::MAX, 0, budget as usize);
-        let observed = self.inner.0.get_data().instructions;
-        let reason = if result.is_err() {
+        let observed = self.inner.0.get_data().counters.instructions;
+        let reason = if result.is_err() || self.inner.0.get_data().fault.is_some() {
             StopReason::Fault
         } else if observed == budget {
             StopReason::BudgetExhausted
@@ -140,21 +233,7 @@ impl CpuEngine for UnicornArm {
         size: u64,
         permissions: Permissions,
     ) -> Result<(), EngineError> {
-        if size == 0
-            || base.0 % PAGE_SIZE != 0
-            || size % PAGE_SIZE != 0
-            || u128::from(base.0) + u128::from(size) > (1u128 << 32)
-        {
-            return Err(EngineError::InvalidMapping);
-        }
-        let end = base.0 + size;
-        if self
-            .mappings
-            .iter()
-            .any(|&(start, len)| base.0 < start + len && start < end)
-        {
-            return Err(EngineError::Overlap);
-        }
+        self.validate_region(base, size)?;
         let mut prot = Prot::NONE;
         if permissions.read {
             prot |= Prot::READ;
@@ -201,8 +280,60 @@ impl CpuEngine for UnicornArm {
     }
 }
 
+/// MMIO read at an absolute guest address. All state lives in the engine-owned
+/// [`EngineData`], so no host reference can escape through the callback.
+fn mmio_read_at(uc: &mut Unicorn<'_, EngineData>, address: u64, size: usize) -> u64 {
+    let Ok(width) = AccessSize::try_from(u8::try_from(size).unwrap_or(0)) else {
+        return stop_with_bus_fault(uc, address, size, BusFault::InvalidSize);
+    };
+    let outcome = uc
+        .get_data_mut()
+        .bus
+        .as_mut()
+        .ok_or(BusFault::Unmapped)
+        .and_then(|bus| bus.read(Addr(address), width));
+    match outcome {
+        Ok(value) => value,
+        Err(fault) => stop_with_bus_fault(uc, address, size, fault),
+    }
+}
+
+/// MMIO write at an absolute guest address.
+fn mmio_write_at(uc: &mut Unicorn<'_, EngineData>, address: u64, size: usize, value: u64) {
+    let Ok(width) = AccessSize::try_from(u8::try_from(size).unwrap_or(0)) else {
+        stop_with_bus_fault(uc, address, size, BusFault::InvalidSize);
+        return;
+    };
+    let outcome = uc
+        .get_data_mut()
+        .bus
+        .as_mut()
+        .ok_or(BusFault::Unmapped)
+        .and_then(|bus| bus.write(Addr(address), width, value));
+    if let Err(fault) = outcome {
+        stop_with_bus_fault(uc, address, size, fault);
+    }
+}
+
+/// Record the fault for [`UnicornArm::take_bus_fault`] and ask the backend to
+/// stop at the current instruction. The dummy read value is never consumed
+/// because emulation halts before the guest uses it.
+fn stop_with_bus_fault(
+    uc: &mut Unicorn<'_, EngineData>,
+    address: u64,
+    size: usize,
+    fault: BusFault,
+) -> u64 {
+    let width = u8::try_from(size).unwrap_or(0);
+    uc.get_data_mut().fault = Some(EngineBusFault::new(Addr(address), width, fault));
+    let _ = uc.emu_stop();
+    0
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
     use mosaic_isa_arm::Register;
 
@@ -386,5 +517,151 @@ mod tests {
         .unwrap();
         assert_eq!(engine.reg_read(Register::R1.into()), Ok(43));
         engine.write_memory(Addr(0x1100), &[7]).unwrap();
+    }
+
+    #[derive(Default)]
+    struct BusRecord {
+        writes: Vec<(u64, u8, u64)>,
+        reads: Vec<(u64, u8)>,
+    }
+
+    struct FakeBus {
+        record: Arc<Mutex<BusRecord>>,
+        read_value: u64,
+        fail_read: Option<BusFault>,
+    }
+
+    impl FakeBus {
+        fn new(read_value: u64) -> (Self, Arc<Mutex<BusRecord>>) {
+            let record = Arc::new(Mutex::new(BusRecord::default()));
+            (
+                Self {
+                    record: Arc::clone(&record),
+                    read_value,
+                    fail_read: None,
+                },
+                record,
+            )
+        }
+
+        fn failing(record: Arc<Mutex<BusRecord>>, fault: BusFault) -> Self {
+            Self {
+                record,
+                read_value: 0,
+                fail_read: Some(fault),
+            }
+        }
+    }
+
+    impl EngineBus for FakeBus {
+        fn read(&mut self, address: Addr, width: AccessSize) -> Result<u64, BusFault> {
+            self.record
+                .lock()
+                .unwrap()
+                .reads
+                .push((address.0, width.bytes()));
+            match self.fail_read {
+                Some(fault) => Err(fault),
+                None => Ok(self.read_value),
+            }
+        }
+
+        fn write(&mut self, address: Addr, width: AccessSize, value: u64) -> Result<(), BusFault> {
+            self.record
+                .lock()
+                .unwrap()
+                .writes
+                .push((address.0, width.bytes(), value));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn mmio_hooks_forward_guest_accesses_to_the_attached_bus() {
+        let mut engine = engine();
+        let (bus, record) = FakeBus::new(0x0bad_f00d);
+        engine.attach_bus(Box::new(bus)).unwrap();
+        engine.map_mmio(Addr(0x2000), PAGE_SIZE).unwrap();
+        // MOV r0,#0x55; STR r0,[r2]; LDR r1,[r2]; STRB r0,[r2,#4]; LDRB r3,[r2,#4]
+        engine
+            .write_memory(
+                Addr(0x1000),
+                &[
+                    0x55, 0, 0xa0, 0xe3, 0, 0, 0x82, 0xe5, 0, 0x10, 0x92, 0xe5, 4, 0, 0xc2, 0xe5,
+                    4, 0x30, 0xd2, 0xe5,
+                ],
+            )
+            .unwrap();
+        engine.reg_write(Register::R2.into(), 0x2000).unwrap();
+        let outcome = engine.run(NonZeroU64::new(5).unwrap());
+        assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        assert_eq!(outcome.instruction_hooks, 5);
+        assert_eq!(engine.reg_read(Register::R0.into()), Ok(0x55));
+        assert_eq!(engine.reg_read(Register::R1.into()), Ok(0x0bad_f00d));
+        // LDRB keeps the low byte of the bus value.
+        assert_eq!(engine.reg_read(Register::R3.into()), Ok(0x0d));
+        let record = record.lock().unwrap();
+        assert_eq!(record.writes, vec![(0x2000, 4, 0x55), (0x2004, 1, 0x55)]);
+        assert_eq!(record.reads, vec![(0x2000, 4), (0x2004, 1)]);
+        assert!(engine.take_bus_fault().is_none());
+    }
+
+    #[test]
+    fn mmio_bus_fault_stops_emulation_and_is_reported_once() {
+        let mut engine = engine();
+        let record = Arc::new(Mutex::new(BusRecord::default()));
+        let bus = FakeBus::failing(Arc::clone(&record), BusFault::Device);
+        engine.attach_bus(Box::new(bus)).unwrap();
+        engine.map_mmio(Addr(0x2000), PAGE_SIZE).unwrap();
+        // LDR r1,[r2] is the first instruction.
+        engine
+            .write_memory(Addr(0x1000), &[0, 0x10, 0x92, 0xe5])
+            .unwrap();
+        engine.reg_write(Register::R2.into(), 0x2000).unwrap();
+        let outcome = engine.run(NonZeroU64::new(4).unwrap());
+        assert_eq!(outcome.reason, StopReason::Fault);
+        assert_eq!(
+            engine.take_bus_fault(),
+            Some(EngineBusFault::new(Addr(0x2000), 4, BusFault::Device))
+        );
+        assert!(engine.take_bus_fault().is_none());
+        assert_eq!(record.lock().unwrap().reads, vec![(0x2000, 4)]);
+    }
+
+    #[test]
+    fn mmio_registration_rejects_misuse_and_stays_out_of_loader_spans() {
+        let mut engine = UnicornArm::new().unwrap();
+        assert_eq!(
+            engine.map_mmio(Addr(0x2000), PAGE_SIZE),
+            Err(EngineError::BusNotAttached)
+        );
+        let (bus, _) = FakeBus::new(0);
+        engine.attach_bus(Box::new(bus)).unwrap();
+        assert_eq!(
+            engine.attach_bus(Box::new(FakeBus::new(0).0)),
+            Err(EngineError::BusAlreadyAttached)
+        );
+        assert_eq!(
+            engine.map_mmio(Addr(1), PAGE_SIZE),
+            Err(EngineError::InvalidMapping)
+        );
+        assert_eq!(
+            engine.map_mmio(Addr(0x2000), 0),
+            Err(EngineError::InvalidMapping)
+        );
+        engine.map_mmio(Addr(0x2000), PAGE_SIZE).unwrap();
+        assert_eq!(
+            engine.map_mmio(Addr(0x2000), PAGE_SIZE),
+            Err(EngineError::Overlap)
+        );
+        assert_eq!(
+            engine.map_memory(Addr(0x2000), PAGE_SIZE, Permissions::RW),
+            Err(EngineError::Overlap)
+        );
+        // Callback regions are not reachable through the loader memory API.
+        assert_eq!(
+            engine.write_memory(Addr(0x2000), &[1]),
+            Err(EngineError::Unmapped)
+        );
     }
 }

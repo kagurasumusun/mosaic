@@ -6,7 +6,7 @@ mod unicorn;
 fn main() -> std::process::ExitCode {
     match std::env::args().nth(1).as_deref() {
         None | Some("help" | "--help" | "-h") => {
-            println!("Mosaic VM development CLI (no complete machine yet)\n\nUnicorn smoke test:\n  cargo run -p mosaic-apps-cli --features unicorn -- unicorn-smoke");
+            println!("Mosaic VM development CLI (no complete machine yet)\n\nUnicorn FlatView/MMIO binding smoke test:\n  cargo run -p mosaic-apps-cli --features unicorn -- unicorn-smoke");
             std::process::ExitCode::SUCCESS
         }
         Some("unicorn-smoke") => {

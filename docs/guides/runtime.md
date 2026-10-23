@@ -149,7 +149,22 @@ cargo run --locked --package mosaic-core-runtime --example machine
 | §19 T8: 決定論、checkpoint 復元 | 同一入力トレース、queue checkpoint replay のテスト |
 | §13.3: signal の遅延配送と配線 | timer→signal の順序テストと machine 実行例 |
 
-残るのは CPU エンジンとの MMIO / DMI 連携、CPU とイベントの協調スケジューリング、
+### CPU エンジンとの結合（L5 assemble）
+
+runtime と engine は同じ L3 で相互依存しません。連結は L5 の `mosaic-assemble`
+（`unicorn` feature）が担います。
+
+- `MachineBus` は `EngineBus`（contract/cpu-engine）を実装し、`Arc<Mutex<Machine>>` の
+  MMIO callback を `bus_read` / `bus_write` へ転送します。Attr は CPU マスタ用の
+  正規属性を結合層で合成します。
+- `bind_flat_view` は FlatView だけから engine のマップを導出します。Ram/Rom は
+  native page として backing を書き込み、Mmio は callback region として登録します。
+  ページ境界外のリーフは構築時に `BindError::NotPageAligned` で拒否します。
+- `MachineDriver::step` は命令量子を実行し、そのあと現在時刻までのイベントを配送します。
+  device の MMIO callback が予約した signal は engine へ再入せず、量子の終了後に届きます。
+  バス故障は `DriverError::Bus(EngineBusFault)` として返ります。
+
+残るのは命令数と VTime を結ぶ clock tree、IRQ line（`set_line` 相当）の契約、
 最初の MCU・ボードの選定、catalog 上の UART / タイマ IP、実ファームウェアの machine テストです。
 
 Region / FlatView と開発用 Unicorn ARM アダプタについては

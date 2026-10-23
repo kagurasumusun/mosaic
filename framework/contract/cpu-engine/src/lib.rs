@@ -3,9 +3,45 @@
 //! Engine-neutral, synchronous single-core execution. No vendor types escape.
 
 use core::num::NonZeroU64;
-use mosaic_core_types::{Addr, Permissions};
+use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 
 pub use mosaic_core_types::RegId;
+
+/// A guest bus access the engine could not complete through its callback port.
+///
+/// `width` is the raw transfer width the backend requested; it may be a value
+/// outside the [`AccessSize`] vocabulary, in which case `fault` is
+/// [`BusFault::InvalidSize`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct EngineBusFault {
+    pub address: Addr,
+    pub width: u8,
+    pub fault: BusFault,
+}
+
+impl EngineBusFault {
+    /// Constructor for engine backends, which cannot name the fields of a
+    /// `non_exhaustive` struct from another crate.
+    pub fn new(address: Addr, width: u8, fault: BusFault) -> Self {
+        Self {
+            address,
+            width,
+            fault,
+        }
+    }
+}
+
+/// Engine-facing callback bus for MMIO regions.
+///
+/// The engine knows guest addresses and transfer widths only; the concrete L5
+/// binding resolves them through the runtime FlatView and synthesizes the bus
+/// [`mosaic_core_types::Attr`] for the engine master. Engines never depend on
+/// runtime types, so the port stays in the engine contract.
+pub trait EngineBus: Send {
+    fn read(&mut self, address: Addr, width: AccessSize) -> Result<u64, BusFault>;
+    fn write(&mut self, address: Addr, width: AccessSize, value: u64) -> Result<(), BusFault>;
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
@@ -33,6 +69,8 @@ pub enum EngineError {
     Overlap,
     Unmapped,
     Backend,
+    BusNotAttached,
+    BusAlreadyAttached,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -23,7 +23,7 @@ mosaic-engine-unicorn = { path = "../../framework/engine/unicorn", optional = tr
 
 [features]
 default = []
-unicorn = ["dep:mosaic-engine-unicorn"]
+unicorn = ["dep:mosaic-engine-unicorn", "mosaic-assemble/unicorn"]
 
 [dev-dependencies]
 mosaic-engine-conformance = { path = "../../framework/engine/conformance" }

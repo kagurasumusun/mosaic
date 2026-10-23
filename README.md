@@ -46,8 +46,11 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
 - Region 木 → FlatView、優先度 overlay、境界・permission・device offset 解決。
 - ARM のみの Unicorn アダプタ（2.1.5）、ISA の register ID と初期 engine 契約、backend 非依存の A32 検証。
+- `EngineBus` callback と `mmio_map` による engine 側 MMIO region、バス故障の記録と Fault 停止。
 - デバイスアリーナ（take-out と再入拒否）、RAM/ROM バッキング、FlatView 経由の MMIO ディスパッチ、
   タイマ・signal の配線と配送を持つ `Machine`。
+- L5 `mosaic-assemble`（`unicorn` feature）: FlatView から engine ページと MMIO region を導出する
+  `bind_flat_view`、命令量子とイベント配送を交互に行う `MachineDriver`。
 - 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
 
 CPU やファームウェアを使わないイベント実行例:
@@ -70,11 +73,12 @@ CPU エンジンとの連携や実ファームウェアの起動はまだ含み�
 
 ### 次の実装
 
-最初の MCU・ボードを決め、catalog 上の UART とタイマ IP、SoC / ボード宣言を
-イベント・アドレス・engine 基盤へ縦につなぎます。そのために CPU エンジンの MMIO hook と
-AddressView / DMI 結合、CPU とイベントの協調スケジューリングが必要です。
+engine の MMIO hook と runtime の AddressView は L5 で結合済みで、ゲストの STR/LDR が
+FlatView 経由で device callback に届きます。次は最初の MCU・ボードを決め、catalog 上の
+UART とタイマ IP、SoC / ボード宣言をイベント・アドレス・engine 基盤へ縦につなぎ、
+実ファームウェアが期待 UART 出力を出す machine テストまで通します。残る技術項は
+命令数と VTime を結ぶ clock tree、IRQ line 契約、真の DMI（host pointer）と共有 RAM です。
 現在の Unicorn memory は instance ごとの private page であり、全機械の共有メモリではありません。
-実機モデルを増やす前に、決定論と MMIO の machine テストを引き続き整備します。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 

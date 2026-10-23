@@ -194,8 +194,15 @@ dependencies = [
 name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-contract-signal",
  "mosaic-core-runtime",
+ "mosaic-core-types",
  "mosaic-describe",
+ "mosaic-engine-unicorn",
+ "mosaic-isa-arm",
 ]
 
 [[package]]

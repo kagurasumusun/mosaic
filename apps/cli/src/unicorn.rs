@@ -1,9 +1,16 @@
 use core::num::NonZeroU64;
+use std::sync::{Arc, Mutex};
+
+use mosaic_assemble::bind_flat_view;
 use mosaic_contract_cpu_engine::{CpuEngine, StopReason};
-use mosaic_core_runtime::{FlatView, Region};
+use mosaic_core_runtime::{FlatView, Machine, Region};
 use mosaic_core_types::{Addr, Mapping, MemoryKind, NodeId, Permissions};
 use mosaic_engine_unicorn::UnicornArm;
 use mosaic_isa_arm::Register;
+
+const CPU: NodeId = NodeId(0);
+const ROM: NodeId = NodeId(1);
+const RAM: NodeId = NodeId(2);
 
 pub(crate) fn run() -> Result<String, String> {
     // Layout is a runtime-derived FlatView, not a hardcoded engine memory map.
@@ -16,7 +23,7 @@ pub(crate) fn run() -> Result<String, String> {
                 Mapping {
                     base: Addr(0),
                     size: 4096,
-                    target: NodeId(1),
+                    target: ROM,
                     offset: 0,
                     kind: MemoryKind::Rom,
                     permissions: Permissions::RX,
@@ -27,7 +34,7 @@ pub(crate) fn run() -> Result<String, String> {
                 Mapping {
                     base: Addr(4096),
                     size: 4096,
-                    target: NodeId(2),
+                    target: RAM,
                     offset: 0,
                     kind: MemoryKind::Ram,
                     permissions: Permissions::RW,
@@ -37,22 +44,28 @@ pub(crate) fn run() -> Result<String, String> {
         ],
     )])
     .map_err(|e| format!("layout: {e:?}"))?;
-    let mut engine = UnicornArm::new().map_err(|e| format!("init: {e:?}"))?;
-    for mapping in view.mappings() {
-        if mapping.kind == MemoryKind::Mmio {
-            return Err("MMIO binding is not implemented".into());
-        }
-        engine
-            .map_memory(mapping.base, mapping.size, mapping.permissions)
-            .map_err(|e| format!("map: {e:?}"))?;
-    }
+
+    let mut machine = Machine::new(view.clone(), 16);
+    machine
+        .add_backing(ROM, 4096)
+        .map_err(|e| format!("backing: {e:?}"))?;
+    machine
+        .add_backing(RAM, 4096)
+        .map_err(|e| format!("backing: {e:?}"))?;
     // Independently encoded MOV/ADD/STR/LDR fixture; not a vendor firmware ROM.
     let code = [
         0x2a, 0, 0xa0, 0xe3, 1, 0x10, 0x80, 0xe2, 0, 0x10, 0x82, 0xe5, 0, 0x30, 0x92, 0xe5,
     ];
-    engine
-        .write_memory(Addr(0x1000), &code)
+    machine
+        .loader_write(ROM, 0, &code)
         .map_err(|e| format!("load: {e:?}"))?;
+
+    let mut engine = UnicornArm::new().map_err(|e| format!("init: {e:?}"))?;
+    // The FlatView is the single source of truth: native pages and any MMIO
+    // callback regions are derived from it by the L5 assembly layer.
+    let _machine = bind_flat_view(&mut engine, &view, Arc::new(Mutex::new(machine)), CPU)
+        .map_err(|e| format!("bind: {e:?}"))?;
+
     engine
         .reg_write(Register::Pc.into(), 0x1000)
         .map_err(|e| format!("pc: {e:?}"))?;
@@ -83,7 +96,11 @@ pub(crate) fn run() -> Result<String, String> {
     if (r0, r1, r3, pc, memory) != (42, 43, 43, 0x1010, 43) {
         return Err("unexpected guest state".into());
     }
-    Ok(format!("engine=unicorn isa=arm-a32 mappings={}\nstop=budget-exhausted hooks={}\nr0={r0} r1={r1} r3={r3} pc={pc:#x}\nmemory[0x2000]={memory}\n", view.mappings().len(), result.instruction_hooks))
+    Ok(format!(
+        "engine=unicorn isa=arm-a32 mappings={}\nstop=budget-exhausted hooks={}\nr0={r0} r1={r1} r3={r3} pc={pc:#x}\nmemory[0x2000]={memory}\n",
+        view.mappings().len(),
+        result.instruction_hooks
+    ))
 }
 
 #[cfg(test)]
