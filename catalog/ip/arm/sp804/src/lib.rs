@@ -248,21 +248,14 @@ impl Sp804 {
             reg::CONTROL => timer.state.control,
             reg::INT_CLR => 0,
             reg::RIS => u32::from(timer.state.raw_irq),
-            reg::MIS => {
-                u32::from(timer.state.raw_irq && timer.state.control & ctrl::IE != 0)
-            }
+            reg::MIS => u32::from(timer.state.raw_irq && timer.state.control & ctrl::IE != 0),
             reg::BG_LOAD => timer.state.bg_load,
             _ => return self.unmapped(),
         };
         Ok(value)
     }
 
-    fn write_word(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        offset: u64,
-        value: u32,
-    ) -> Result<(), BusFault> {
+    fn write_word(&mut self, ctx: &mut dyn Ctx, offset: u64, value: u32) -> Result<(), BusFault> {
         if offset % 4 != 0 {
             return self.unmapped().map(|_| ());
         }
@@ -482,12 +475,13 @@ mod tests {
         let mut ctx = TestCtx::new();
         sp804.write_word(&mut ctx, reg::LOAD, 9).unwrap();
         // Periodic + interrupt enable + 32-bit + enable.
-        sp804.write_word(
-            &mut ctx,
-            reg::CONTROL,
-            ctrl::PERIODIC | ctrl::IE | ctrl::SIZE32 | ctrl::ENABLE,
-        )
-        .unwrap();
+        sp804
+            .write_word(
+                &mut ctx,
+                reg::CONTROL,
+                ctrl::PERIODIC | ctrl::IE | ctrl::SIZE32 | ctrl::ENABLE,
+            )
+            .unwrap();
         // Ten ticks (load 9 counts 9..0) at 1000 ps each.
         assert_eq!(sp804.timers[0].delay_ps(TICK), Some(10_000));
         ctx.advance(5_000);
@@ -511,12 +505,13 @@ mod tests {
         let mut sp804 = Sp804::new(params());
         let mut ctx = TestCtx::new();
         sp804.write_word(&mut ctx, reg::LOAD, 4).unwrap();
-        sp804.write_word(
-            &mut ctx,
-            reg::CONTROL,
-            ctrl::ONESHOT | ctrl::IE | ctrl::ENABLE,
-        )
-        .unwrap();
+        sp804
+            .write_word(
+                &mut ctx,
+                reg::CONTROL,
+                ctrl::ONESHOT | ctrl::IE | ctrl::ENABLE,
+            )
+            .unwrap();
         ctx.advance(5_000);
         let (_, token) = ctx.pop_due().unwrap();
         sp804.on_timer(&mut ctx, token).unwrap();
@@ -553,12 +548,13 @@ mod tests {
         let local_load = reg::TIMER2_BASE + reg::LOAD;
         sp804.write_word(&mut ctx, local_load, 9).unwrap();
         // Prescale /16 plus IE and enable on timer 2 only.
-        sp804.write_word(
-            &mut ctx,
-            local_control,
-            (1 << 2) | ctrl::IE | ctrl::PERIODIC | ctrl::ENABLE,
-        )
-        .unwrap();
+        sp804
+            .write_word(
+                &mut ctx,
+                local_control,
+                (1 << 2) | ctrl::IE | ctrl::PERIODIC | ctrl::ENABLE,
+            )
+            .unwrap();
         assert_eq!(sp804.timers[1].delay_ps(TICK), Some(160_000));
         assert!(sp804.timers[0].event.is_none());
         ctx.advance(160_000);
@@ -573,11 +569,15 @@ mod tests {
         let mut sp804 = Sp804::new(params());
         let mut ctx = TestCtx::new();
         assert_eq!(
-            sp804.read(&mut ctx, 0xFE0, AccessSize::Word, &word_attr()).unwrap(),
+            sp804
+                .read(&mut ctx, 0xFE0, AccessSize::Word, &word_attr())
+                .unwrap(),
             0x84
         );
         assert_eq!(
-            sp804.read(&mut ctx, 0x900, AccessSize::Word, &word_attr()).unwrap(),
+            sp804
+                .read(&mut ctx, 0x900, AccessSize::Word, &word_attr())
+                .unwrap(),
             0
         );
         let mut strict = params();
