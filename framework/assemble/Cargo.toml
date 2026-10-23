@@ -1,0 +1,18 @@
+[package]
+name = "mosaic-assemble"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "assemble"
+level = 5
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-runtime = { path = "../core/runtime" }
+mosaic-describe = { path = "../describe" }

@@ -1,0 +1,11 @@
+# Canonical origin identifiers, not a claim that models already exist.
+[origins]
+arm = "Arm Limited"
+bosch = "Bosch Sensortec"
+microchip = "Microchip Technology"
+nxp = "NXP Semiconductors"
+raspberrypi = "Raspberry Pi"
+riscv = "RISC-V International"
+st = "STMicroelectronics"
+synopsys = "Synopsys"
+ti = "Texas Instruments"

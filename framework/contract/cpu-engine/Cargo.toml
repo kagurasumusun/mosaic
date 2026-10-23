@@ -1,0 +1,17 @@
+[package]
+name = "mosaic-contract-cpu-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "contract"
+level = 2
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-types = { path = "../../core/types" }

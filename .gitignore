@@ -1,0 +1,4 @@
+/target/
+**/__pycache__/
+/catalog/firmware/*.bin
+/catalog/firmware/*.elf

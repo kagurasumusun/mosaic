@@ -1,0 +1,17 @@
+[package]
+name = "mosaic-apps-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "apps"
+kind = "app"
+level = 6
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-assemble = { path = "../../framework/assemble" }

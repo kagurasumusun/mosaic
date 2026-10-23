@@ -1,0 +1,17 @@
+[package]
+name = "mosaic-core-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "types"
+level = 1
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-prim-bits = { path = "../../prim/bits" }

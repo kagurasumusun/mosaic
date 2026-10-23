@@ -1,0 +1,14 @@
+[package]
+name = "mosaic-prim-bits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "prim"
+level = 0
+
+[lints]
+workspace = true

@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "framework/prim/bits",
+    "framework/core/types",
+    "framework/contract/model",
+    "framework/contract/mmio",
+    "framework/contract/signal",
+    "framework/contract/clock",
+    "framework/contract/cpu-engine",
+    "framework/modelkit/fifo",
+    "framework/isa/arm",
+    "framework/core/runtime",
+    "framework/engine/conformance",
+    "framework/describe",
+    "framework/assemble",
+    "apps/cli",
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+# License intentionally pending owner decision; all crates are non-publishable.
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

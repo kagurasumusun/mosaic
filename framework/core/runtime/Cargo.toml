@@ -1,0 +1,18 @@
+[package]
+name = "mosaic-core-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "runtime"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-types = { path = "../types" }
+mosaic-contract-model = { path = "../../contract/model" }
