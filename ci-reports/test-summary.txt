@@ -2,4 +2,4 @@
 317:failures:
 321:thread 'tests::mclass_backend_executes_t32_from_reset' panicked at framework/engine/unicorn/src/lib.rs:758:9:
 344:failures:
-347:test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+347:test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
