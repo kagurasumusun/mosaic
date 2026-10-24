@@ -16,6 +16,9 @@ workspace = true
 [features]
 # The native CPU backend stays opt-in, matching the CLI and ADR 0007.
 unicorn = ["dep:mosaic-engine-unicorn"]
+# Heterogeneous AMP needs the RV32I backend of the same engine crate
+# (design §12.3 rule 6: arch_* features narrow the ISA set).
+unicorn-riscv = ["unicorn", "mosaic-engine-unicorn/arch-riscv"]
 
 [dependencies]
 mosaic-contract-cpu-engine = { path = "../contract/cpu-engine" }
@@ -29,3 +32,4 @@ mosaic-engine-unicorn = { path = "../engine/unicorn", optional = true }
 mosaic-contract-mmio = { path = "../contract/mmio" }
 mosaic-contract-model = { path = "../contract/model" }
 mosaic-isa-arm = { path = "../isa/arm" }
+mosaic-isa-riscv = { path = "../isa/riscv" }

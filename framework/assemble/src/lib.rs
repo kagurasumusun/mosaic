@@ -16,9 +16,17 @@ pub use irq::{EngineIrqSink, IrqMailbox};
 #[cfg(feature = "unicorn")]
 mod driver;
 #[cfg(feature = "unicorn")]
+mod multicore;
+#[cfg(feature = "unicorn")]
 mod unicorn_bind;
 
 #[cfg(feature = "unicorn")]
 pub use driver::{DriverError, MachineDriver, StepReport};
 #[cfg(feature = "unicorn")]
-pub use unicorn_bind::{bind_flat_view, BindError};
+pub use multicore::{
+    MulticoreDriver, MulticoreError, RoundReport, DEFAULT_PS_PER_INSTRUCTION,
+};
+#[cfg(feature = "unicorn")]
+pub use unicorn_bind::{
+    bind_flat_view, bind_flat_view_shared, BindError, EngineMap, SharedRegion,
+};

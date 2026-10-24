@@ -1,16 +1,22 @@
 //! Derive the engine memory map from a runtime FlatView and connect MMIO.
 //!
 //! Ram/Rom leaves become native private pages preloaded from the machine
-//! backing blocks (the P1 DMI substitute); Mmio leaves become callback regions
-//! routed through [`MachineBus`]. The FlatView stays the single source of
-//! truth: nothing here invents an address range.
+//! backing blocks (the P1 DMI substitute); leaves whose node is declared
+//! [`SharedRegion`] become host-backed pages mapped from one buffer into
+//! every core (design §12.3 rule 1: shared RAM is the same host memory in
+//! each instance). Mmio leaves become callback regions routed through
+//! [`MachineBus`]. The FlatView stays the single source of truth: nothing
+//! here invents an address range.
 
 use std::sync::{Arc, Mutex};
 
-use mosaic_contract_cpu_engine::{CpuEngine, EngineError};
+use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
 use mosaic_core_runtime::{FlatView, Machine};
-use mosaic_core_types::{Addr, BusFault, MemoryKind, NodeId};
-use mosaic_engine_unicorn::{UnicornArm, PAGE_SIZE};
+use mosaic_core_types::{Addr, BusFault, MemoryKind, NodeId, Permissions};
+use mosaic_engine_unicorn::{SharedRam, UnicornArm, PAGE_SIZE};
+
+#[cfg(feature = "unicorn-riscv")]
+use mosaic_engine_unicorn::UnicornRiscV32;
 
 use crate::bus::MachineBus;
 
@@ -23,6 +29,8 @@ pub enum BindError {
     NotPageAligned(Addr),
     /// A backing block does not fit a host-side transfer buffer.
     BackingTooLarge(Addr),
+    /// A shared leaf is larger than its host buffer.
+    SharedTooSmall(Addr),
     Engine(EngineError),
     Bus(BusFault),
 }
@@ -39,16 +47,96 @@ impl From<BusFault> for BindError {
     }
 }
 
+/// The engine-side mapping operations the binder needs. Both Unicorn adapters
+/// implement it; keeping the trait local means the engine contract stays free
+/// of mapping APIs that only this composition root uses.
+pub trait EngineMap: CpuEngine {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError>;
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError>;
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError>;
+}
+
+impl EngineMap for UnicornArm {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        // Fully qualified inherent method: the trait method of the same name
+        // would otherwise recurse.
+        UnicornArm::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornArm::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornArm::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+#[cfg(feature = "unicorn-riscv")]
+impl EngineMap for UnicornRiscV32 {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        UnicornRiscV32::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornRiscV32::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornRiscV32::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+/// A Ram/Rom leaf whose backing is mapped into engines from one host buffer
+/// shared by every core that maps it (the DMI path, design §13.1).
+pub struct SharedRegion {
+    pub node: NodeId,
+    pub ram: Arc<SharedRam>,
+}
+
 /// Bind `view` onto `engine` using `machine` as the backing and MMIO authority.
 ///
 /// The machine must already carry every backing block, device and wiring the
 /// view references; callers normally run [`Machine::verify`] first. Returns the
 /// shared machine handle for the driver.
 pub fn bind_flat_view(
-    engine: &mut UnicornArm,
+    engine: &mut dyn EngineMap,
     view: &FlatView,
     machine: Arc<Mutex<Machine>>,
     master: NodeId,
+) -> Result<Arc<Mutex<Machine>>, BindError> {
+    bind_flat_view_shared(engine, view, machine, master, &[])
+}
+
+/// [`bind_flat_view`] with host-backed shared leaves. For every Ram/Rom mapping
+/// whose target node appears in `shared`, the machine backing block is copied
+/// into the shared buffer and the buffer is mapped into the engine, so all
+/// cores binding the same [`SharedRegion`] observe one memory. The copy runs
+/// while no core has executed yet and is idempotent per core.
+pub fn bind_flat_view_shared(
+    engine: &mut dyn EngineMap,
+    view: &FlatView,
+    machine: Arc<Mutex<Machine>>,
+    master: NodeId,
+    shared: &[SharedRegion],
 ) -> Result<Arc<Mutex<Machine>>, BindError> {
     for mapping in view.mappings() {
         if mapping.base.0 % PAGE_SIZE != 0 || mapping.size % PAGE_SIZE != 0 {
@@ -61,7 +149,6 @@ pub fn bind_flat_view(
     for mapping in view.mappings() {
         match mapping.kind {
             MemoryKind::Ram | MemoryKind::Rom => {
-                engine.map_memory(mapping.base, mapping.size, mapping.permissions)?;
                 let length = usize::try_from(mapping.size)
                     .map_err(|_| BindError::BackingTooLarge(mapping.base))?;
                 let mut bytes = vec![0u8; length];
@@ -69,7 +156,24 @@ pub fn bind_flat_view(
                     let guard = machine.lock().map_err(|_| BusFault::Device)?;
                     guard.loader_read(mapping.target, mapping.offset, &mut bytes)?;
                 }
-                engine.write_memory(mapping.base, &bytes)?;
+                match shared.iter().find(|region| region.node == mapping.target) {
+                    Some(region) => {
+                        if mapping.size > region.ram.len() as u64 {
+                            return Err(BindError::SharedTooSmall(mapping.base));
+                        }
+                        region.ram.write(0, &bytes)?;
+                        engine.map_shared_memory(
+                            mapping.base,
+                            mapping.size,
+                            mapping.permissions,
+                            Arc::clone(&region.ram),
+                        )?;
+                    }
+                    None => {
+                        engine.map_memory(mapping.base, mapping.size, mapping.permissions)?;
+                        engine.write_memory(mapping.base, &bytes)?;
+                    }
+                }
             }
             MemoryKind::Mmio => {
                 engine.map_mmio(mapping.base, mapping.size)?;
@@ -245,5 +349,86 @@ mod tests {
             CPU,
         );
         assert!(matches!(result, Err(BindError::NotPageAligned(_))));
+    }
+
+    #[test]
+    fn shared_leaves_map_one_host_buffer_into_every_core() {
+        const CORE1: NodeId = NodeId(7);
+        let view = FlatView::build(&[
+            leaf(0, 0x1000, RAM, MemoryKind::Ram, Permissions::RWX),
+            leaf(0x10000, 0x1000, DEVICE, MemoryKind::Ram, Permissions::RW),
+        ])
+        .unwrap();
+        let mut machine = Machine::new(view.clone(), 16);
+        machine.add_backing(RAM, 0x1000).unwrap();
+        // The shared node keeps a normal backing block: it is the loader
+        // source of truth and satisfies verify() for both viewpoints.
+        machine.add_backing(DEVICE, 0x1000).unwrap();
+        machine.add_view(CORE1, view.clone()).unwrap();
+        machine.loader_write(DEVICE, 4, &[0xEE]).unwrap();
+        machine.verify().unwrap();
+        let machine = Arc::new(Mutex::new(machine));
+
+        let ram = SharedRam::new(0x1000).unwrap();
+        let shared = [SharedRegion {
+            node: DEVICE,
+            ram: Arc::clone(&ram),
+        }];
+        // Loader image is synced into the host buffer before any core runs.
+        let mut bytes = [0u8; 8];
+        ram.read(0, &mut bytes).unwrap();
+        assert_eq!(bytes, [0; 8]);
+
+        let mut first = UnicornArm::new().unwrap();
+        let mut second = UnicornArm::new().unwrap();
+        bind_flat_view_shared(&mut first, &view, Arc::clone(&machine), CPU, &shared).unwrap();
+        bind_flat_view_shared(&mut second, &view, Arc::clone(&machine), CORE1, &shared).unwrap();
+        ram.read(0, &mut bytes).unwrap();
+        assert_eq!(bytes[4], 0xEE, "loader image must reach the shared buffer");
+
+        // Guest store through the first core is instantly visible to the
+        // second core and to host-side readers (design §12.3 rule 1).
+        // MOV r0,#0xAB; LDR r1,[pc,#0]; STRB r0,[r1]; B .; .word 0x00010000
+        let code = [
+            0xabu8, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0xfe, 0xff, 0xff, 0xea,
+            0, 0, 1, 0,
+        ];
+        machine.lock().unwrap().loader_write(RAM, 0, &code).unwrap();
+        first.write_memory(Addr(0), &code).unwrap();
+        first.reg_write(Register::Pc.into(), 0).unwrap();
+        first.run(core::num::NonZeroU64::new(3).unwrap());
+        ram.read(0, &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0xAB);
+        second.read_memory(Addr(0x10000), &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0xAB);
+    }
+
+    #[test]
+    fn shared_leaves_must_fit_the_host_buffer() {
+        let view = FlatView::build(&[leaf(
+            0x10000,
+            0x2000,
+            DEVICE,
+            MemoryKind::Ram,
+            Permissions::RW,
+        )])
+        .unwrap();
+        let mut machine = Machine::new(view.clone(), 8);
+        machine.add_backing(DEVICE, 0x2000).unwrap();
+        machine.verify().unwrap();
+        let ram = SharedRam::new(0x1000).unwrap();
+        let shared = [SharedRegion {
+            node: DEVICE,
+            ram,
+        }];
+        let mut engine = UnicornArm::new().unwrap();
+        let result = bind_flat_view_shared(
+            &mut engine,
+            &view,
+            Arc::new(Mutex::new(machine)),
+            CPU,
+            &shared,
+        );
+        assert!(matches!(result, Err(BindError::SharedTooSmall(_))));
     }
 }

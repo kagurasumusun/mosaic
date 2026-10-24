@@ -1,0 +1,20 @@
+[identity]
+id = 'ip:arm/mhu'
+summary = 'Arm CoreLink MHU doorbell mailbox (Juno-class, 3 banks)'
+spec = [
+    'Arm Juno Development Platform TRM, MHU register map',
+    'Linux drivers/firmware/arm_mhu.c (corroboration of STAT/SET/CLEAR offsets)',
+]
+variants = []
+
+[tags]
+function = ['mailbox', 'ipc']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x300 }
+irq = { role = 'source', pins = ['ch0', 'ch1', 'ch2'] }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

@@ -19,5 +19,13 @@ all = "warn"
 [dependencies]
 mosaic-core-types = { path = "../../core/types" }
 mosaic-contract-cpu-engine = { path = "../../contract/cpu-engine" }
-mosaic-isa-arm = { path = "../../isa/arm" }
 unicorn-engine = { version = "=2.1.5", default-features = false, features = ["arch_arm"] }
+
+[dev-dependencies]
+mosaic-isa-arm = { path = "../../isa/arm" }
+mosaic-isa-riscv = { path = "../../isa/riscv" }
+
+[features]
+# Design §12.3 rule 6: `arch_*` narrows the ISA set built into the backend.
+# The RV32I adapter and its tests join only when a composition opts in.
+arch-riscv = ["unicorn-engine/arch_riscv"]

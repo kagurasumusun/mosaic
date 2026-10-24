@@ -14,6 +14,8 @@ level = 3
 workspace = true
 
 [dependencies]
+mosaic-contract-cpu-engine = { path = "../../../../framework/contract/cpu-engine" }
 mosaic-contract-mmio = { path = "../../../../framework/contract/mmio" }
 mosaic-contract-model = { path = "../../../../framework/contract/model" }
 mosaic-core-types = { path = "../../../../framework/core/types" }
+mosaic-isa-arm = { path = "../../../../framework/isa/arm" }

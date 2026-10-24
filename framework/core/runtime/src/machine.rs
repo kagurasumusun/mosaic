@@ -67,6 +67,10 @@ impl From<ContextError> for MachineError {
 pub struct Machine {
     queue: EventQueue,
     view: FlatView,
+    /// Per-master viewpoints (design §13.1: a FlatView per AddressSpace and
+    /// observer). A bus transaction resolves through the view registered for
+    /// its `Attr::master`, falling back to the machine's default view.
+    views: BTreeMap<u32, FlatView>,
     arena: DeviceArena,
     sinks: BTreeMap<u32, Box<dyn SignalSink>>,
     backing: BackingStore,
@@ -81,12 +85,30 @@ impl Machine {
         Self {
             queue: EventQueue::new(queue_capacity),
             view,
+            views: BTreeMap::new(),
             arena: DeviceArena::new(),
             sinks: BTreeMap::new(),
             backing: BackingStore::new(),
             outputs: BTreeMap::new(),
             wiring: BTreeMap::new(),
         }
+    }
+
+    /// Register the viewpoint of one bus master (a CPU core or DMA master).
+    /// Every master sees only its own registrations plus the default view;
+    /// this is how per-core memory (boot overlays, TCM) is expressed without
+    /// leaking another core's private ranges into a shared FlatView.
+    pub fn add_view(&mut self, master: NodeId, view: FlatView) -> Result<(), MachineError> {
+        if self.views.contains_key(&master.0) {
+            return Err(MachineError::DuplicateNode(master));
+        }
+        self.views.insert(master.0, view);
+        Ok(())
+    }
+
+    /// The view a transaction with `attr` resolves through.
+    pub fn view_for(&self, attr: &Attr) -> &FlatView {
+        self.views.get(&attr.master.0).unwrap_or(&self.view)
     }
 
     pub fn now(&self) -> VTime {
@@ -141,10 +163,19 @@ impl Machine {
         Ok(())
     }
 
-    /// Cross-check the view against the registered nodes: every Ram/Rom mapping
-    /// needs a sufficiently large backing block, every Mmio mapping a device.
+    /// Cross-check every registered view against the registered nodes: each
+    /// Ram/Rom mapping needs a sufficiently large backing block, each Mmio
+    /// mapping a device. Per-master viewpoints are checked like the default.
     pub fn verify(&self) -> Result<(), MachineError> {
-        for mapping in self.view.mappings() {
+        self.verify_view(&self.view)?;
+        for view in self.views.values() {
+            self.verify_view(view)?;
+        }
+        Ok(())
+    }
+
+    fn verify_view(&self, view: &FlatView) -> Result<(), MachineError> {
+        for mapping in view.mappings() {
             match mapping.kind {
                 MemoryKind::Ram | MemoryKind::Rom => {
                     let available = self
@@ -178,7 +209,10 @@ impl Machine {
         attr: &Attr,
     ) -> Result<u64, BusFault> {
         check_alignment(address, size)?;
-        let resolved = self.view.resolve(address, size, Access::Read)?;
+        // Resolve through the master's viewpoint first: the returned
+        // resolution owns no borrow of the view, so the device dispatch below
+        // can take &mut self again.
+        let resolved = self.view_for(attr).resolve(address, size, Access::Read)?;
         match resolved.kind {
             MemoryKind::Ram | MemoryKind::Rom => {
                 self.backing
@@ -197,7 +231,7 @@ impl Machine {
         attr: &Attr,
     ) -> Result<(), BusFault> {
         check_alignment(address, size)?;
-        let resolved = self.view.resolve(address, size, Access::Write)?;
+        let resolved = self.view_for(attr).resolve(address, size, Access::Write)?;
         match resolved.kind {
             MemoryKind::Ram | MemoryKind::Rom => {
                 self.backing
@@ -743,6 +777,60 @@ mod tests {
         restored.run_until(VTime(1000), 64).unwrap();
         assert_eq!(levels(&restored_probe), expected);
         assert_eq!(restored.save_queue(), first.save_queue());
+    }
+
+    #[test]
+    fn per_master_views_resolve_the_same_address_independently() {
+        const ROM_A: NodeId = NodeId(5);
+        const ROM_B: NodeId = NodeId(6);
+        const OTHER: NodeId = NodeId(7);
+        let default_view =
+            FlatView::build(&[leaf(0, 0x1000, ROM_A, MemoryKind::Ram, Permissions::RW)]).unwrap();
+        let other_view =
+            FlatView::build(&[leaf(0, 0x1000, ROM_B, MemoryKind::Ram, Permissions::RW)]).unwrap();
+        let mut machine = Machine::new(default_view, 8);
+        machine.add_view(OTHER, other_view).unwrap();
+        machine.add_backing(ROM_A, 0x1000).unwrap();
+        machine.add_backing(ROM_B, 0x1000).unwrap();
+        machine.verify().unwrap();
+        assert_eq!(
+            machine.add_view(OTHER, FlatView::build(&[]).unwrap()),
+            Err(MachineError::DuplicateNode(OTHER))
+        );
+        machine.loader_write(ROM_A, 0, &[0xAA]).unwrap();
+        machine.loader_write(ROM_B, 0, &[0xBB]).unwrap();
+        let default_master = bus_attr(NodeId(0));
+        let other_master = bus_attr(OTHER);
+        // The same address resolves to a different backing per viewpoint:
+        // per-core boot images without a shared alias (design §13.1).
+        assert_eq!(
+            machine.bus_read(Addr(0), AccessSize::Byte, &default_master),
+            Ok(0xAA)
+        );
+        assert_eq!(
+            machine.bus_read(Addr(0), AccessSize::Byte, &other_master),
+            Ok(0xBB)
+        );
+        machine
+            .bus_write(Addr(0), AccessSize::Byte, 1, &other_master)
+            .unwrap();
+        assert_eq!(
+            machine.bus_read(Addr(0), AccessSize::Byte, &default_master),
+            Ok(0xAA)
+        );
+    }
+
+    #[test]
+    fn verify_checks_per_master_views() {
+        let broken =
+            FlatView::build(&[leaf(0, 0x1000, NodeId(8), MemoryKind::Ram, Permissions::RW)])
+                .unwrap();
+        let mut machine = Machine::new(FlatView::build(&[]).unwrap(), 8);
+        machine.add_view(NodeId(9), broken).unwrap();
+        assert!(matches!(
+            machine.verify(),
+            Err(MachineError::UnknownNode(NodeId(8)))
+        ));
     }
 
     #[test]

@@ -13,5 +13,9 @@ verified = 'spec-tested'
 mmio = { role = 'target', size = 0x1000 }
 irq = { role = 'sink', pins = ['irq', 'fiq'] }
 
+[engine]
+arch = 'arm-a32-le'
+model = ''          # backend 既定（Unicorn ARM の default CPU）
+
 [params]
 unmapped = { type = 'policy', default = 'raz-wi' }

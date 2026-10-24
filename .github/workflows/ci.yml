@@ -149,6 +149,15 @@ jobs:
           echo "sensorbus: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           exit 0
 
+      - name: P3 multicore golden test
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-apps-multicore --features riscv > ci-reports/multicore.log 2>&1
+          code=$?
+          echo "multicore: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Workspace diagnostics
         if: always()
         run: |

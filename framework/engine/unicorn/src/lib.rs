@@ -1,10 +1,16 @@
 #![deny(unsafe_code)]
-//! Initial ARM little-endian Unicorn adapter. One instance owns one core.
-//! No native handles, callbacks or vendor types are part of the public API.
+//! Unicorn adapters: one instance owns one core (design §12.3). ARM A32 is
+//! always built; RV32I joins behind the `arch-riscv` feature (design §12.3
+//! rule 6: `arch_*` features narrow the ISA set). No native handles,
+//! callbacks or vendor types are part of the public API: register numbers are
+//! the ISA crates' Mosaic RegId vocabulary, mapped per backend here.
 
 mod ownership;
+mod shared;
 
 use core::num::NonZeroU64;
+use std::sync::Arc;
+
 use mosaic_contract_cpu_engine::{
     CpuEngine, EngineBus, EngineBusFault, EngineCaps, EngineError, IrqLine, RegId, RunOutcome,
     StopReason,
@@ -16,6 +22,11 @@ use unicorn_engine::{
     RegisterARM, Unicorn,
 };
 
+#[cfg(feature = "arch-riscv")]
+use unicorn_engine::RegisterRISCV;
+
+pub use shared::SharedRam;
+
 /// Deliberate safety limit on an individual synchronous run, not a timing model.
 pub const MAX_QUANTUM: u64 = 1_000_000;
 pub const PAGE_SIZE: u64 = 4096;
@@ -24,6 +35,10 @@ pub const PAGE_SIZE: u64 = 4096;
 pub const ARM_IRQ: IrqLine = IrqLine(0);
 /// ARM physical FIQ input, line 1.
 pub const ARM_FIQ: IrqLine = IrqLine(1);
+/// RISC-V machine-mode external interrupt input, line 0. Unicorn 2.1.x has no
+/// public injection API for it either, so levels are recorded like ARM's.
+#[cfg(feature = "arch-riscv")]
+pub const RISCV_MEXT: IrqLine = IrqLine(0);
 
 /// Per-instance backend data. The bus port is installed once, before any MMIO
 /// region is mapped, and hooks reach it only through this owned data.
@@ -34,26 +49,79 @@ pub struct EngineData {
     fault: Option<EngineBusFault>,
 }
 
-pub struct UnicornArm {
+/// Which ISA/mode the owned Unicorn instance executes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Backend {
+    Arm,
+    #[cfg(feature = "arch-riscv")]
+    RiscV32,
+}
+
+/// uc_riscv_reg lists X0..X31 contiguously; the table makes the mapping
+/// explicit and testable instead of relying on arithmetic over enum values.
+#[cfg(feature = "arch-riscv")]
+const RISCV_GENERAL: [RegisterRISCV; 32] = [
+    RegisterRISCV::X0,
+    RegisterRISCV::X1,
+    RegisterRISCV::X2,
+    RegisterRISCV::X3,
+    RegisterRISCV::X4,
+    RegisterRISCV::X5,
+    RegisterRISCV::X6,
+    RegisterRISCV::X7,
+    RegisterRISCV::X8,
+    RegisterRISCV::X9,
+    RegisterRISCV::X10,
+    RegisterRISCV::X11,
+    RegisterRISCV::X12,
+    RegisterRISCV::X13,
+    RegisterRISCV::X14,
+    RegisterRISCV::X15,
+    RegisterRISCV::X16,
+    RegisterRISCV::X17,
+    RegisterRISCV::X18,
+    RegisterRISCV::X19,
+    RegisterRISCV::X20,
+    RegisterRISCV::X21,
+    RegisterRISCV::X22,
+    RegisterRISCV::X23,
+    RegisterRISCV::X24,
+    RegisterRISCV::X25,
+    RegisterRISCV::X26,
+    RegisterRISCV::X27,
+    RegisterRISCV::X28,
+    RegisterRISCV::X29,
+    RegisterRISCV::X30,
+    RegisterRISCV::X31,
+];
+
+/// All backend logic lives here; the public structs are thin per-ISA wrappers
+/// created by [`unicorn_wrapper`].
+struct Common {
+    backend: Backend,
     inner: OwnedUnicorn,
     /// Native RAM/ROM pages eligible for loader access.
     mappings: Vec<(u64, u64)>,
     /// Callback-backed MMIO pages; never reachable through loader access.
     mmio: Vec<(u64, u64)>,
+    /// Host-backed shared pages (DMI). The Arc keeps every buffer alive for
+    /// as long as this instance's address space can reference it.
+    shared: Vec<(u64, u64, Arc<SharedRam>)>,
     /// External interrupt edges in delivery order. Unicorn 2.1.x exposes no
-    /// public ARM IRQ injection API, so levels are recorded, not injected
+    /// public IRQ injection API, so levels are recorded, not injected
     /// (ADR 0009); the edge log stays observable for wiring tests.
     irq_edges: Vec<(IrqLine, bool)>,
 }
 
-impl UnicornArm {
-    pub fn new() -> Result<Self, EngineError> {
-        let mut uc = Unicorn::new_with_data(
-            Arch::ARM,
-            Mode::ARM | Mode::LITTLE_ENDIAN,
-            EngineData::default(),
-        )
-        .map_err(|_| EngineError::Backend)?;
+impl Common {
+    fn new(backend: Backend) -> Result<Self, EngineError> {
+        let (arch, mode) = match backend {
+            Backend::Arm => (Arch::ARM, Mode::ARM | Mode::LITTLE_ENDIAN),
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
+        };
+        let mut uc =
+            Unicorn::new_with_data(arch, mode, EngineData::default()).map_err(|_| EngineError::Backend)?;
         // Capture-free: no Rc/host reference can escape the engine through a hook.
         // Native count and MAX_QUANTUM bound the addition below to <= 1_000_000.
         uc.add_code_hook(1, 0, |uc, _, _| {
@@ -61,9 +129,11 @@ impl UnicornArm {
         })
         .map_err(|_| EngineError::Backend)?;
         Ok(Self {
+            backend,
             inner: OwnedUnicorn(uc),
             mappings: Vec::new(),
             mmio: Vec::new(),
+            shared: Vec::new(),
             irq_edges: Vec::new(),
         })
     }
@@ -71,7 +141,7 @@ impl UnicornArm {
     /// Install the callback bus used by every MMIO region. One port serves all
     /// regions; the port resolves guest addresses itself. Re-attaching fails so
     /// stale callbacks can never alias a new bus.
-    pub fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
         if self.inner.0.get_data().bus.is_some() {
             return Err(EngineError::BusAlreadyAttached);
         }
@@ -81,12 +151,12 @@ impl UnicornArm {
 
     /// Map a page-aligned callback region. Guest accesses inside it are routed
     /// to the attached bus; a bus fault stops emulation and is retained for
-    /// [`Self::take_bus_fault`].
+    /// [`Common::take_bus_fault`].
     ///
     /// Unicorn hands its MMIO callbacks region-relative offsets, so each pair
     /// of closures captures only the region's Copy base address and re-adds it
     /// before reaching the bus, which speaks absolute guest addresses.
-    pub fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
         if self.inner.0.get_data().bus.is_none() {
             return Err(EngineError::BusNotAttached);
         }
@@ -123,18 +193,35 @@ impl UnicornArm {
         Ok(())
     }
 
+    /// Map a host-backed shared region (design §12.3 rule 1). Every instance
+    /// mapping the same buffer sees the same bytes; see [`SharedRam`].
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        self.validate_region(base, size)?;
+        if size > ram.len() as u64 {
+            return Err(EngineError::InvalidMapping);
+        }
+        shared::map_host(&mut self.inner.0, base.0, size, prot_of(permissions), &ram)?;
+        self.shared.push((base.0, size, ram));
+        Ok(())
+    }
+
     /// Take and clear the first bus fault recorded since the previous call.
-    pub fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
+    fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
         self.inner.0.get_data_mut().fault.take()
     }
 
-    /// All external interrupt edges delivered to this core, in FIFO order.
-    pub fn irq_edges(&self) -> &[(IrqLine, bool)] {
+    fn irq_edges(&self) -> &[(IrqLine, bool)] {
         &self.irq_edges
     }
 
     /// Most recently recorded level of one line, if it has ever been driven.
-    pub fn irq_level(&self, line: IrqLine) -> Option<bool> {
+    fn irq_level(&self, line: IrqLine) -> Option<bool> {
         self.irq_edges
             .iter()
             .rev()
@@ -151,55 +238,72 @@ impl UnicornArm {
             return Err(EngineError::InvalidMapping);
         }
         let end = base.0 + size;
-        if self
+        let overlaps = self
             .mappings
             .iter()
             .chain(self.mmio.iter())
             .any(|&(start, len)| base.0 < start + len && start < end)
-        {
+            || self
+                .shared
+                .iter()
+                .any(|&(start, len, _)| base.0 < start + len && start < end);
+        if overlaps {
             return Err(EngineError::Overlap);
         }
         Ok(())
     }
 
-    fn register(reg: RegId) -> Result<RegisterARM, EngineError> {
-        match reg.0 {
-            0 => Ok(RegisterARM::R0),
-            1 => Ok(RegisterARM::R1),
-            2 => Ok(RegisterARM::R2),
-            3 => Ok(RegisterARM::R3),
-            4 => Ok(RegisterARM::R4),
-            5 => Ok(RegisterARM::R5),
-            6 => Ok(RegisterARM::R6),
-            7 => Ok(RegisterARM::R7),
-            8 => Ok(RegisterARM::R8),
-            9 => Ok(RegisterARM::R9),
-            10 => Ok(RegisterARM::R10),
-            11 => Ok(RegisterARM::R11),
-            12 => Ok(RegisterARM::R12),
-            13 => Ok(RegisterARM::SP),
-            14 => Ok(RegisterARM::LR),
-            15 => Ok(RegisterARM::PC),
-            _ => Err(EngineError::InvalidRegister),
+    fn register_id(&self, reg: RegId) -> Result<i32, EngineError> {
+        match self.backend {
+            Backend::Arm => {
+                let mapped = match reg.0 {
+                    0 => RegisterARM::R0,
+                    1 => RegisterARM::R1,
+                    2 => RegisterARM::R2,
+                    3 => RegisterARM::R3,
+                    4 => RegisterARM::R4,
+                    5 => RegisterARM::R5,
+                    6 => RegisterARM::R6,
+                    7 => RegisterARM::R7,
+                    8 => RegisterARM::R8,
+                    9 => RegisterARM::R9,
+                    10 => RegisterARM::R10,
+                    11 => RegisterARM::R11,
+                    12 => RegisterARM::R12,
+                    13 => RegisterARM::SP,
+                    14 => RegisterARM::LR,
+                    15 => RegisterARM::PC,
+                    _ => return Err(EngineError::InvalidRegister),
+                };
+                Ok(mapped as i32)
+            }
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV32 => {
+                if reg.0 < 32 {
+                    // reg.0 < 32 keeps this index in bounds; guest or caller
+                    // input never panics.
+                    Ok(RISCV_GENERAL[reg.0 as usize] as i32)
+                } else if reg.0 == 32 {
+                    Ok(RegisterRISCV::PC as i32)
+                } else {
+                    Err(EngineError::InvalidRegister)
+                }
+            }
         }
     }
 
     fn check_span(&self, base: Addr, size: usize) -> Result<(), EngineError> {
         let end = u128::from(base.0) + size as u128;
-        if !self
-            .mappings
-            .iter()
-            .any(|&(start, len)| base.0 >= start && end <= u128::from(start) + u128::from(len))
+        let inside = |start: u64, len: u64| {
+            base.0 >= start && end <= u128::from(start) + u128::from(len)
+        };
+        if self.mappings.iter().any(|&(start, len)| inside(start, len))
+            || self.shared.iter().any(|&(start, len, _)| inside(start, len))
         {
-            return Err(EngineError::Unmapped);
+            Ok(())
+        } else {
+            Err(EngineError::Unmapped)
         }
-        Ok(())
-    }
-}
-
-impl CpuEngine for UnicornArm {
-    fn caps(&self) -> EngineCaps {
-        EngineCaps::COUNTED
     }
 
     fn run(&mut self, instructions: NonZeroU64) -> RunOutcome {
@@ -211,15 +315,26 @@ impl CpuEngine for UnicornArm {
         if budget > MAX_QUANTUM {
             return outcome(StopReason::CapabilityMissing, 0);
         }
-        let Ok(pc) = self.inner.0.reg_read(RegisterARM::PC) else {
-            return outcome(StopReason::Fault, 0);
+        let begin = match self.backend {
+            Backend::Arm => {
+                let Ok(pc) = self.inner.0.reg_read(RegisterARM::PC) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                // Unicorn takes Thumb state from bit 0 of begin. Preserve it on
+                // resume even though the conformance suite only covers A32.
+                let Ok(cpsr) = self.inner.0.reg_read(RegisterARM::CPSR) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                pc | ((cpsr >> 5) & 1)
+            }
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV32 => {
+                let Ok(pc) = self.inner.0.reg_read(RegisterRISCV::PC) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                pc
+            }
         };
-        // Unicorn takes Thumb state from bit 0 of begin. Preserve it on resume
-        // even though the current conformance suite only covers A32 instructions.
-        let Ok(cpsr) = self.inner.0.reg_read(RegisterARM::CPSR) else {
-            return outcome(StopReason::Fault, 0);
-        };
-        let begin = pc | ((cpsr >> 5) & 1);
         self.inner.0.get_data_mut().counters.instructions = 0;
         let result = self.inner.0.emu_start(begin, u64::MAX, 0, budget as usize);
         let observed = self.inner.0.get_data().counters.instructions;
@@ -237,18 +352,29 @@ impl CpuEngine for UnicornArm {
     fn reg_read(&self, reg: RegId) -> Result<u64, EngineError> {
         self.inner
             .0
-            .reg_read(Self::register(reg)?)
+            .reg_read(self.register_id(reg)?)
             .map_err(|_| EngineError::Backend)
     }
 
     fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError> {
-        let register = Self::register(reg)?;
-        if value > u64::from(u32::MAX) || (reg.0 == 15 && value % 4 != 0) {
+        let id = self.register_id(reg)?;
+        if value > u64::from(u32::MAX) {
+            return Err(EngineError::InvalidValue);
+        }
+        // 32-bit backends only; PC writes must stay instruction-aligned. The
+        // RV32I test firmware never uses the compressed extension, so 4-byte
+        // alignment holds for both backends.
+        let pc_id = match self.backend {
+            Backend::Arm => 15,
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV32 => 32,
+        };
+        if reg.0 == pc_id && value % 4 != 0 {
             return Err(EngineError::InvalidValue);
         }
         self.inner
             .0
-            .reg_write(register, value)
+            .reg_write(id, value)
             .map_err(|_| EngineError::Backend)
     }
 
@@ -259,19 +385,9 @@ impl CpuEngine for UnicornArm {
         permissions: Permissions,
     ) -> Result<(), EngineError> {
         self.validate_region(base, size)?;
-        let mut prot = Prot::NONE;
-        if permissions.read {
-            prot |= Prot::READ;
-        }
-        if permissions.write {
-            prot |= Prot::WRITE;
-        }
-        if permissions.execute {
-            prot |= Prot::EXEC;
-        }
         self.inner
             .0
-            .mem_map(base.0, size, prot)
+            .mem_map(base.0, size, prot_of(permissions))
             .map_err(|_| EngineError::Backend)?;
         self.mappings.push((base.0, size));
         Ok(())
@@ -305,14 +421,139 @@ impl CpuEngine for UnicornArm {
     }
 
     fn set_line(&mut self, line: IrqLine, high: bool) -> Result<(), EngineError> {
-        // ARMv7-A exposes the physical IRQ and FIQ inputs; any other number is
-        // a composition error, not a guest fault.
-        if line.0 > 1 {
+        let supported = match self.backend {
+            // ARMv7-A exposes the physical IRQ and FIQ inputs; any other
+            // number is a composition error, not a guest fault.
+            Backend::Arm => line.0 <= 1,
+            // RV32I cores take the machine external interrupt on line 0.
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV32 => line.0 == 0,
+        };
+        if !supported {
             return Err(EngineError::LineNotSupported);
         }
         self.irq_edges.push((line, high));
         Ok(())
     }
+}
+
+fn prot_of(permissions: Permissions) -> Prot {
+    let mut prot = Prot::NONE;
+    if permissions.read {
+        prot |= Prot::READ;
+    }
+    if permissions.write {
+        prot |= Prot::WRITE;
+    }
+    if permissions.execute {
+        prot |= Prot::EXEC;
+    }
+    prot
+}
+
+/// Generates one public per-ISA adapter struct over [`Common`]: the inherent
+/// composition API plus the engine-neutral [`CpuEngine`] implementation.
+macro_rules! unicorn_wrapper {
+    ($(#[$meta:meta])* $name:ident => $backend:expr) => {
+        $(#[$meta])*
+        pub struct $name(Common);
+
+        impl $name {
+            pub fn new() -> Result<Self, EngineError> {
+                Ok(Self(Common::new($backend)?))
+            }
+
+            pub fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+                self.0.attach_bus(bus)
+            }
+
+            pub fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+                self.0.map_mmio(base, size)
+            }
+
+            pub fn map_shared_memory(
+                &mut self,
+                base: Addr,
+                size: u64,
+                permissions: Permissions,
+                ram: Arc<SharedRam>,
+            ) -> Result<(), EngineError> {
+                self.0.map_shared_memory(base, size, permissions, ram)
+            }
+
+            pub fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
+                self.0.take_bus_fault()
+            }
+
+            pub fn irq_edges(&self) -> &[(IrqLine, bool)] {
+                self.0.irq_edges()
+            }
+
+            pub fn irq_level(&self, line: IrqLine) -> Option<bool> {
+                self.0.irq_level(line)
+            }
+        }
+
+        impl CpuEngine for $name {
+            fn caps(&self) -> EngineCaps {
+                EngineCaps::COUNTED
+            }
+
+            fn run(&mut self, instructions: NonZeroU64) -> RunOutcome {
+                self.0.run(instructions)
+            }
+
+            fn reg_read(&self, reg: RegId) -> Result<u64, EngineError> {
+                self.0.reg_read(reg)
+            }
+
+            fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError> {
+                self.0.reg_write(reg, value)
+            }
+
+            fn map_memory(
+                &mut self,
+                base: Addr,
+                size: u64,
+                permissions: Permissions,
+            ) -> Result<(), EngineError> {
+                self.0.map_memory(base, size, permissions)
+            }
+
+            fn write_memory(&mut self, base: Addr, data: &[u8]) -> Result<(), EngineError> {
+                self.0.write_memory(base, data)
+            }
+
+            fn read_memory(&self, base: Addr, data: &mut [u8]) -> Result<(), EngineError> {
+                self.0.read_memory(base, data)
+            }
+
+            fn set_line(&mut self, line: IrqLine, high: bool) -> Result<(), EngineError> {
+                self.0.set_line(line, high)
+            }
+
+            fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
+                self.0.take_bus_fault()
+            }
+
+            fn line_edges(&self) -> &[(IrqLine, bool)] {
+                self.0.irq_edges()
+            }
+        }
+    };
+}
+
+unicorn_wrapper! {
+    /// ARM A32 little-endian core adapter (ARM926EJ-S class).
+    UnicornArm => Backend::Arm
+}
+
+#[cfg(feature = "arch-riscv")]
+unicorn_wrapper! {
+    /// RISC-V RV32I little-endian core adapter (SiFive E31 class cores run
+    /// the base integer subset; the compressed extension is unused by the
+    /// catalog firmware, and PC writes must be 4-byte aligned).
+    UnicornRiscV32 => Backend::RiscV32
 }
 
 /// MMIO read at an absolute guest address. All state lives in the engine-owned
@@ -350,7 +591,7 @@ fn mmio_write_at(uc: &mut Unicorn<'_, EngineData>, address: u64, size: usize, va
     }
 }
 
-/// Record the fault for [`UnicornArm::take_bus_fault`] and ask the backend to
+/// Record the fault for [`Common::take_bus_fault`] and ask the backend to
 /// stop at the current instruction. The dummy read value is never consumed
 /// because emulation halts before the guest uses it.
 fn stop_with_bus_fault(
@@ -473,6 +714,75 @@ mod tests {
         assert_eq!(bytes, [1, 2, 3, 4]);
         second.read_memory(Addr(0x1100), &mut bytes).unwrap();
         assert_eq!(bytes, [5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn shared_ram_is_coherent_across_engine_instances() {
+        // Design §12.3 rule 1 verification: both instances map one host
+        // buffer, so a guest store through the first core is immediately
+        // visible to the second core and to host-side accessors.
+        let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+        let mut first = UnicornArm::new().unwrap();
+        let mut second = UnicornArm::new().unwrap();
+        for core in [&mut first, &mut second] {
+            core.map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+                .unwrap();
+            core.map_shared_memory(Addr(0x10000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
+                .unwrap();
+        }
+        // MOV r0,#0xAB; LDR r1,[pc,#0]; STRB r0,[r1]; .word 0x00010000
+        first
+            .write_memory(
+                Addr(0x1000),
+                &[0xab, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0],
+            )
+            .unwrap();
+        first.reg_write(Register::Pc.into(), 0x1000).unwrap();
+        let outcome = first.run(NonZeroU64::new(3).unwrap());
+        assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        let mut bytes = [0; 4];
+        second.read_memory(Addr(0x10000), &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0xab);
+        ram.read(0, &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0xab);
+        // Loader writes through the second instance reach the first.
+        second.write_memory(Addr(0x10004), &[7]).unwrap();
+        first.read_memory(Addr(0x10004), &mut bytes[..1]).unwrap();
+        assert_eq!(bytes[0], 7);
+        // Host-side writes are visible to both guests.
+        ram.write(8, &[9]).unwrap();
+        second.read_memory(Addr(0x10008), &mut bytes[..1]).unwrap();
+        assert_eq!(bytes[0], 9);
+    }
+
+    #[test]
+    fn shared_mappings_validate_like_native_regions() {
+        let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+        let mut engine = UnicornArm::new().unwrap();
+        assert!(matches!(
+            SharedRam::new(0),
+            Err(EngineError::InvalidMapping)
+        ));
+        // The buffer bounds the mapping size.
+        assert_eq!(
+            engine.map_shared_memory(Addr(0x1000), 2 * PAGE_SIZE, Permissions::RW, Arc::clone(&ram)),
+            Err(EngineError::InvalidMapping)
+        );
+        engine
+            .map_shared_memory(Addr(0x1000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
+            .unwrap();
+        assert_eq!(
+            engine.map_shared_memory(Addr(0x1000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram)),
+            Err(EngineError::Overlap)
+        );
+        assert_eq!(
+            engine.map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RW),
+            Err(EngineError::Overlap)
+        );
+        // Loader spans resolve against the shared mapping.
+        assert_eq!(engine.write_memory(Addr(0x2000), &[1]), Err(EngineError::Unmapped));
+        assert_eq!(ram.write(PAGE_SIZE as usize, &[1]), Err(EngineError::InvalidMapping));
+        assert_eq!(ram.read(1, &mut [0u8; PAGE_SIZE as usize]), Err(EngineError::InvalidMapping));
     }
 
     #[test]
@@ -711,10 +1021,111 @@ mod tests {
             engine.irq_edges(),
             &[(ARM_IRQ, true), (ARM_FIQ, true), (ARM_IRQ, false)]
         );
+        // The contract view exposes the same log.
+        assert_eq!(CpuEngine::line_edges(&engine).len(), 3);
         assert_eq!(engine.irq_level(ARM_IRQ), Some(false));
         assert_eq!(
             engine.set_line(IrqLine(9), true),
             Err(EngineError::LineNotSupported)
         );
+    }
+
+    #[cfg(feature = "arch-riscv")]
+    mod riscv32 {
+        use super::*;
+        use mosaic_isa_riscv::Register as RvReg;
+
+        fn engine() -> UnicornRiscV32 {
+            let mut engine = UnicornRiscV32::new().unwrap();
+            engine
+                .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+                .unwrap();
+            engine.reg_write(RvReg::Pc.into(), 0x1000).unwrap();
+            engine
+        }
+
+        #[test]
+        fn instruction_budget_and_resume_are_exact_for_rv32i() {
+            let mut engine = engine();
+            // addi x5,x0,42; addi x6,x5,1; addi x0,x0,5 (x0 stays hardwired)
+            engine
+                .write_memory(
+                    Addr(0x1000),
+                    &[0x93, 0x02, 0xa0, 0x02, 0x13, 0x83, 0x12, 0x00, 0x13, 0x00, 0x50, 0x00],
+                )
+                .unwrap();
+            for expected_pc in [0x1004, 0x1008] {
+                let result = engine.run(NonZeroU64::new(1).unwrap());
+                assert_eq!(result.reason, StopReason::BudgetExhausted);
+                assert_eq!(result.instruction_hooks, 1);
+                assert_eq!(engine.reg_read(RvReg::Pc.into()), Ok(expected_pc));
+            }
+            assert_eq!(engine.reg_read(RvReg::X5.into()), Ok(42));
+            assert_eq!(engine.reg_read(RvReg::X6.into()), Ok(43));
+            let _ = engine.run(NonZeroU64::new(1).unwrap());
+            assert_eq!(engine.reg_read(RvReg::X0.into()), Ok(0));
+        }
+
+        #[test]
+        fn mmio_and_shared_paths_match_the_arm_adapter() {
+            let mut engine = engine();
+            let (bus, record) = FakeBus::new(0x0bad_f00d);
+            engine.attach_bus(Box::new(bus)).unwrap();
+            engine.map_mmio(Addr(0x2000), PAGE_SIZE).unwrap();
+            let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+            engine
+                .map_shared_memory(Addr(0x10000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
+                .unwrap();
+            // lw x6,0(x5); sw x6,0(x7): x5 = MMIO base, x7 = shared base.
+            engine
+                .write_memory(
+                    Addr(0x1000),
+                    &[0x83, 0xa3, 0x02, 0x00, 0x23, 0xa0, 0xc3, 0x00],
+                )
+                .unwrap();
+            engine.reg_write(RvReg::X5.into(), 0x2000).unwrap();
+            engine.reg_write(RvReg::X7.into(), 0x10000).unwrap();
+            let outcome = engine.run(NonZeroU64::new(2).unwrap());
+            assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+            assert_eq!(engine.reg_read(RvReg::X6.into()), Ok(0x0bad_f00d));
+            assert_eq!(record.lock().unwrap().reads, vec![(0x2000, 4)]);
+            let mut bytes = [0; 4];
+            ram.read(0, &mut bytes).unwrap();
+            assert_eq!(bytes, 0x0bad_f00du32.to_le_bytes());
+        }
+
+        #[test]
+        fn lines_and_registers_reject_out_of_vocabulary_input() {
+            let mut engine = UnicornRiscV32::new().unwrap();
+            engine.set_line(RISCV_MEXT, true).unwrap();
+            assert_eq!(CpuEngine::line_edges(&engine), &[(RISCV_MEXT, true)]);
+            assert_eq!(
+                engine.set_line(IrqLine(1), true),
+                Err(EngineError::LineNotSupported)
+            );
+            assert_eq!(
+                engine.reg_read(RegId(33)),
+                Err(EngineError::InvalidRegister)
+            );
+            assert_eq!(
+                engine.reg_write(RvReg::Pc.into(), 0x1002),
+                Err(EngineError::InvalidValue)
+            );
+            assert_eq!(
+                engine.reg_write(RvReg::X5.into(), 1u64 << 32),
+                Err(EngineError::InvalidValue)
+            );
+        }
+
+        #[test]
+        fn the_register_table_matches_the_backend_enum() {
+            for (index, register) in RISCV_GENERAL.iter().enumerate() {
+                assert_eq!(
+                    *register as i32,
+                    RegisterRISCV::X0 as i32 + index as i32,
+                    "X{index} must stay contiguous in uc_riscv_reg"
+                );
+            }
+        }
     }
 }

@@ -64,6 +64,36 @@ impl EngineCaps {
     };
 }
 
+/// Architecture-neutral execution architecture vocabulary for CPU descriptors
+/// (design §12.1: `isa` names the vocabulary, the engine backend is chosen by
+/// the composition root). Values name ISA + mode combinations, never vendors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum EngineArch {
+    /// ARM A32 (ARMv4/v5 little-endian, ARM926EJ-S class cores).
+    ArmA32Le,
+    /// RISC-V RV32 base integer ISA, little-endian.
+    RiscV32Le,
+}
+
+/// Catalog declaration of one processor core's execution configuration
+/// (design §12.1: cpu = ISA + engine settings + core-local blocks).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CpuDescriptor {
+    pub arch: EngineArch,
+    /// Backend CPU-model hint (for example `"sifive-e31"`). A backend without
+    /// model selection ignores it; the declaration stays the source of truth.
+    pub model: Option<&'static str>,
+}
+
+impl CpuDescriptor {
+    /// Constructor for catalog crates: the struct stays open for future
+    /// fields without breaking existing declarations.
+    pub const fn new(arch: EngineArch, model: Option<&'static str>) -> Self {
+        Self { arch, model }
+    }
+}
+
 /// Architecture-neutral logical interrupt line. Numbering is owned by the ISA
 /// vocabulary or the board composition; the contract assigns no ARM-specific
 /// meaning to any value (see ADR 0009).
@@ -126,4 +156,15 @@ pub trait CpuEngine: Send {
     /// pages. Patching executable bytes must invalidate translated code.
     fn write_memory(&mut self, base: Addr, data: &[u8]) -> Result<(), EngineError>;
     fn read_memory(&self, base: Addr, data: &mut [u8]) -> Result<(), EngineError>;
+    /// Take and clear the first callback-bus fault recorded since the previous
+    /// call (ADR 0010). Engines without a callback bus keep the default `None`.
+    fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
+        None
+    }
+    /// `(line, high)` edges recorded through [`CpuEngine::set_line`], in FIFO
+    /// order. Observable for wiring tests while `line_injection` is false;
+    /// engines that do not record keep the default empty log (ADR 0010).
+    fn line_edges(&self) -> &[(IrqLine, bool)] {
+        &[]
+    }
 }

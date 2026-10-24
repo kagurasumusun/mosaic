@@ -2,8 +2,8 @@
 
 Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤、P1 のイベント・アドレス・CPU 実行基盤（ARM926EJ-S + Versatile-PB の垂直スライス）、P2 のバスとピン基盤（I2C / SPI / GPIO）**を構築済みです。
-`bringup` と `sensorbus` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
+[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤、P1 のイベント・アドレス・CPU 実行基盤（ARM926EJ-S + Versatile-PB の垂直スライス）、P2 のバスとピン基盤（I2C / SPI / GPIO）、P3 のマルチコア・ヘテロジニアス実行**を構築済みです。
+`bringup`・`sensorbus`・`multicore` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
 
 ## 開発を始める
 
@@ -30,15 +30,16 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 ## 構造
 
 - `framework/`: 共通語彙、契約、ランタイム、実行エンジン、記述・組立の境界。
-- `catalog/`: 種別 → 出自で配置するモデルと宣言。ARM IP（pl011 / sp804 / pl022 / pl061 / dw-apb-i2c）、
-  Bosch / TI の部品、SoC・ボード宣言を登録済みです。
+- `catalog/`: 種別 → 出自で配置するモデルと宣言。ARM IP（pl011 / sp804 / pl022 / pl061 / mhu /
+  dw-apb-i2c）、ARM926EJ-S・SiFive E31 の CPU 宣言、Bosch / TI の部品、
+  SoC・ボード宣言を登録済みです。
 - `apps/`: 実行アプリケーション。
 - `xtask/`: Cargo の依存宣言に基づく層・命名の検査。
 - `docs/adr/`: 初日の設計判断と未決事項。
 
 ### 実装済み
 
-- 40 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
+- 44 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
 - `lint-layers`: framework の逆依存、L3 間依存、catalog 横依存、glue の依存を検査。
 - `lint-names`: 禁止語、kebab-case、クレート名、正規の出自を検査。
 - `check` / `doctor`、fast CI（fmt、構成 lint、Clippy、単体テスト）。
@@ -62,10 +63,22 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
   「I2C コントローラ経由」「GPIO ピン操作の bit-bang 経由」「SPI 経由」の 3 経路から読み、
   bit-bang が書き込んだ `ctrl_meas=0x25` をコントローラ経路が同じ部品から読み返すことを
   CI の golden test（`ci-reports/sensorbus.log`）で検証します。
+- P3 マルチコア・ヘテロジニアス: `framework/assemble` の `MulticoreDriver` が固定順ラウンドロビンの
+  量子スケジューラを提供し、`Machine` はマスターごとの FlatView（コア別ビュー）を解決します。
+  共有 RAM は 1 つのホストバッファを各エンジン実例へ写像します（Unicorn 2.1.x の
+  `uc_mem_map_ptr`、コア上交差参照は実験で確認済み、ADR 0010）。
+  ISA 語彙 crate は ISA ごとに追加でき（`framework/isa/arm`, `framework/isa/riscv`）、
+  エンジンは `arch-*` feature で ISA 集合を絞ります（設計書 §12.1/§12.3/§12.4）。
+- P3 終了条件の証明: `mosaic-apps-multicore` が **ARM926EJ-S ×2 + RV32I ×1** の異種 AMP 構成を
+  1 つの共有ページと MHU ドアベル（`catalog/ip/arm/mhu`）で起動し、SMP コアと
+  異種コプロセッサが Doorsbell ハンドシェイクを完了し、コンソールに `smp=61` / `amp=bf` を
+  出力します。観測系列（コンソール・共有 RAM・MHU 状態・コア別 IRQ エッジ）は
+  量子 64×48 ラウンドと 512×6 ラウンドで同一です（CI golden test、`ci-reports/multicore.log`）。
 
 ```sh
 cargo run --locked --package mosaic-apps-bringup --features unicorn
 cargo run --locked --package mosaic-apps-sensorbus --features unicorn
+cargo run --locked --package mosaic-apps-multicore --features riscv
 ```
 
 CPU やファームウェアを使わないイベント実行例:
@@ -88,12 +101,13 @@ CPU エンジンとの連携や実ファームウェアの起動はまだ含み�
 
 ### 次の実装
 
-P2 の終了条件（同一センサ部品のコントローラ経由・bit-bang 経由の双方動作）は CI 上で
-証明済みです。次は P3（マルチコア・ヘテロジニアス）へ進みます: コアごとのビューと
-量子スケジューラ、2 コア SMP の起動、ヘテロジニアス AMP 向けの mailbox / IPC 契約、
-決定論的なヘテロ起動が目標です。残る技術項は命令数と VTime を結ぶ clock tree、
-IRQ line 契約、真の DMI（host pointer）と共有 RAM です。現在の Unicorn memory は
-instance ごとの private page であり、全機械の共有メモリではありません。
+P2（バスとピン）と P3（マルチコア・ヘテロジニアス）の終了条件は CI 上で証明済みです。
+次は P4（スナップショットと運用基盤）へ進みます: 全モデルの State とエンジンの
+コンテキストを保存し、復元後に状態ハッシュが一致すること（設計書 §13.5, §22 T4）、
+記録再生、gdbstub、トレース、故障注入（§13.6 の tap 点）が目標です。
+残る技術項は命令数と VTime を結ぶ clock tree（現在はコアごとの固定周期）、
+Unicorn 2.1.x に無い外部割り込み注入（`EngineCaps::line_injection = false`）、
+キャッシュ/TLB 無効化の粒度、DMI の一般化です。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 

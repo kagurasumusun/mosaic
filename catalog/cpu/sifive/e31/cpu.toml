@@ -1,0 +1,18 @@
+[identity]
+id = 'cpu:sifive/e31'
+summary = 'SiFive E31 RISC-V core declaration (RV32IMAC, Freedom E310 class)'
+spec = ['SiFive FE310-G000 manual (E31 core complex)']
+variants = []
+
+[tags]
+function = ['cpu-core']
+fidelity = 'functional'
+verified = 'experimental'
+
+[engine]
+arch = 'riscv32-le'
+model = 'sifive-e31'
+
+[ports]
+irq = { role = 'sink', pins = ['mext'] }
+reset = { role = 'sink' }

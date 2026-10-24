@@ -9,9 +9,17 @@
 //! 他モデルへの参照を持たず、MMIO 回路と Ctx 経由でのみ外部と働きかけます
 //! （設計書 §10, §12.1）。
 
+use mosaic_contract_cpu_engine::{CpuDescriptor, EngineArch};
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::Ctx;
 use mosaic_core_types::{AccessSize, Attr, BusFault};
+
+/// 実行構成の宣言（設計書 §12.1: cpu = ISA + エンジン設定 + コア固有部分）。
+/// A32 リトルエンディアン。backend 既定の CPU モデルを使うため model は None。
+pub const CORE: CpuDescriptor = CpuDescriptor::new(EngineArch::ArmA32Le, None);
+
+/// このコアの ISA 語彙（RegId はここから引く）。
+pub use mosaic_isa_arm::Register;
 
 // ARM926EJ-S の Main ID Register: implementer 0x41 (Arm)、アーキテクチャ 0x5 (ARMv5TEJ)、
 // パート番号 0x926、リビジョン 0x1。
