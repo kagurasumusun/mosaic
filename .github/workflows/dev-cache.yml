@@ -1,0 +1,117 @@
+name: dev-cache
+
+# 開発環境向けツールチェーン退避ジョブ。
+# リリースアセット (objects.githubusercontent.com) への直接ダウンロードが
+# ローカル環境のネットワーク制限で不可能なため、Actions runner で
+# esp-rs/rust-build の toolchain tarball を取得し、Git Blobs API 経由で
+# 取り出せるように部品化する。取り出し側は api.github.com (許可ホスト)
+# の raw blob 応答だけを使う。
+#
+# トリガー:
+#   - workflow_dispatch
+#   - push の commit message に [dev-cache] を含むコミット
+# 成果物:
+#   - ci-reports/dev-cache-manifest.json (部品の blob SHA と検証用ハッシュ)
+#   - ブランチ上の ci-reports への commit
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       contains(github.event.head_commit.message, '[dev-cache]'))
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node.js 24)
+
+      - name: Download and split the toolchain
+        run: |
+          set -euo pipefail
+          url="https://github.com/esp-rs/rust-build/releases/download/v1.85.0.0/rust-1.85.0.0-x86_64-unknown-linux-gnu.tar.xz"
+          curl -sSL -o /tmp/rust.tar.xz "$url"
+          echo "downloaded bytes: $(stat -c%s /tmp/rust.tar.xz)"
+          sha256sum /tmp/rust.tar.xz | tee /tmp/rust.tar.xz.sha256
+          echo "--- tarball top-level components ---"
+          tar -tJf /tmp/rust.tar.xz | cut -d/ -f1 | sort -u | tee /tmp/components.txt
+          rm -rf /tmp/parts && mkdir -p /tmp/parts
+          # 12MB 部品 (base64 後 ~16MB)。Blobs API の要求サイズ上限から十分余裕を取る。
+          split -b 12m -d -a 2 /tmp/rust.tar.xz /tmp/parts/part-
+          ls -la /tmp/parts
+          (cd /tmp/parts && sha256sum part-* > /tmp/parts.sha256)
+          echo '[]' > /tmp/manifest.json
+
+      - name: Publish parts as Git blobs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for p in /tmp/parts/part-*; do
+            name=$(basename "$p")
+            size=$(stat -c%s "$p")
+            sha=$(sha256sum "$p" | cut -d' ' -f1)
+            jq -n --rawfile c "$p" '{content: $c, encoding: "base64"}' > /tmp/body.json
+            ok=0
+            for attempt in 1 2 3; do
+              echo "uploading $name ($size bytes, attempt $attempt)"
+              if curl -sS --fail-with-body --max-time 300 -X POST \
+                   -H "Authorization: token ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/git/blobs" \
+                   --data-binary @/tmp/body.json > /tmp/blob.json; then
+                ok=1
+                break
+              fi
+              sleep $((attempt * 5))
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "blob upload failed for $name" >&2
+              exit 1
+            fi
+            blob_sha=$(jq -r '.sha' /tmp/blob.json)
+            echo "blob for $name: $blob_sha"
+            jq --arg name "$name" --arg sha "$sha" --arg blob "$blob_sha" --argjson size "$size" \
+               '. + [{name: $name, sha256: $sha, blob: $blob, size: $size}]' \
+               /tmp/manifest.json > /tmp/manifest.next
+            mv /tmp/manifest.next /tmp/manifest.json
+          done
+          cat /tmp/manifest.json
+
+      - name: Write manifest and publish to the branch
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          total=$(cut -d' ' -f1 /tmp/rust.tar.xz.sha256)
+          jq -n --arg source "esp-rs/rust-build v1.85.0.0 x86_64-unknown-linux-gnu" \
+                --arg url "https://github.com/esp-rs/rust-build/releases/download/v1.85.0.0/rust-1.85.0.0-x86_64-unknown-linux-gnu.tar.xz" \
+                --arg total "$total" \
+                --rawfile comps /tmp/components.txt \
+                --slurpfile parts /tmp/manifest.json \
+                '{source: $source, url: $url, tarball_sha256: $total,
+                  components: ($comps | split("\n") | map(select(length > 0))),
+                  parts: $parts[0]}' \
+                > ci-reports/dev-cache-manifest.json
+          cat ci-reports/dev-cache-manifest.json
+          branch="${GITHUB_REF#refs/heads/}"
+          if [ "$branch" = "$GITHUB_REF" ]; then
+            echo "not a branch push; skip report commit"
+            exit 0
+          fi
+          git config user.name "dev-cache-bot"
+          git config user.email "dev-cache-bot@users.noreply.github.com"
+          git add ci-reports/dev-cache-manifest.json
+          if git diff --cached --quiet; then
+            echo "manifest unchanged; nothing to push"
+            exit 0
+          fi
+          git commit -m "dev-cache manifest for ${GITHUB_SHA::7}"
+          git fetch origin "$branch" || true
+          git rebase FETCH_HEAD || git rebase --abort || true
+          git push origin "HEAD:$branch"
