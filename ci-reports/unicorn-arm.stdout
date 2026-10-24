@@ -1,4 +1,0 @@
-engine=unicorn isa=arm-a32 mappings=2
-stop=budget-exhausted hooks=4
-r0=42 r1=43 r3=43 pc=0x1010
-memory[0x2000]=43

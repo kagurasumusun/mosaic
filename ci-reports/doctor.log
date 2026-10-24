@@ -1,5 +1,2 @@
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
-[1m[32m     Running[0m `target/debug/mosaic-xtask doctor`
-doctor: OK (52 workspace crates)
-Event/MMIO machine runtime with an opt-in Unicorn ARM MMIO binding; no complete machine.
-License/contribution policy and initial ISA/board require owner decisions.
+[1m[31merror[0m[1m:[0m the lock file /home/runner/work/mosaic/mosaic/Cargo.lock needs to be updated but --locked was passed to prevent this
+If you want to try to generate the lock file without accessing the network, remove the --locked flag and use --offline instead.

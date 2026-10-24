@@ -1,7 +1,2 @@
-[1m[32m   Compiling[0m mosaic-apps-sensorbus v0.1.0 (/home/runner/work/mosaic/mosaic/apps/sensorbus)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
-[1m[32m     Running[0m `target/debug/mosaic-apps-sensorbus`
-console="ctl=60 bb=60 spi=60\n"
-hooks=1024 events=0 irq_edges=0
-probes ctrl_meas=25 mux_hidden=true mux_routed=60 phases bus=36 pins=19
-elapsed_us=7726 instr_per_s=132539
+[1m[31merror[0m[1m:[0m the lock file /home/runner/work/mosaic/mosaic/Cargo.lock needs to be updated but --locked was passed to prevent this
+If you want to try to generate the lock file without accessing the network, remove the --locked flag and use --offline instead.
