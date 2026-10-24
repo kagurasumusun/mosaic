@@ -2,27 +2,12 @@
 [1m[32m   Compiling[0m unicorn-engine v2.1.5
 [1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
 [1m[32m   Compiling[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
-[0m[1m[33mwarning[0m[0m[1m: unused import: `EngineError`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/assemble/src/multicore.rs:16:45[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m16[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse mosaic_contract_cpu_engine::{CpuEngine, EngineError, RunOutcome, StopReason};[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m                                             [0m[0m[1m[33m^^^^^^^^^^^[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_imports)]` on by default[0m
-
-[0m[1m[33mwarning[0m[0m[1m: unused import: `core::num::NonZeroU64`[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/assemble/src/unicorn_bind.rs:11:5[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m11[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse core::num::NonZeroU64;[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
-
 [1m[32m   Compiling[0m mosaic-apps-multicore v0.1.0 (/home/runner/work/mosaic/mosaic/apps/multicore)
-[1m[33mwarning[0m[1m:[0m `mosaic-assemble` (lib) generated 2 warnings (run `cargo fix --lib -p mosaic-assemble` to apply 2 suggestions)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.99s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.94s
 [1m[32m     Running[0m `target/debug/mosaic-apps-multicore`
 console="smp=61\namp=bf\n"
 shared=21 61 40 BF
 mhu_stat=0 0 0
 edges c0=TFTF c1=TF c2=TF
 hooks=[3072, 3072, 3072] events=8 rounds=48 quantum=64 budget=32
-elapsed_us=16072 instr_per_s=573419
+elapsed_us=14125 instr_per_s=652460

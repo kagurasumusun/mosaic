@@ -1,5 +1,5 @@
-109:test unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core ... FAILED
-111:failures:
-115:thread 'unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core' panicked at framework/assemble/src/unicorn_bind.rs:418:9:
-138:failures:
-141:test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+296:test tests::shared_ram_is_coherent_across_engine_instances ... FAILED
+298:failures:
+302:thread 'tests::shared_ram_is_coherent_across_engine_instances' panicked at framework/engine/unicorn/src/lib.rs:805:9:
+325:failures:
+328:test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
