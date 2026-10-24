@@ -408,16 +408,6 @@ impl Common {
         };
         self.inner.0.get_data_mut().counters.instructions = 0;
         let result = self.inner.0.emu_start(begin, u64::MAX, 0, budget as usize);
-        // TEMP DIAGNOSTIC (remove after M-class bring-up): surface the raw
-        // backend error and begin state on failure.
-        if let Err(err) = &result {
-            let pc = self.inner.0.reg_read(RegisterARM::PC).unwrap_or(u64::MAX);
-            let cpsr = self.inner.0.reg_read(RegisterARM::CPSR).unwrap_or(u64::MAX);
-            eprintln!(
-                "emu_start failed: {err:?} backend={:?} begin={begin:#x} pc_after={pc:#x} cpsr={cpsr:#x}",
-                self.backend
-            );
-        }
         let observed = self.inner.0.get_data().counters.instructions;
         let reason = if result.is_err() || self.inner.0.get_data().fault.is_some() {
             StopReason::Fault
@@ -749,9 +739,10 @@ mod tests {
     #[test]
     fn mclass_backend_executes_t32_from_reset() {
         // ADR 0012: the M-class construction (Cortex-M33 via UC_MODE_MCLASS,
-        // CPSR.T asserted at construction) runs T32 from reset, which the A32
-        // backend cannot offer. Listing: MOVS r0,#42 ; MOVS r1,#1 ;
-        // ADDS r0,r0,r1 ; STR r1,[r2,#0] (encoding 0x6041).
+        // T bit asserted through the R15 write path) runs T32 from reset,
+        // which the A32 backend cannot offer. Listing: MOVS r0,#42 (0x202A) ;
+        // MOVS r1,#1 (0x2101) ; ADDS r0,r0,r1 (0x1840) ;
+        // STR r1,[r2,#0] (0x6011).
         let mut engine = UnicornCortexM3::new().unwrap();
         engine
             .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
@@ -759,7 +750,7 @@ mod tests {
         engine
             .write_memory(
                 Addr(0x1000),
-                &[0x2a, 0x20, 0x01, 0x21, 0x40, 0x18, 0x41, 0x60],
+                &[0x2a, 0x20, 0x01, 0x21, 0x40, 0x18, 0x11, 0x60],
             )
             .unwrap();
         engine.reg_write(Register::R2.into(), 0x1100).unwrap();
