@@ -1,2 +1,2 @@
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
 [1m[32m     Running[0m `target/debug/examples/events`
