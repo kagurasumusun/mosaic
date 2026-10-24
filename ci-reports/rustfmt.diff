@@ -1,203 +1,548 @@
-diff --git a/ci-reports/rustfmt.diff b/ci-reports/rustfmt.diff
-index 7713ae7..e69de29 100644
---- a/ci-reports/rustfmt.diff
-+++ b/ci-reports/rustfmt.diff
-@@ -1,172 +0,0 @@
--diff --git a/ci-reports/rustfmt.diff b/ci-reports/rustfmt.diff
--index 515b477..e69de29 100644
----- a/ci-reports/rustfmt.diff
--+++ b/ci-reports/rustfmt.diff
--@@ -1,144 +0,0 @@
---diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
---index d99a73c..0e63b4f 100644
------ a/catalog/cpu/arm/arm926ej-s/src/lib.rs
---+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
---@@ -237,14 +237,8 @@ mod tests {
---         let mut core = Arm926ejS::new(params());
---         let mut ctx = CtxStub;
---         let attr = attr();
----        core.write(
----            &mut ctx,
----            reg::CONTROL,
----            AccessSize::Word,
----            0xFFFF_FFFF,
----            &attr,
----        )
----        .unwrap();
---+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
---+            .unwrap();
---         assert_eq!(
---             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
---             Ok(control::ENABLE as u64)
---@@ -278,15 +272,12 @@ mod tests {
---         let mut core = Arm926ejS::new(params());
---         let mut ctx = CtxStub;
---         let attr = attr();
----        core.write(
----            &mut ctx,
----            reg::CONTROL,
----            AccessSize::Word,
----            0x1234_5678,
----            &attr,
----        )
----        .unwrap();
----        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
---+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
---+            .unwrap();
---+        assert_eq!(
---+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
---+            Ok(0x78)
---+        );
---         assert_eq!(
---             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
---             Ok(0x5678)
---@@ -321,7 +312,10 @@ mod tests {
---         );
---         let mut raz = Arm926ejS::new(params());
---         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
----        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
---+        assert_eq!(
---+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
---+            Ok(())
---+        );
---     }
--- 
---     #[test]
---diff --git a/framework/prim/bits/src/lib.rs b/framework/prim/bits/src/lib.rs
---index ad30b24..9249de4 100644
------ a/framework/prim/bits/src/lib.rs
---+++ b/framework/prim/bits/src/lib.rs
---@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
--- }
--- 
--- /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
----pub fn write_u16_le(
----    buf: &mut [u8],
----    value: u16,
----) -> Result<(), PrimError> {
---+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
---     if buf.len() < 2 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -83,10 +80,7 @@ pub fn write_u16_le(
--- }
--- 
--- /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
----pub fn write_u16_be(
----    buf: &mut [u8],
----    value: u16,
----) -> Result<(), PrimError> {
---+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
---     if buf.len() < 2 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -97,10 +91,7 @@ pub fn write_u16_be(
--- }
--- 
--- /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
----pub fn write_u32_le(
----    buf: &mut [u8],
----    value: u32,
----) -> Result<(), PrimError> {
---+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
---     if buf.len() < 4 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -113,10 +104,7 @@ pub fn write_u32_le(
--- }
--- 
--- /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
----pub fn write_u32_be(
----    buf: &mut [u8],
----    value: u32,
----) -> Result<(), PrimError> {
---+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
---     if buf.len() < 4 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -129,10 +117,7 @@ pub fn write_u32_be(
--- }
--- 
--- /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
----pub fn write_u64_le(
----    buf: &mut [u8],
----    value: u64,
----) -> Result<(), PrimError> {
---+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
---     if buf.len() < 8 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -149,10 +134,7 @@ pub fn write_u64_le(
--- }
--- 
--- /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
----pub fn write_u64_be(
----    buf: &mut [u8],
----    value: u64,
----) -> Result<(), PrimError> {
---+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
---     if buf.len() < 8 {
---         return Err(PrimError::BufferTooSmall);
---     }
---@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
---     if width == 0 || shift + width > 64 {
---         return Err(PrimError::FieldRange);
---     }
----    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
---+    let mask = if width == 64 {
---+        u64::MAX
---+    } else {
---+        (1u64 << width) - 1
---+    };
---     Ok((value >> shift) & mask)
--- }
--- 
--diff --git a/ci-reports/status.txt b/ci-reports/status.txt
--index cdc243d..8ad1a3f 100644
----- a/ci-reports/status.txt
--+++ b/ci-reports/status.txt
--@@ -1,15 +1,4 @@
---run: https://github.com/kagurasumusun/mosaic/actions/runs/40042201613
---commit: e3a7c99bdb6d194855c3a29bc2eeb081e819c9db
--+run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
--+commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
-- ref: refs/heads/arena/62448c0d-mosaic
---started: 2026-10-23T23:55:22Z
---formatting: fail (code=0, see rustfmt.diff)
---xtask: ok
---clippy: ok
---build: ok
---test: fail (code=101)
---smoke-events: ok
---smoke-machine: ok
---smoke-unicorn: ok
---bringup: fail (code=1)
---doctor: ok
---finished: 2026-10-23T23:56:23Z
--+started: 2026-10-24T00:00:53Z
-diff --git a/ci-reports/status.txt b/ci-reports/status.txt
-index 532fae8..4ae3ec5 100644
---- a/ci-reports/status.txt
-+++ b/ci-reports/status.txt
-@@ -1,15 +1,4 @@
--run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
--commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
-+run: https://github.com/kagurasumusun/mosaic/actions/runs/40044032540
-+commit: 07754c136fe9aec827aaabe35b025d31474764a6
- ref: refs/heads/arena/62448c0d-mosaic
--started: 2026-10-24T00:00:53Z
--formatting: fail (code=0, see rustfmt.diff)
--xtask: ok
--clippy: ok
--build: ok
--test: fail (code=101)
--smoke-events: ok
--smoke-machine: ok
--smoke-unicorn: ok
--bringup: ok
--doctor: ok
--finished: 2026-10-24T00:01:48Z
-+started: 2026-10-24T00:15:35Z
+diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+index f71503c..440036b 100644
+--- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
++++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+@@ -274,7 +274,10 @@ mod tests {
+         let attr = attr();
+         // CONTROL keeps only the ENABLE bit, so width masking is observed on
+         // the full-width read-only MIDR (0x4105_9261).
+-        assert_eq!(core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr), Ok(0x61));
++        assert_eq!(
++            core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr),
++            Ok(0x61)
++        );
+         assert_eq!(
+             core.read(&mut ctx, reg::MIDR, AccessSize::HalfWord, &attr),
+             Ok(0x9261)
+diff --git a/catalog/ip/arm/pl022/src/lib.rs b/catalog/ip/arm/pl022/src/lib.rs
+index a884d28..939eb4e 100644
+--- a/catalog/ip/arm/pl022/src/lib.rs
++++ b/catalog/ip/arm/pl022/src/lib.rs
+@@ -25,7 +25,7 @@ extern crate alloc;
+ use alloc::boxed::Box;
+ use alloc::collections::VecDeque;
+ use mosaic_contract_mmio::MmioTarget;
+-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
++use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+ use mosaic_contract_spi::{SpiCs, SpiError, SpiInitiator, SpiMode};
+ use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+ use mosaic_ip_arm_primecell_id::PrimeCellId;
+@@ -388,12 +388,7 @@ mod tests {
+     }
+ 
+     impl SpiInitiator for FakeHandle {
+-        fn select(
+-            &mut self,
+-            _ctx: &mut dyn Ctx,
+-            cs: SpiCs,
+-            assert: bool,
+-        ) -> Result<(), SpiError> {
++        fn select(&mut self, _ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError> {
+             lock(&self.0).selects.push((cs, assert));
+             Ok(())
+         }
+@@ -428,11 +423,7 @@ mod tests {
+         fn now(&self) -> VTime {
+             VTime::ZERO
+         }
+-        fn schedule(
+-            &mut self,
+-            _at: VTime,
+-            _token: u64,
+-        ) -> Result<EventId, ContextError> {
++        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
+             Err(ContextError::ResourceExhausted)
+         }
+         fn cancel(&mut self, _event: EventId) -> bool {
+@@ -462,13 +453,17 @@ mod tests {
+             Pl022Params::new(IRQ),
+             Some(Box::new(FakeHandle(Arc::clone(&fake)))),
+         );
+-        (device, fake, TestCtx { signals: Vec::new() })
++        (
++            device,
++            fake,
++            TestCtx {
++                signals: Vec::new(),
++            },
++        )
+     }
+ 
+     fn read(device: &mut Pl022, ctx: &mut TestCtx, offset: u64) -> u32 {
+-        device
+-            .read(ctx, offset, AccessSize::Word, &attr())
+-            .unwrap() as u32
++        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
+     }
+ 
+     fn write(device: &mut Pl022, ctx: &mut TestCtx, offset: u64, value: u32) {
+@@ -505,7 +500,10 @@ mod tests {
+         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+         assert_eq!(lock(&fake).selects.len(), 1);
+         write(&mut device, &mut ctx, reg::CR1, 0);
+-        assert_eq!(lock(&fake).selects, vec![(SpiCs(0), true), (SpiCs(0), false)]);
++        assert_eq!(
++            lock(&fake).selects,
++            vec![(SpiCs(0), true), (SpiCs(0), false)]
++        );
+     }
+ 
+     #[test]
+@@ -527,7 +525,12 @@ mod tests {
+     #[test]
+     fn cr0_cpol_cpha_reach_the_exchange_mode() {
+         let (mut device, fake, mut ctx) = device();
+-        write(&mut device, &mut ctx, reg::CR0, 0x07 | cr0::CPOL | cr0::CPHA);
++        write(
++            &mut device,
++            &mut ctx,
++            reg::CR0,
++            0x07 | cr0::CPOL | cr0::CPHA,
++        );
+         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+         write(&mut device, &mut ctx, reg::DR, 0x01);
+         assert_eq!(
+@@ -604,7 +607,9 @@ mod tests {
+     #[test]
+     fn unwired_port_tolerates_dr_writes() {
+         let mut device = Pl022::new(Pl022Params::new(IRQ), None);
+-        let mut ctx = TestCtx { signals: Vec::new() };
++        let mut ctx = TestCtx {
++            signals: Vec::new(),
++        };
+         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+         write(&mut device, &mut ctx, reg::DR, 0x55);
+         assert_eq!(read(&mut device, &mut ctx, reg::SR) & sr::RNE, 0);
+diff --git a/catalog/ip/arm/pl061/src/lib.rs b/catalog/ip/arm/pl061/src/lib.rs
+index 213e13b..d9c8f7a 100644
+--- a/catalog/ip/arm/pl061/src/lib.rs
++++ b/catalog/ip/arm/pl061/src/lib.rs
+@@ -29,7 +29,7 @@ extern crate alloc;
+ use alloc::boxed::Box;
+ use mosaic_contract_gpio::{GpioPort, PinConfig, PinDirection, PinLevel, Pull};
+ use mosaic_contract_mmio::MmioTarget;
+-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
++use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+ use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+ use mosaic_ip_arm_primecell_id::PrimeCellId;
+ 
+@@ -145,11 +145,7 @@ impl Pl061 {
+ 
+     /// ピンにポートを接続する。接続時点のレベルをエッジ検出の基準に
+     /// 採用する（リセット直後のスパurious エッジを防ぐ）。
+-    pub fn attach_pin(
+-        &mut self,
+-        pin: u8,
+-        port: Box<dyn GpioPort>,
+-    ) -> Result<(), Pl061Error> {
++    pub fn attach_pin(&mut self, pin: u8, port: Box<dyn GpioPort>) -> Result<(), Pl061Error> {
+         if usize::from(pin) >= PINS {
+             return Err(Pl061Error::PinOutOfRange);
+         }
+@@ -445,11 +441,7 @@ mod tests {
+         fn now(&self) -> VTime {
+             VTime::ZERO
+         }
+-        fn schedule(
+-            &mut self,
+-            _at: VTime,
+-            _token: u64,
+-        ) -> Result<EventId, ContextError> {
++        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
+             Err(ContextError::ResourceExhausted)
+         }
+         fn cancel(&mut self, _event: EventId) -> bool {
+@@ -489,15 +481,15 @@ mod tests {
+         }
+         Bench {
+             device,
+-            ctx: TestCtx { signals: Vec::new() },
++            ctx: TestCtx {
++                signals: Vec::new(),
++            },
+             probes,
+         }
+     }
+ 
+     fn read(device: &mut Pl061, ctx: &mut TestCtx, offset: u64) -> u32 {
+-        device
+-            .read(ctx, offset, AccessSize::Word, &attr())
+-            .unwrap() as u32
++        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
+     }
+ 
+     fn write(device: &mut Pl061, ctx: &mut TestCtx, offset: u64, value: u32) {
+@@ -678,19 +670,17 @@ mod tests {
+         assert_eq!(read(&mut bench.device, &mut bench.ctx, 0x500), 0);
+         write(&mut bench.device, &mut bench.ctx, 0x500, 1);
+         assert_eq!(
+-            bench.device.write(
+-                &mut bench.ctx,
+-                reg::DIR,
+-                AccessSize::DoubleWord,
+-                0,
+-                &attr()
+-            ),
++            bench
++                .device
++                .write(&mut bench.ctx, reg::DIR, AccessSize::DoubleWord, 0, &attr()),
+             Err(BusFault::InvalidSize)
+         );
+         let mut params = Pl061Params::new(IRQ);
+         params.unmapped = UnmappedPolicy::Fault;
+         let mut strict = Pl061::new(params);
+-        let mut ctx = TestCtx { signals: Vec::new() };
++        let mut ctx = TestCtx {
++            signals: Vec::new(),
++        };
+         assert_eq!(
+             strict.read(&mut ctx, 0x500, AccessSize::Word, &attr()),
+             Err(BusFault::Device)
+diff --git a/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs b/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
+index 92d01f9..ad8adc2 100644
+--- a/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
++++ b/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
+@@ -33,7 +33,7 @@ use alloc::collections::VecDeque;
+ use alloc::vec::Vec;
+ use mosaic_contract_i2c::{I2cAddr, I2cError, I2cInitiator, I2cSpeed};
+ use mosaic_contract_mmio::MmioTarget;
+-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
++use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+ use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+ 
+ /// DW_apb_i2c レジスタオフセット（APB_DATA_WIDTH = 32 の構成）。
+@@ -116,8 +116,15 @@ mod intr {
+ 
+     /// IC_CLR_INTR が落とすビット群（TX_ABRT/TX_EMPTY/RX_FULL は専用
+     /// クリアかレベル条件なので含まれない）。
+-    pub const CLR_INTR_MASK: u32 =
+-        RX_UNDER | RX_OVER | TX_OVER | RD_REQ | RX_DONE | ACTIVITY | STOP_DET | START_DET | GEN_CALL;
++    pub const CLR_INTR_MASK: u32 = RX_UNDER
++        | RX_OVER
++        | TX_OVER
++        | RD_REQ
++        | RX_DONE
++        | ACTIVITY
++        | STOP_DET
++        | START_DET
++        | GEN_CALL;
+ }
+ 
+ /// IC_TX_ABRT_SOURCE の主要ビット。
+@@ -727,7 +734,8 @@ mod tests {
+             input: &mut [u8],
+         ) -> Result<(), I2cError> {
+             let mut fake = lock(&self.0);
+-            fake.ops.push(Op::WriteRead(addr, out.to_vec(), input.len()));
++            fake.ops
++                .push(Op::WriteRead(addr, out.to_vec(), input.len()));
+             if let Some(error) = fake.fail {
+                 return Err(error);
+             }
+@@ -749,11 +757,7 @@ mod tests {
+         fn now(&self) -> VTime {
+             VTime::ZERO
+         }
+-        fn schedule(
+-            &mut self,
+-            _at: VTime,
+-            _token: u64,
+-        ) -> Result<EventId, ContextError> {
++        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
+             Err(ContextError::ResourceExhausted)
+         }
+         fn cancel(&mut self, _event: EventId) -> bool {
+@@ -783,13 +787,17 @@ mod tests {
+             DwApbI2cParams::new(IRQ),
+             Box::new(FakeHandle(Arc::clone(&fake))),
+         );
+-        (device, fake, TestCtx { signals: Vec::new() })
++        (
++            device,
++            fake,
++            TestCtx {
++                signals: Vec::new(),
++            },
++        )
+     }
+ 
+     fn read(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64) -> u32 {
+-        device
+-            .read(ctx, offset, AccessSize::Word, &attr())
+-            .unwrap() as u32
++        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
+     }
+ 
+     fn write(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64, value: u32) {
+@@ -819,7 +827,10 @@ mod tests {
+     fn data_cmd_is_ignored_while_disabled() {
+         let (mut device, fake, mut ctx) = device();
+         write(&mut device, &mut ctx, reg::DATA_CMD, 0xD0 | data_cmd::STOP);
+-        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
++        assert_eq!(
++            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
++            0
++        );
+         assert!(lock(&fake).ops.is_empty());
+     }
+ 
+@@ -831,7 +842,10 @@ mod tests {
+         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
+         // STOP 前はキューに積まれるだけ。
+         assert_eq!(lock(&fake).ops.len(), 0);
+-        assert_ne!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
++        assert_ne!(
++            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
++            0
++        );
+         write(&mut device, &mut ctx, reg::DATA_CMD, 0x01 | data_cmd::STOP);
+         assert_eq!(
+             lock(&fake).ops,
+@@ -897,10 +911,7 @@ mod tests {
+         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 2);
+         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x00);
+         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x01);
+-        assert_eq!(
+-            read(&mut device, &mut ctx, reg::STATUS) & status::RFNE,
+-            0
+-        );
++        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::RFNE, 0);
+     }
+ 
+     #[test]
+@@ -910,7 +921,12 @@ mod tests {
+         write(&mut device, &mut ctx, reg::TAR, 0x76);
+         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
+         write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ);
+-        write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ | data_cmd::STOP);
++        write(
++            &mut device,
++            &mut ctx,
++            reg::DATA_CMD,
++            data_cmd::CMD_READ | data_cmd::STOP,
++        );
+         assert_eq!(
+             lock(&fake).ops,
+             vec![
+@@ -1000,7 +1016,10 @@ mod tests {
+         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
+         write(&mut device, &mut ctx, reg::ENABLE, 0);
+         assert!(lock(&fake).ops.is_empty());
+-        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
++        assert_eq!(
++            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
++            0
++        );
+         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 0);
+         assert_eq!(
+             read(&mut device, &mut ctx, reg::RAW_INTR_STAT) & intr::TX_EMPTY,
+@@ -1063,19 +1082,15 @@ mod tests {
+         assert_eq!(read(&mut device, &mut ctx, 0x0A0), 0);
+         write(&mut device, &mut ctx, 0x0A0, 1);
+         assert_eq!(
+-            device.write(
+-                &mut ctx,
+-                reg::DATA_CMD,
+-                AccessSize::DoubleWord,
+-                0,
+-                &attr()
+-            ),
++            device.write(&mut ctx, reg::DATA_CMD, AccessSize::DoubleWord, 0, &attr()),
+             Err(BusFault::InvalidSize)
+         );
+         let mut strict = DwApbI2cParams::new(IRQ);
+         strict.unmapped = UnmappedPolicy::Fault;
+-        let mut strict_device =
+-            DwApbI2c::new(strict, Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))));
++        let mut strict_device = DwApbI2c::new(
++            strict,
++            Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))),
++        );
+         assert_eq!(
+             strict_device.read(&mut ctx, 0x0A0, AccessSize::Word, &attr()),
+             Err(BusFault::Device)
+diff --git a/catalog/parts/bosch/bme280/src/bind_i2c.rs b/catalog/parts/bosch/bme280/src/bind_i2c.rs
+index 1518fe5..eafcb90 100644
+--- a/catalog/parts/bosch/bme280/src/bind_i2c.rs
++++ b/catalog/parts/bosch/bme280/src/bind_i2c.rs
+@@ -139,11 +139,9 @@ mod tests {
+         assert_eq!(&buf[3..6], &[0x7E, 0xED, 0x00]);
+         assert_eq!(&buf[6..8], &[0x80, 0x00]);
+         assert_eq!(buf[8], 0x00); // 0xFF は未使用領域
+-        // ポインタは 0xFF の次で 0x00 へ折り返す。
++                                  // ポインタは 0xFF の次で 0x00 へ折り返す。
+         let mut wrapped = [0u8; 1];
+-        device
+-            .target_read(&mut ctx, &addr, &mut wrapped)
+-            .unwrap();
++        device.target_read(&mut ctx, &addr, &mut wrapped).unwrap();
+         assert_eq!(wrapped[0], 0x00);
+     }
+ 
+@@ -152,7 +150,9 @@ mod tests {
+         let mut device = part();
+         let mut ctx = CtxStub;
+         let addr = I2cAddr::Seven(0x76);
+-        device.target_write(&mut ctx, &addr, &[reg::CHIP_ID]).unwrap();
++        device
++            .target_write(&mut ctx, &addr, &[reg::CHIP_ID])
++            .unwrap();
+         let mut id = [0u8; 1];
+         device.target_read(&mut ctx, &addr, &mut id).unwrap();
+         assert_eq!(id[0], CHIP_ID_BME280);
+@@ -168,11 +168,15 @@ mod tests {
+         device
+             .target_write(&mut ctx, &addr, &[reg::CTRL_HUM, 0x01, 0x00, 0x25, 0xA0])
+             .unwrap();
+-        device.target_write(&mut ctx, &addr, &[reg::CTRL_MEAS]).unwrap();
++        device
++            .target_write(&mut ctx, &addr, &[reg::CTRL_MEAS])
++            .unwrap();
+         let mut buf = [0u8; 2];
+         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
+         assert_eq!(buf, [0x25, 0xA0]); // ctrl_meas, config
+-        device.target_write(&mut ctx, &addr, &[reg::CTRL_HUM]).unwrap();
++        device
++            .target_write(&mut ctx, &addr, &[reg::CTRL_HUM])
++            .unwrap();
+         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
+         assert_eq!(buf, [0x01, 0x00]); // ctrl_hum、status は常に 0
+     }
+diff --git a/catalog/parts/bosch/bme280/src/bind_spi.rs b/catalog/parts/bosch/bme280/src/bind_spi.rs
+index 23cfae3..d03c7a2 100644
+--- a/catalog/parts/bosch/bme280/src/bind_spi.rs
++++ b/catalog/parts/bosch/bme280/src/bind_spi.rs
+@@ -177,7 +177,9 @@ mod tests {
+         // 再アサート後の 1 バイト目はコマンドとして解釈される（ダミー 0x00）。
+         device.selected(&mut ctx, true);
+         assert_eq!(
+-            device.exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80).unwrap(),
++            device
++                .exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80)
++                .unwrap(),
+             0x00
+         );
+         assert_eq!(
+diff --git a/catalog/parts/bosch/bme280/src/lib.rs b/catalog/parts/bosch/bme280/src/lib.rs
+index 9822c6e..d5224da 100644
+--- a/catalog/parts/bosch/bme280/src/lib.rs
++++ b/catalog/parts/bosch/bme280/src/lib.rs
+@@ -149,8 +149,8 @@ impl Calibration {
+         let var2 = var1 * var1 * i64::from(self.dig_p6)
+             + ((var1 * i64::from(self.dig_p5)) << 17)
+             + (i64::from(self.dig_p4) << 35);
+-        let var1 = ((var1 * var1 * i64::from(self.dig_p3)) >> 8)
+-            + ((var1 * i64::from(self.dig_p2)) << 12);
++        let var1 =
++            ((var1 * var1 * i64::from(self.dig_p3)) >> 8) + ((var1 * i64::from(self.dig_p2)) << 12);
+         let var1 = ((1i64 << 47) + var1) * i64::from(self.dig_p1) >> 33;
+         if var1 == 0 {
+             return 0;
+@@ -256,16 +256,8 @@ impl Bme280Core {
+ 
+         bank[usize::from(reg::CHIP_ID)] = CHIP_ID_BME280;
+         // status / ctrl_hum / ctrl_meas / config / reset は POR = 0x00。
+-        Self::encode_20bit(
+-            &mut bank,
+-            reg::PRESS_MSB,
+-            scene.adc_p & 0x000F_FFFF,
+-        );
+-        Self::encode_20bit(
+-            &mut bank,
+-            reg::TEMP_MSB,
+-            scene.adc_t & 0x000F_FFFF,
+-        );
++        Self::encode_20bit(&mut bank, reg::PRESS_MSB, scene.adc_p & 0x000F_FFFF);
++        Self::encode_20bit(&mut bank, reg::TEMP_MSB, scene.adc_t & 0x000F_FFFF);
+         bank[usize::from(reg::HUM_MSB)] = (scene.adc_h >> 8) as u8;
+         bank[usize::from(reg::HUM_MSB) + 1] = (scene.adc_h & 0xFF) as u8;
+         Self { bank }
+@@ -312,10 +304,8 @@ impl Bme280Core {
+             read_u16_le(&self.bank[tp + index * 2..tp + index * 2 + 2]).unwrap_or(0)
+         };
+         let h_base = usize::from(reg::CALIB_H_START);
+-        let h4 = (u16::from(self.bank[h_base + 3]) << 4)
+-            | u16::from(self.bank[h_base + 4] & 0x0F);
+-        let h5 = (u16::from(self.bank[h_base + 5]) << 4)
+-            | u16::from(self.bank[h_base + 4] >> 4);
++        let h4 = (u16::from(self.bank[h_base + 3]) << 4) | u16::from(self.bank[h_base + 4] & 0x0F);
++        let h5 = (u16::from(self.bank[h_base + 5]) << 4) | u16::from(self.bank[h_base + 4] >> 4);
+         Calibration {
+             dig_t1: word(0),
+             dig_t2: word(1) as i16,
+diff --git a/catalog/parts/ti/tca9548a/src/lib.rs b/catalog/parts/ti/tca9548a/src/lib.rs
+index bff5d90..cac7edb 100644
+--- a/catalog/parts/ti/tca9548a/src/lib.rs
++++ b/catalog/parts/ti/tca9548a/src/lib.rs
+@@ -63,11 +63,7 @@ impl Tca9548a {
+     }
+ 
+     /// チャネルに部品を接続する。再アタッチは前の部品を置き換える。
+-    pub fn attach(
+-        &mut self,
+-        channel: u8,
+-        target: Box<dyn I2cTarget>,
+-    ) -> Result<(), Tca9548aError> {
++    pub fn attach(&mut self, channel: u8, target: Box<dyn I2cTarget>) -> Result<(), Tca9548aError> {
+         if channel >= CHANNELS {
+             return Err(Tca9548aError::ChannelOutOfRange);
+         }
+@@ -102,14 +98,10 @@ impl Tca9548a {
+ impl I2cTarget for Tca9548a {
+     fn matches(&self, addr: &I2cAddr) -> bool {
+         *addr == self.address
+-            || self
+-                .downstream
+-                .iter()
+-                .enumerate()
+-                .any(|(channel, target)| {
+-                    self.control & (1 << channel as u8) != 0
+-                        && target.as_ref().is_some_and(|t| t.matches(addr))
+-                })
++            || self.downstream.iter().enumerate().any(|(channel, target)| {
++                self.control & (1 << channel as u8) != 0
++                    && target.as_ref().is_some_and(|t| t.matches(addr))
++            })
+     }
+ 
+     fn target_write(
+@@ -266,9 +258,7 @@ mod tests {
+     fn downstream_parts_are_invisible_until_enabled() {
+         let mut device = mux();
+         let mut ctx = CtxStub;
+-        device
+-            .attach(3, Box::new(PointerPart::new(0x77)))
+-            .unwrap();
++        device.attach(3, Box::new(PointerPart::new(0x77))).unwrap();
+         let part_addr = I2cAddr::Seven(0x77);
+         assert!(!device.matches(&part_addr));
+         assert_eq!(
+@@ -279,9 +269,7 @@ mod tests {
+             .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 3])
+             .unwrap();
+         assert!(device.matches(&part_addr));
+-        device
+-            .target_write(&mut ctx, &part_addr, &[0x20])
+-            .unwrap();
++        device.target_write(&mut ctx, &part_addr, &[0x20]).unwrap();
+         let mut buf = [0u8; 1];
+         device.target_read(&mut ctx, &part_addr, &mut buf).unwrap();
+         assert_eq!(buf[0], 0x20);
+@@ -291,12 +279,8 @@ mod tests {
+     fn disabled_channels_do_not_leak_forwarded_frames() {
+         let mut device = mux();
+         let mut ctx = CtxStub;
+-        device
+-            .attach(0, Box::new(PointerPart::new(0x50)))
+-            .unwrap();
+-        device
+-            .attach(1, Box::new(PointerPart::new(0x50)))
+-            .unwrap();
++        device.attach(0, Box::new(PointerPart::new(0x50))).unwrap();
++        device.attach(1, Box::new(PointerPart::new(0x50))).unwrap();
+         // 同じアドレスの部品が 2 チャネルにあっても、イネーブルされた
+         // 側のインスタンスだけがフレームを受け取る。
+         device
 diff --git a/framework/interconnect/i2c-bus/src/lib.rs b/framework/interconnect/i2c-bus/src/lib.rs
 index 578b7ba..7f3e242 100644
 --- a/framework/interconnect/i2c-bus/src/lib.rs

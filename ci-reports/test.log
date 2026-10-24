@@ -1,22 +1,19 @@
-[1m[32m   Compiling[0m cexpr v0.6.0
-[1m[32m   Compiling[0m mosaic-interconnect-i2c-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/i2c-bus)
-[1m[32m   Compiling[0m mosaic-interconnect-gpio-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/gpio-net)
-[1m[32m   Compiling[0m mosaic-interconnect-pinmux v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/pinmux)
-[1m[32m   Compiling[0m mosaic-cpu-arm-arm926ej-s v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/arm/arm926ej-s)
-[1m[32m   Compiling[0m mosaic-contract-clock v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/clock)
-[1m[32m   Compiling[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
-[0m[1m[38;5;9merror[E0502][0m[0m[1m: cannot borrow `read` as immutable because it is also borrowed as mutable[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/interconnect/i2c-bus/src/lib.rs:754:43[0m
+[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
+[1m[32m   Compiling[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
+[1m[32m   Compiling[0m mosaic-part-bosch-bme280 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/parts/bosch/bme280)
+[1m[32m   Compiling[0m mosaic-ip-arm-pl022 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl022)
+[0m[1m[38;5;9merror[E0502][0m[0m[1m: cannot borrow `*self` as immutable because it is also borrowed as mutable[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcatalog/ip/arm/pl022/src/lib.rs:241:20[0m
 [0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m745[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        for (index, byte) in read.iter_mut().enumerate() {[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12m---------------------------[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12m|[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12mmutable borrow occurs here[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12mmutable borrow later used here[0m
+[0m[1m[38;5;12m238[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let Some(initiator) = self.initiator.as_mut() else {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;12m--------------[0m[0m [0m[0m[1m[38;5;12mmutable borrow occurs here[0m
 [0m[1m[38;5;12m...[0m
-[0m[1m[38;5;12m754[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            let final_byte = index + 1 == read.len();[0m
-[0m    [0m[0m[1m[38;5;12m|[0m[0m                                           [0m[0m[1m[38;5;9m^^^^[0m[0m [0m[0m[1m[38;5;9mimmutable borrow occurs here[0m
+[0m[1m[38;5;12m241[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let mode = self.mode();[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^[0m[0m [0m[0m[1m[38;5;9mimmutable borrow occurs here[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m244[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        match initiator.exchange(ctx, self.params.cs, mode, &mosi, &mut miso) {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mmutable borrow later used here[0m
 
 [0m[1mFor more information about this error, try `rustc --explain E0502`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-interconnect-i2c-bus` (lib test) due to 1 previous error
+[1m[31merror[0m[1m:[0m could not compile `mosaic-ip-arm-pl022` (lib) due to 1 previous error
 [1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
