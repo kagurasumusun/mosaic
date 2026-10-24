@@ -254,6 +254,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-apps-stm32f103"
+version = "0.1.0"
+dependencies = [
+ "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-model",
+ "mosaic-contract-signal",
+ "mosaic-core-runtime",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-interconnect-uart-pair",
+ "mosaic-ip-arm-scs",
+ "mosaic-ip-st-gpio-f1",
+ "mosaic-ip-st-rcc-f1",
+ "mosaic-ip-st-usart-f1",
+ "mosaic-isa-arm",
+]
+
+[[package]]
 name = "mosaic-apps-vic-thermal"
 version = "0.1.0"
 dependencies = [
@@ -554,6 +573,15 @@ name = "mosaic-ip-arm-primecell-id"
 version = "0.1.0"
 
 [[package]]
+name = "mosaic-ip-arm-scs"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
 name = "mosaic-ip-arm-sp804"
 version = "0.1.0"
 dependencies = [
@@ -561,6 +589,34 @@ dependencies = [
  "mosaic-contract-model",
  "mosaic-core-types",
  "mosaic-ip-arm-primecell-id",
+]
+
+[[package]]
+name = "mosaic-ip-st-gpio-f1"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-st-rcc-f1"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-st-usart-f1"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-contract-stream",
+ "mosaic-core-types",
 ]
 
 [[package]]
