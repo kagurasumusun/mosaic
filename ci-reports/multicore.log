@@ -3,11 +3,11 @@
 [1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
 [1m[32m   Compiling[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
 [1m[32m   Compiling[0m mosaic-apps-multicore v0.1.0 (/home/runner/work/mosaic/mosaic/apps/multicore)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1.15s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1.75s
 [1m[32m     Running[0m `target/debug/mosaic-apps-multicore`
 console="smp=61\namp=bf\n"
 shared=21 61 40 BF
 mhu_stat=0 0 0
 edges c0=TFTF c1=TF c2=TF
 hooks=[3072, 3072, 3072] events=8 rounds=48 quantum=64 budget=32
-elapsed_us=10703 instr_per_s=861066
+elapsed_us=14190 instr_per_s=649471
