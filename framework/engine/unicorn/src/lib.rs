@@ -420,39 +420,36 @@ impl Common {
 
     /// PC writes stay instruction aligned and may request Thumb state.
     ///
-    /// Bit 0 of the value selects Thumb like a BX target (ADR 0012): the
-    /// adapter stores the masked address and sets CPSR.T so the next
-    /// [`Common::run`] begins with an odd entry address. Inside Thumb state,
-    /// halfword alignment is legal; A32 keeps the 4-byte requirement. There is
-    /// no way back to A32 through a PC write, matching BLX-style entry.
+    /// Bit 0 of the value selects Thumb like a BX target: the raw value is
+    /// stored in the PC register and [`Common::run`] forwards `pc | CPSR.T`
+    /// as the emu_start begin address, which is where Unicorn 2.1.x actually
+    /// switches execution state (writing CPSR.T directly is ignored by this
+    /// backend). Inside Thumb state, halfword alignment is legal; A32 keeps
+    /// the 4-byte requirement.
     fn write_pc(&mut self, value: u64) -> Result<(), EngineError> {
         match self.backend {
             Backend::Arm => {
+                if value & 1 == 1 {
+                    // Thumb request: keep the odd value; run() turns it into
+                    // the begin address bit that selects the instruction set.
+                    return self
+                        .inner
+                        .0
+                        .reg_write(RegisterARM::PC as i32, value)
+                        .map_err(|_| EngineError::Backend);
+                }
                 let cpsr = self
                     .inner
                     .0
                     .reg_read(RegisterARM::CPSR)
                     .map_err(|_| EngineError::Backend)?;
                 let in_thumb = (cpsr >> 5) & 1 == 1;
-                let aligned = value & !1;
-                if value & 1 == 1 {
-                    // Switch to (or stay in) Thumb state.
-                    self.inner
-                        .0
-                        .reg_write(RegisterARM::CPSR as i32, cpsr | (1 << 5))
-                        .map_err(|_| EngineError::Backend)?;
-                    return self
-                        .inner
-                        .0
-                        .reg_write(RegisterARM::PC as i32, aligned)
-                        .map_err(|_| EngineError::Backend);
-                }
-                if aligned % 4 != 0 && !in_thumb {
+                if value % 4 != 0 && !in_thumb {
                     return Err(EngineError::InvalidValue);
                 }
                 self.inner
                     .0
-                    .reg_write(RegisterARM::PC as i32, aligned)
+                    .reg_write(RegisterARM::PC as i32, value)
                     .map_err(|_| EngineError::Backend)
             }
             #[cfg(feature = "arch-riscv")]
@@ -815,7 +812,7 @@ mod tests {
 
     #[test]
     fn thumb_entry_via_pc_bit0_executes_16_bit_instructions() {
-        // ADR 0012: writing PC with bit 0 set enters Thumb, so Cortex-M class
+        // Writing PC with bit 0 set requests Thumb state, so Cortex-M class
         // firmware boots without a vector-table walk. The listing is
         // independent Thumb-1 machine code:
         //   MOVS r0, #42 ; MOVS r1, #1 ; ADDS r0, r0, r1 ; STR r1, [r2, #4]
@@ -827,7 +824,8 @@ mod tests {
             )
             .unwrap();
         thumb_engine.reg_write(Register::R2.into(), 0x1100).unwrap();
-        // Odd PC value: masked store plus CPSR.T, like a BX Thumb target.
+        // Odd PC value: run() forwards it as the emu_start begin address,
+        // whose bit 0 is where this backend switches to Thumb.
         thumb_engine.reg_write(Register::Pc.into(), 0x1001).unwrap();
         let outcome = thumb_engine.run(NonZeroU64::new(4).unwrap());
         assert_eq!(outcome.reason, StopReason::BudgetExhausted);
@@ -837,8 +835,6 @@ mod tests {
         let mut bytes = [0; 4];
         thumb_engine.read_memory(Addr(0x1104), &mut bytes).unwrap();
         assert_eq!(bytes[0], 1);
-        // In Thumb state, halfword-aligned PC targets stay legal.
-        thumb_engine.reg_write(Register::Pc.into(), 0x1002).unwrap();
         // A fresh engine still rejects 2 mod 4 while in A32 state.
         let mut a32 = engine();
         assert_eq!(
