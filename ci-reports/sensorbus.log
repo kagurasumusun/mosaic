@@ -1,7 +1,30 @@
-[1m[32m   Compiling[0m mosaic-apps-sensorbus v0.1.0 (/home/runner/work/mosaic/mosaic/apps/sensorbus)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
-[1m[32m     Running[0m `target/debug/mosaic-apps-sensorbus`
-console="ctl=60 bb=60 spi=60\n"
-hooks=1024 events=0 irq_edges=0
-probes ctrl_meas=25 mux_hidden=true mux_routed=60 phases bus=36 pins=19
-elapsed_us=17005 instr_per_s=60217
+[1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
+[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:237:28[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m237[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                .mem_write(base, &bytes)[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                  [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;9m^^^^[0m[0m [0m[0m[1m[38;5;9mexpected `u64`, found `&u64`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                  [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                  [0m[0m[1m[38;5;12marguments to this method are incorrect[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;10mnote[0m[0m: method defined here[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/unicorn-engine-2.1.5/src/lib.rs:366:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m366[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mem_write(&mut self, address: u64, bytes: &[u8]) -> Result<(), uc_error> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;10m^^^^^^^^^[0m
+[0m[1m[38;5;14mhelp[0m[0m: consider dereferencing the borrow[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m237[0m[0m [0m[0m[1m[38;5;12m| [0m[0m                .mem_write([0m[0m[38;5;10m*[0m[0mbase, &bytes)[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                            [0m[0m[38;5;10m+[0m
+
+[0m[1m[33mwarning[0m[0m[1m: unused variable: `permissions`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:209:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m209[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        permissions: Permissions,[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[33m^^^^^^^^^^^[0m[0m [0m[0m[1m[33mhelp: if this is intentional, prefix it with an underscore: `_permissions`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_variables)]` on by default[0m
+
+[0m[1mFor more information about this error, try `rustc --explain E0308`.[0m
+[1m[33mwarning[0m[1m:[0m `mosaic-engine-unicorn` (lib) generated 1 warning
+[1m[31merror[0m[1m:[0m could not compile `mosaic-engine-unicorn` (lib) due to 1 previous error; 1 warning emitted
