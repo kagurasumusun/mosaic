@@ -791,12 +791,14 @@ mod tests {
             core.map_shared_memory(Addr(0x10000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
                 .unwrap();
         }
-        // MOV r0,#0xAB; LDR r1,[pc,#4]; STRB r0,[r1]; .word 0x00010000
+        // MOV r0,#0xAB; LDR r1,[pc,#4]; STRB r0,[r1]; B .; .word 0x00010000
+        // The literal sits at +0x10 from the load, so the load uses +4.
         first
             .write_memory(
                 Addr(0x1000),
                 &[
-                    0xab, 0, 0xa0, 0xe3, 4, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0,
+                    0xab, 0, 0xa0, 0xe3, 4, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0xfe, 0xff, 0xff,
+                    0xea, 0, 0, 1, 0,
                 ],
             )
             .unwrap();
