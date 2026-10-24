@@ -1,7 +1,7 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40066555840
-commit: fdbc3e78188a3f24f24e26f4d6122253d970f2fc
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40068169708
+commit: a24eb8e5f2060d2cdb32a7ae82764e77e4c9d508
 ref: refs/heads/arena/2a3cfb40-mosaic
-started: 2026-10-24T05:31:25Z
+started: 2026-10-24T05:56:06Z
 formatting: ok
 xtask: ok
 clippy: ok
@@ -9,9 +9,10 @@ build: ok
 test: ok
 smoke-events: ok
 smoke-machine: ok
+smoke-snapshot: ok
 smoke-unicorn: ok
 bringup: ok
 sensorbus: ok
 multicore: ok
 doctor: ok
-finished: 2026-10-24T05:32:38Z
+finished: 2026-10-24T05:56:55Z
