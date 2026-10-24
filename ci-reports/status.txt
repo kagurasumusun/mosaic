@@ -1,17 +1,17 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40059664827
-commit: c64207947d3fa8eae72ed2a962540021608fbaa4
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40059912406
+commit: 18cc83ece62fe6b60a0a9bbc5b236ede337ef00c
 ref: refs/heads/arena/62448c0d-mosaic
-started: 2026-10-24T03:46:44Z
-formatting: ok
+started: 2026-10-24T03:50:39Z
+formatting: fail (code=0, see rustfmt.diff)
 xtask: ok
 clippy: fail (code=101)
-build: fail (code=101)
+build: ok
 test: fail (code=101)
 smoke-events: ok
 smoke-machine: ok
-smoke-unicorn: fail (run=101 diff=1)
-bringup: fail (code=101)
-sensorbus: fail (code=101)
-multicore: fail (code=101)
+smoke-unicorn: ok
+bringup: ok
+sensorbus: ok
+multicore: ok
 doctor: ok
-finished: 2026-10-24T03:47:30Z
+finished: 2026-10-24T03:51:59Z

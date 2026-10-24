@@ -1,0 +1,32 @@
+diff --git a/framework/assemble/src/lib.rs b/framework/assemble/src/lib.rs
+index c1525ee..a6e5309 100644
+--- a/framework/assemble/src/lib.rs
++++ b/framework/assemble/src/lib.rs
+@@ -23,10 +23,6 @@ mod unicorn_bind;
+ #[cfg(feature = "unicorn")]
+ pub use driver::{DriverError, MachineDriver, StepReport};
+ #[cfg(feature = "unicorn")]
+-pub use multicore::{
+-    MulticoreDriver, MulticoreError, RoundReport, DEFAULT_PS_PER_INSTRUCTION,
+-};
++pub use multicore::{MulticoreDriver, MulticoreError, RoundReport, DEFAULT_PS_PER_INSTRUCTION};
+ #[cfg(feature = "unicorn")]
+-pub use unicorn_bind::{
+-    bind_flat_view, bind_flat_view_shared, BindError, EngineMap, SharedRegion,
+-};
++pub use unicorn_bind::{bind_flat_view, bind_flat_view_shared, BindError, EngineMap, SharedRegion};
+diff --git a/framework/assemble/src/multicore.rs b/framework/assemble/src/multicore.rs
+index d65faf6..b5ac736 100644
+--- a/framework/assemble/src/multicore.rs
++++ b/framework/assemble/src/multicore.rs
+@@ -124,9 +124,7 @@ impl MulticoreDriver {
+     /// Engine of one core for inspection between rounds (registers, recorded
+     /// interrupt edges). `None` when the index was never added.
+     pub fn core(&self, index: usize) -> Option<&dyn CpuEngine> {
+-        self.cores
+-            .get(index)
+-            .map(|slot| slot.engine.as_ref())
++        self.cores.get(index).map(|slot| slot.engine.as_ref())
+     }
+ 
+     pub fn machine(&self) -> Arc<Mutex<Machine>> {
