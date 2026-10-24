@@ -8,7 +8,6 @@
 //! [`MachineBus`]. The FlatView stays the single source of truth: nothing
 //! here invents an address range.
 
-use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
@@ -400,9 +399,9 @@ mod tests {
 
         // Guest store through the first core is instantly visible to the
         // second core and to host-side readers (design §12.3 rule 1).
-        // MOV r0,#0xAB; LDR r1,[pc,#0]; STRB r0,[r1]; B .; .word 0x00010000
+        // MOV r0,#0xAB; LDR r1,[pc,#4]; STRB r0,[r1]; B .; .word 0x00010000
         let code = [
-            0xabu8, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0xfe, 0xff, 0xff, 0xea,
+            0xabu8, 0, 0xa0, 0xe3, 4, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0xfe, 0xff, 0xff, 0xea,
             0, 0, 1, 0,
         ];
         machine.lock().unwrap().loader_write(RAM, 0, &code).unwrap();

@@ -791,12 +791,12 @@ mod tests {
             core.map_shared_memory(Addr(0x10000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
                 .unwrap();
         }
-        // MOV r0,#0xAB; LDR r1,[pc,#0]; STRB r0,[r1]; .word 0x00010000
+        // MOV r0,#0xAB; LDR r1,[pc,#4]; STRB r0,[r1]; .word 0x00010000
         first
             .write_memory(
                 Addr(0x1000),
                 &[
-                    0xab, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0,
+                    0xab, 0, 0xa0, 0xe3, 4, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0,
                 ],
             )
             .unwrap();

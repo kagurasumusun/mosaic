@@ -13,7 +13,7 @@
 use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
-use mosaic_contract_cpu_engine::{CpuEngine, EngineError, RunOutcome, StopReason};
+use mosaic_contract_cpu_engine::{CpuEngine, RunOutcome, StopReason};
 use mosaic_core_runtime::Machine;
 use mosaic_core_types::VTime;
 
@@ -124,9 +124,7 @@ impl MulticoreDriver {
     /// Engine of one core for inspection between rounds (registers, recorded
     /// interrupt edges). `None` when the index was never added.
     pub fn core(&self, index: usize) -> Option<&dyn CpuEngine> {
-        self.cores
-            .get(index)
-            .map(|slot| slot.engine.as_ref())
+        self.cores.get(index).map(|slot| slot.engine.as_ref())
     }
 
     pub fn machine(&self) -> Arc<Mutex<Machine>> {
