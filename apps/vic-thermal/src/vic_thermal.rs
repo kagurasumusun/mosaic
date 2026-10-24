@@ -161,7 +161,7 @@ impl I2cInitiator for SharedInitiator {
 /// INTENABLE for lines 10+12, slot 0 = line 12 with vector `0x00BEEF00`;
 /// one I2C batch (write pointer=Temp, read 2) whose result is printed as
 /// `t=`; one batch writing Conf=OS_POL and Tos=24.5 °C so the OS line rises
-/// through the VIC (`v=00001400` after the polling loop); IACK `k=00beef00`
+/// through the VIC (`v=00001400` after the polling loop); IACK `k=00BEEF00`
 /// plus EOI; CLR_INTR on the controller dropping line 10 (`c=00001000`).
 static FIRMWARE_WORDS: [u32; 92] = [
     0xE3A01001, 0xE3811C01, 0xE5881030, 0xE3A00048, 0xE58A0004, 0xE3A00001, 0xE58A006C, 0xE3A00C02,
@@ -352,7 +352,7 @@ pub fn run_vic_thermal() -> Result<VicThermalReport, String> {
 /// register (25.0 °C as 0x1900), the aggregated VIC status (I2C line 10 plus
 /// the thermostat OS line 12), the IACK vector read, and the status after the
 /// I2C interrupt clear leaves only the OS line.
-pub const GOLDEN_OUTPUT: &[u8] = b"t=00001900 v=00001400 k=00beef00 c=00001000\n";
+pub const GOLDEN_OUTPUT: &[u8] = b"t=00001900 v=00001400 k=00BEEF00 c=00001000\n";
 
 #[cfg(test)]
 mod tests {
