@@ -65,13 +65,14 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
   CI の golden test（`ci-reports/sensorbus.log`）で検証します。
 - P3 マルチコア・ヘテロジニアス: `framework/assemble` の `MulticoreDriver` が固定順ラウンドロビンの
   量子スケジューラを提供し、`Machine` はマスターごとの FlatView（コア別ビュー）を解決します。
-  共有 RAM は 1 つのホストバッファを各エンジン実例へ写像します（Unicorn 2.1.x の
-  `uc_mem_map_ptr`、コア上交差参照は実験で確認済み、ADR 0010）。
+  共有 RAM は正本バッファと各エンジンのミラーを持ち、量子境界で同期します
+  （Unicorn 2.1.x の `uc_mem_map_ptr` は**ゲストから読み取り可能だが書き込みは
+  fault する**ことを実験で確認したため、ADR 0010 に記録）。
   ISA 語彙 crate は ISA ごとに追加でき（`framework/isa/arm`, `framework/isa/riscv`）、
   エンジンは `arch-*` feature で ISA 集合を絞ります（設計書 §12.1/§12.3/§12.4）。
 - P3 終了条件の証明: `mosaic-apps-multicore` が **ARM926EJ-S ×2 + RV32I ×1** の異種 AMP 構成を
   1 つの共有ページと MHU ドアベル（`catalog/ip/arm/mhu`）で起動し、SMP コアと
-  異種コプロセッサが Doorsbell ハンドシェイクを完了し、コンソールに `smp=61` / `amp=bf` を
+  異種コプロセッサがドアベルハンドシェイクを完了し、コンソールに `smp=61` / `amp=bf` を
   出力します。観測系列（コンソール・共有 RAM・MHU 状態・コア別 IRQ エッジ）は
   量子 64×48 ラウンドと 512×6 ラウンドで同一です（CI golden test、`ci-reports/multicore.log`）。
 
@@ -107,7 +108,7 @@ P2（バスとピン）と P3（マルチコア・ヘテロジニアス）の終
 記録再生、gdbstub、トレース、故障注入（§13.6 の tap 点）が目標です。
 残る技術項は命令数と VTime を結ぶ clock tree（現在はコアごとの固定周期）、
 Unicorn 2.1.x に無い外部割り込み注入（`EngineCaps::line_injection = false`）、
-キャッシュ/TLB 無効化の粒度、DMI の一般化です。
+キャッシュ/TLB 無効化の粒度、書き込み可能な共有 DMI です。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 

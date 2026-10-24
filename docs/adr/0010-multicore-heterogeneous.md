@@ -17,12 +17,19 @@ ISA 集合を絞る。また §2/§12.1 の通り CPU は多種多様（ARM/AArc
 MIPS/PPC/SPARC/x86/M68K/S390X/TriCore）でなければなりません。
 
 Unicorn 2.1.x には実例間の共有メモリ・プリミティブがありません。そこで
-`uc_mem_map_ptr`（呼び出し側がバッファを管理する C API）で同一のホスト
-バッファを複数実例へ写像し、ctypes プロトタイプ（venv の unicorn 2.1.4）で
-コアレンスを確認しました: 2 つの `Uc` 実例が同じバッファを 0x10000 に
-写像し、片方の書き込みが他方から即座に見えます。Rust バインディングには
-CPU モデル選択の ctl が公開されていないため、`sifive-e31` などのモデル名は
-宣言的にのみ記録します。
+`uc_mem_map_ptr`（呼び出し側がバッファを管理する C API）を検討し、ctypes
+プロトタイプ（venv の unicorn 2.1.4）で次の**2 点**を実験的に確認しました。
+
+1. 2 つの `Uc` 実例が同一のホストバッファを 0x10000 に写像すると、片方の
+   **読み**が他方から見える。
+2. しかし `uc_mem_map_ptr` の写像は**ゲストからの書き込みに耐えない**。
+   A32 の `STRB` と RV32I の `SW` は `UC_ERR_WRITE_UNMAPPED` で fault する
+   （`uc_mem_write` によるホストからの書き込みは可能）。
+
+つまり素朴な「同一ホストメモリを各インスタンスへ写像」は、Unicorn 2.1.x では
+**書き込み可能な共有 RAM にならない**（§24.1 の【要検証】項目の答え）。
+Rust バインディングには CPU モデル選択の ctl も公開されていないため、
+`sifive-e31` などのモデル名は宣言的にのみ記録します。
 
 ## 決定
 
@@ -37,12 +44,17 @@ CPU モデル選択の ctl が公開されていないため、`sifive-e31` な�
   既存後端の破壊的変更を避けます（bus fault の記録とライン履歴の閲覧は
   ADR 0009 の経路を再利用します）。
 
-### 2. 共有 RAM は 1 つのホストバッファ（`mosaic-engine-unicorn::SharedRam`）
+### 2. 共有 RAM は正本 + エンジンごとのミラー（量子境界で同期）
 
-- `SharedRam` はページサイズ倍数の page-aligned バッファを `Arc` で所有し、
-  `unsafe` の `uc_mem_map_ptr` を**この crate 内だけ**に閉じ込めます
-  （SAFETY: バッファは全写像より長く生きる。`Arc<SharedRam>` を写像ごとに
-  保持し、`OwnedUnicorn` の Drop 順で写像が先に消えます）。
+- `SharedRam` は**正本**のバイト列を `Arc` で所有します。エンジンは
+  書き込み可能な**ミラー**（Unicorn の managed memory）として同じページを
+  持ち、量子境界で正本と往復します（`CpuEngine::sync_shared_in` /
+  `sync_shared_out`、既定メソッド）。
+- 固定順ラウンドロビン（§5）では同期位置が固定なので観測系列は決定論的
+  のままです。書き込みは次のコアのスライスで反映されます。ドアベル
+  ハンドシェイク（ Clemens 応答を読むのは doorbell 到着後）には十分です。
+- 書き込み可能な共有メモリを持つバックエンド（自前エンジン、future
+  Unicorn 改善）は同じ contract を実メモリで実装でき、束ね側は変わりません。
 - FlatView の共有領域は通常の `MemoryKind::Ram` の葉として宣言し、束ね役が
   `SharedRegion { node, ram }` で「このノードはこのバッファ」と結び付けます。
   アドレス空間の真実の源は FlatView のままです（ADR 0002）。
@@ -60,6 +72,10 @@ CPU モデル選択の ctl が公開されていないため、`sifive-e31` な�
 - `attach_bus` / `map_mmio` / `map_shared_memory` は束ね役だけが使う操作であり、
   `CpuEngine` contract は実行と観測の語彙に保ちます。Unicorn の両アダプタ
   （`UnicornArm`, `UnicornRiscV32`）が `EngineMap` を実装します。
+- 例外は共有メモリの**同期**で、これは実行の一部（各スライスの前後に
+  呼ばれる）なので contract の既定メソッド
+  （`CpuEngine::sync_shared_in` / `sync_shared_out`）として置きます。
+  既定は no-op で、共有メモリを持たないエンジンは変更不要です。
 
 ### 5. スケジューラは固定順ラウンドロビン（`mosaic-assemble::MulticoreDriver`）
 
@@ -98,9 +114,13 @@ CPU モデル選択の ctl が公開されていないため、`sifive-e31` な�
 
 - 得たもの: 異種 3 コア（ARM926EJ-S ×2 + RV32I ×1）が 1 つの共有ページと
   MHU ドアベルで協調し、量子形によらず同一の観測系列に収束する
-  実証（`apps/multicore`、CI golden test）。
+  実証（`apps/multicore`、CI golden test）。観測値:
+  `console="smp=61\namp=bf\n"`, `shared=[21 61 40 BF]`,
+  `mhu_stat=[0 0 0]`, `edges c0=TFTF c1=TF c2=TF`。
 - 制限: 固定順 = 決定論的優先度であり真の SMP タイミングではありません。
-  共有 RAM は理想コヒーレンス（キャッシュ・バスの競合はモデル化しません）。
+  共有 RAM は量子境界で同期される共有ウィンドウであり、キャッシュ・バス
+  競合はモデル化しません。Unicorn 2.1.x では書き込み可能なホスト共有
+  メモリが存在しないため、ミラー方式が唯一の選択肢でした。
   RV32I は基本整数命令の部分集合で検証し、M/A/C 拡張は backend 能力に
   従って段階的に広げます。`CpuDescriptor.model` は宣言のみで、
   バインディングが CPU モデル ctl を公開した時点で実行に接続します。
