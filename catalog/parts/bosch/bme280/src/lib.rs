@@ -301,6 +301,9 @@ impl Bme280Core {
             reg::CTRL_HUM | reg::CTRL_MEAS | reg::CONFIG => {
                 self.bank[usize::from(offset)] = value;
             }
+            // status は機能モデルでは常に 0（測定は同期・即時完了）。
+            // ID・キャリブレーション・データと同様、書き込みは無視する。
+            reg::STATUS | reg::CHIP_ID => {}
             _ => {}
         }
     }

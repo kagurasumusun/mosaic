@@ -629,14 +629,8 @@ mod tests {
     /// would: net-facing sinks feed the decoder, master ports wrap them.
     fn master_ports(decoder: &Arc<Mutex<I2cBitBang>>) -> (BitBangPort, BitBangPort) {
         let (sda_line, scl_line) = I2cBitBang::lines(Arc::clone(decoder));
-        let sda = I2cBitBang::sda_port(
-            Arc::clone(decoder),
-            Box::new(TestLinePort::new(sda_line)),
-        );
-        let scl = I2cBitBang::scl_port(
-            Arc::clone(decoder),
-            Box::new(TestLinePort::new(scl_line)),
-        );
+        let sda = I2cBitBang::sda_port(Arc::clone(decoder), Box::new(TestLinePort::new(sda_line)));
+        let scl = I2cBitBang::scl_port(Arc::clone(decoder), Box::new(TestLinePort::new(scl_line)));
         (sda, scl)
     }
 
@@ -678,8 +672,7 @@ mod tests {
         ctx: &mut dyn Ctx,
         drive: Option<PinLevel>,
     ) -> PinLevel {
-        sda.drive(ctx, drive.unwrap_or(PinLevel::High))
-            .unwrap();
+        sda.drive(ctx, drive.unwrap_or(PinLevel::High)).unwrap();
         let observed = sda.current_level();
         scl.drive(ctx, PinLevel::High).unwrap();
         scl.drive(ctx, PinLevel::Low).unwrap();
@@ -738,26 +731,18 @@ mod tests {
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x80);
         // The address is decoded on the eighth pulse, so the target-driven ACK
         // is observable during the ninth slot.
-        assert_eq!(
-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
-            PinLevel::Low
-        );
+        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x0D);
-        assert_eq!(
-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
-            PinLevel::Low
-        );
+        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
         stop(&mut sda, &mut scl, &mut ctx);
         assert!(lock(&decoder).last_result.is_ok());
 
         // START + address read 0x40 (0x81), two sampled bytes, NACK, STOP.
         start(&mut sda, &mut scl, &mut ctx);
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x81);
-        assert_eq!(
-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
-            PinLevel::Low
-        );
+        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
         let mut read = [0u8; 2];
+        let total = read.len();
         for (index, byte) in read.iter_mut().enumerate() {
             for _ in 0..8 {
                 *byte <<= 1;
@@ -767,16 +752,13 @@ mod tests {
             }
             // The master drives the ACK slot of a read frame: low continues,
             // high NACKs the final byte. The port shows the master's own level.
-            let final_byte = index + 1 == read.len();
+            let final_byte = index + 1 == total;
             let drive = if final_byte {
                 PinLevel::High
             } else {
                 PinLevel::Low
             };
-            assert_eq!(
-                ack_pulse(&mut sda, &mut scl, &mut ctx, Some(drive)),
-                drive
-            );
+            assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, Some(drive)), drive);
         }
         stop(&mut sda, &mut scl, &mut ctx);
         assert_eq!(read, [0x2D, 0x2E]);
@@ -841,8 +823,9 @@ mod tests {
         let (mut sda, mut scl) = master_ports(&decoder);
         let mut ctx = DummyCtx;
         start(&mut sda, &mut scl, &mut ctx);
-        pulse_byte(&mut sda, &mut scl, &mut ctx, 0x82); // 0x41, absent
-        // With no target present the ACK slot stays released (NACK).
+        // 0x82 = address 0x41, absent. With no target present the ACK slot
+        // stays released (NACK).
+        pulse_byte(&mut sda, &mut scl, &mut ctx, 0x82);
         assert_eq!(
             ack_pulse(&mut sda, &mut scl, &mut ctx, None),
             PinLevel::High

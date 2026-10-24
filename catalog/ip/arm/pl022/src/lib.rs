@@ -14,7 +14,10 @@
 //! - 転送は同期的に完了する（BSY は常に 0、TX FIFO は常に空）。
 //! - マスタモード（`SSPCR1.MS = 0`）のみ modeled。スレーブモードで SSE を
 //!   立てても CS は出ず、DR 書き込みは無視する。
-//! - データビット数は DSS フィールドを保存するが、交換は常に 8 ビット。
+//! - ループバック（`SSPCR1.LBM`）はバスへ出さず送信バイトを RX FIFO へ
+//!   戻す。
+//! - データビット数は DSS+1 ビットで MOSI/MISO を切り詰める。8 ビットを
+//!   超えるフレームは下位 8 ビットだけ modeled する。
 //! - 受信割り込み (RXRIS) は「RX FIFO 非空」で立つ（実機は半分以上）。
 //! - 送信割り込み (TXRIS) は TX FIFO が常に空なので常に立つ（実機と同じ
 //!   レベル条件の帰結）。
@@ -44,30 +47,26 @@ mod reg {
     pub const DMACR: u64 = 0x024;
 }
 
-/// SSPCR0 ビット。
+/// SSPCR0 ビット（FRF は Motorola SPI のみ modeled、SCR は保存のみ）。
 mod cr0 {
     pub const DSS_MASK: u32 = 0xF;
-    pub const FRF_MASK: u32 = 0x3 << 4;
     pub const CPHA: u32 = 1 << 6;
     pub const CPOL: u32 = 1 << 7;
-    pub const SCR_SHIFT: u32 = 8;
 }
 
-/// SSPCR1 ビット。
+/// SSPCR1 ビット（SOD はスレーブ専用なので modeled しない）。
 mod cr1 {
     pub const LBM: u32 = 1 << 0;
     pub const SSE: u32 = 1 << 1;
     pub const MS: u32 = 1 << 2;
-    pub const SOD: u32 = 1 << 3;
 }
 
-/// SSPSR ビット。
+/// SSPSR ビット（BSY は同期実行のため常に 0）。
 mod sr {
     pub const TFE: u32 = 1 << 0;
     pub const TNF: u32 = 1 << 1;
     pub const RNE: u32 = 1 << 2;
     pub const RFF: u32 = 1 << 3;
-    pub const BSY: u32 = 1 << 4;
 }
 
 /// 割り込みビット（IMSC / RIS / MIS 共通配置）。
@@ -234,20 +233,36 @@ impl Pl022 {
         }
     }
 
+    /// DSS+1 ビットのフレームマスク（8 ビット超は下位 8 ビット）。
+    fn frame_mask(&self) -> u8 {
+        let bits = (self.state.cr0 & cr0::DSS_MASK) + 1;
+        if bits >= 8 {
+            0xFF
+        } else {
+            ((1u32 << bits) - 1) as u8
+        }
+    }
+
     fn exchange(&mut self, ctx: &mut dyn Ctx, byte: u8) {
+        let mask = self.frame_mask();
+        if self.state.cr1 & cr1::LBM != 0 {
+            // ループバック: 送信バイトがそのまま RX FIFO へ戻る。
+            self.push_rx(byte & mask);
+            return;
+        }
         let Some(initiator) = self.initiator.as_mut() else {
             return;
         };
         let mode = self.mode();
-        let mosi = [byte];
+        let mosi = [byte & mask];
         let mut miso = [0u8; 1];
         match initiator.exchange(ctx, self.params.cs, mode, &mosi, &mut miso) {
-            Ok(()) => self.push_rx(miso[0]),
+            Ok(()) => self.push_rx(miso[0] & mask),
             // 交換失敗はゲスト可視のエラーステータスとして RORRIS を使う
             //（機能モデルの簡略化。実機の MODEFAULT 等は modeled しない）。
             Err(SpiError::Overflow) => {
                 self.state.raw_interrupts |= ris::ROR;
-                self.push_rx(miso[0]);
+                self.push_rx(miso[0] & mask);
             }
             Err(_) => self.state.raw_interrupts |= ris::ROR,
         }
@@ -534,6 +549,32 @@ mod tests {
             lock(&fake).exchanges,
             vec![(SpiCs(0), SpiMode::new(true, true), vec![0x01])]
         );
+    }
+
+    #[test]
+    fn loopback_returns_the_byte_without_touching_the_bus() {
+        let (mut device, fake, mut ctx) = device();
+        write(&mut device, &mut ctx, reg::CR0, 0x07);
+        write(&mut device, &mut ctx, reg::CR1, cr1::SSE | cr1::LBM);
+        write(&mut device, &mut ctx, reg::DR, 0x5A);
+        assert!(lock(&fake).exchanges.is_empty());
+        assert_ne!(read(&mut device, &mut ctx, reg::SR) & sr::RNE, 0);
+        assert_eq!(read(&mut device, &mut ctx, reg::DR), 0x5A);
+    }
+
+    #[test]
+    fn dss_truncates_the_frame_width() {
+        let (mut device, fake, mut ctx) = device();
+        write(&mut device, &mut ctx, reg::CR0, 0x03); // DSS = 4 bit
+        write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+        lock(&fake).miso_fill = 0x6F;
+        write(&mut device, &mut ctx, reg::DR, 0xFF);
+        assert_eq!(
+            lock(&fake).exchanges,
+            vec![(SpiCs(0), SpiMode::new(false, false), vec![0x0F])]
+        );
+        // MISO も 4 ビットへ切り詰められる (0x6F → 0x0F)。
+        assert_eq!(read(&mut device, &mut ctx, reg::DR), 0x0F);
     }
 
     #[test]

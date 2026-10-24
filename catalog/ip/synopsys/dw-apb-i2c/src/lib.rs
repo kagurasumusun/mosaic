@@ -124,6 +124,8 @@ mod intr {
 mod abrt {
     pub const ABRT_7B_ADDR_NOACK: u32 = 1 << 0;
     pub const ABRT_TXDATA_NOACK: u32 = 1 << 3;
+    pub const ABRT_SBYTE_NORSTRT: u32 = 1 << 9;
+    pub const ABRT_MASTER_DIS: u32 = 1 << 11;
     pub const ARB_LOST: u32 = 1 << 12;
 }
 
@@ -356,6 +358,11 @@ impl DwApbI2c {
         if queue.is_empty() {
             return;
         }
+        // databook: マスタモード無効でのマスタ転送は ABRT_MASTER_DIS。
+        if self.state.con & con::MASTER_MODE == 0 {
+            self.abort(abrt::ABRT_MASTER_DIS);
+            return;
+        }
         let addr = match I2cAddr::seven((self.state.tar & 0x7F) as u8) {
             Ok(addr) => addr,
             Err(_) => {
@@ -382,6 +389,11 @@ impl DwApbI2c {
         }
         if malformed {
             self.abort(abrt::ABRT_TXDATA_NOACK);
+            return;
+        }
+        // databook: IC_RESTART_EN = 0 での RESTART は ABRT_SBYTE_NORSTRT。
+        if read_restarts && self.state.con & con::RESTART_EN == 0 {
+            self.abort(abrt::ABRT_SBYTE_NORSTRT);
             return;
         }
         let result = if reads == 0 {
@@ -662,7 +674,7 @@ mod tests {
 
     const IRQ: SignalId = SignalId(7);
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq, Eq)]
     enum Op {
         Write(I2cAddr, Vec<u8>),
         Read(I2cAddr, usize),
@@ -969,6 +981,41 @@ mod tests {
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20 | data_cmd::STOP);
         assert!(lock(&fake).ops.is_empty());
         assert_eq!(read(&mut device, &mut ctx, reg::TX_ABRT_SOURCE), 0x08);
+    }
+
+    #[test]
+    fn master_mode_disabled_aborts_with_master_dis() {
+        let (mut device, fake, mut ctx) = device();
+        write(&mut device, &mut ctx, reg::ENABLE, 1);
+        write(&mut device, &mut ctx, reg::TAR, 0x76);
+        // MASTER_MODE ビットを落とした CON へ書き換える。
+        write(&mut device, &mut ctx, reg::CON, con::SPEED_FAST | con::RESTART_EN);
+        write(&mut device, &mut ctx, reg::DATA_CMD, 0x20 | data_cmd::STOP);
+        assert!(lock(&fake).ops.is_empty());
+        assert_eq!(read(&mut device, &mut ctx, reg::TX_ABRT_SOURCE), 1 << 11);
+    }
+
+    #[test]
+    fn restart_without_restart_en_aborts() {
+        let (mut device, fake, mut ctx) = device();
+        write(&mut device, &mut ctx, reg::ENABLE, 1);
+        write(&mut device, &mut ctx, reg::TAR, 0x76);
+        // POR の CON から RESTART_EN だけ落とす。
+        write(
+            &mut device,
+            &mut ctx,
+            reg::CON,
+            con::MASTER_MODE | con::SPEED_FAST,
+        );
+        write(&mut device, &mut ctx, reg::DATA_CMD, 0xD0);
+        write(
+            &mut device,
+            &mut ctx,
+            reg::DATA_CMD,
+            data_cmd::CMD_READ | data_cmd::RESTART | data_cmd::STOP,
+        );
+        assert!(lock(&fake).ops.is_empty());
+        assert_eq!(read(&mut device, &mut ctx, reg::TX_ABRT_SOURCE), 1 << 9);
     }
 
     #[test]
