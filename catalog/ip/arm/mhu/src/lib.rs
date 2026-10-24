@@ -184,6 +184,7 @@ mod tests {
     extern crate std;
     use std::prelude::v1::*;
     use std::sync::{Arc, Mutex};
+    use std::vec;
 
     use super::*;
     use mosaic_core_types::{AccessKind, Endian, NodeId, Security, VTime};
@@ -358,10 +359,7 @@ mod tests {
     fn offsets_outside_the_banks_follow_the_unmapped_policy() {
         let (mut mhu, mut ctx) = mhu();
         let attr = attr();
-        assert_eq!(
-            mhu.read(&mut ctx, 0x300, AccessSize::Word, &attr),
-            Ok(0)
-        );
+        assert_eq!(mhu.read(&mut ctx, 0x300, AccessSize::Word, &attr), Ok(0));
         mhu.write(&mut ctx, 0xFFC, AccessSize::Word, 1, &attr)
             .unwrap();
         let mut strict = Mhu::new(MhuParams::new(UnmappedPolicy::Fault));

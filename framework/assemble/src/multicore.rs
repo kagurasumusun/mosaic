@@ -39,7 +39,7 @@ pub enum MulticoreError {
 /// One core's execution configuration: its engine instance, the mailbox that
 /// carries wired interrupt edges into it between slices, and its resolved
 /// clock period for instruction-count-to-VTime conversion.
-pub struct CoreSlot {
+struct CoreSlot {
     engine: Box<dyn CpuEngine>,
     irq: Option<Arc<IrqMailbox>>,
     ps_per_instruction: NonZeroU64,
@@ -84,7 +84,11 @@ impl MulticoreDriver {
 
     /// Route CPU-bound interrupt edges of one core through `mailbox`, the same
     /// mailbox that backs the [`crate::EngineIrqSink`] nodes of that core.
-    pub fn attach_irq(&mut self, core: usize, mailbox: Arc<IrqMailbox>) -> Result<(), MulticoreError> {
+    pub fn attach_irq(
+        &mut self,
+        core: usize,
+        mailbox: Arc<IrqMailbox>,
+    ) -> Result<(), MulticoreError> {
         let slot = self
             .cores
             .get_mut(core)
@@ -145,12 +149,13 @@ impl MulticoreDriver {
             let (events_delivered, now) = {
                 let mut machine = self.machine.lock().map_err(|_| MulticoreError::Poisoned)?;
                 let now = machine.now();
-                let delivered = machine.run_until(now, event_budget).map_err(|error| {
-                    MulticoreError::Core {
-                        index,
-                        error: DriverError::Machine(error),
-                    }
-                })?;
+                let delivered =
+                    machine
+                        .run_until(now, event_budget)
+                        .map_err(|error| MulticoreError::Core {
+                            index,
+                            error: DriverError::Machine(error),
+                        })?;
                 (delivered, now)
             };
             flush(core, index)?;
@@ -165,7 +170,10 @@ impl MulticoreDriver {
             .lock()
             .map_err(|_| MulticoreError::Poisoned)?
             .now();
-        Ok(RoundReport { cores: reports, now })
+        Ok(RoundReport {
+            cores: reports,
+            now,
+        })
     }
 
     /// One round-robin pass where every core advances the shared virtual time
@@ -197,20 +205,22 @@ impl MulticoreDriver {
                 })?;
             let (events_delivered, now) = {
                 let mut machine = self.machine.lock().map_err(|_| MulticoreError::Poisoned)?;
-                let deadline = machine
-                    .now()
-                    .0
-                    .checked_add(delta)
-                    .ok_or_else(|| MulticoreError::Core {
-                        index,
-                        error: DriverError::TimeOverflow,
-                    })?;
-                let delivered = machine
-                    .run_until(VTime(deadline), event_budget)
-                    .map_err(|error| MulticoreError::Core {
-                        index,
-                        error: DriverError::Machine(error),
-                    })?;
+                let deadline =
+                    machine
+                        .now()
+                        .0
+                        .checked_add(delta)
+                        .ok_or_else(|| MulticoreError::Core {
+                            index,
+                            error: DriverError::TimeOverflow,
+                        })?;
+                let delivered =
+                    machine
+                        .run_until(VTime(deadline), event_budget)
+                        .map_err(|error| MulticoreError::Core {
+                            index,
+                            error: DriverError::Machine(error),
+                        })?;
                 (delivered, VTime(deadline))
             };
             flush(core, index)?;
@@ -225,7 +235,10 @@ impl MulticoreDriver {
             .lock()
             .map_err(|_| MulticoreError::Poisoned)?
             .now();
-        Ok(RoundReport { cores: reports, now })
+        Ok(RoundReport {
+            cores: reports,
+            now,
+        })
     }
 
     /// Run `rounds` passes with identical settings, in order.
@@ -328,7 +341,13 @@ mod tests {
             .loader_write(
                 RAM0,
                 0,
-                &words(&[0xE3A0_00AA, 0xE59F_1004, 0xE5C1_0000, 0xEAFF_FFFE, 0x0001_0000]),
+                &words(&[
+                    0xE3A0_00AA,
+                    0xE59F_1004,
+                    0xE5C1_0000,
+                    0xEAFF_FFFE,
+                    0x0001_0000,
+                ]),
             )
             .unwrap();
         // core1: LDR r1,[pc,#12]; LDRB r2,[r1]; ADD r2,#1; STRB r2,[r1,#1];
@@ -337,7 +356,14 @@ mod tests {
             .loader_write(
                 RAM1,
                 0,
-                &words(&[0xE59F_100C, 0xE5D1_2000, 0xE282_2001, 0xE5C1_2001, 0xEAFF_FFFE, 0x0001_0000]),
+                &words(&[
+                    0xE59F_100C,
+                    0xE5D1_2000,
+                    0xE282_2001,
+                    0xE5C1_2001,
+                    0xEAFF_FFFE,
+                    0x0001_0000,
+                ]),
             )
             .unwrap();
         machine.verify().unwrap();
@@ -405,9 +431,7 @@ mod tests {
         driver
             .set_ps_per_instruction(1, NonZeroU64::new(2000).unwrap())
             .unwrap();
-        let round = driver
-            .step_clocked(NonZeroU64::new(5).unwrap(), 8)
-            .unwrap();
+        let round = driver.step_clocked(NonZeroU64::new(5).unwrap(), 8).unwrap();
         // core0: 5 hooks at the default 1000 ps, core1: 5 hooks at 2000 ps.
         assert_eq!(round.cores[0].now, VTime(5000));
         assert_eq!(round.cores[1].now, VTime(15000));
@@ -459,7 +483,11 @@ mod tests {
             .unwrap();
         // RV32I core: lui x5,0x10; addi x6,x0,0x21; sw x6,0(x5); j .
         machine
-            .loader_write(RAM_RV, 0, &words(&[0x0001_02B7, 0x0210_0313, 0x0062_A023, 0x0000_006F]))
+            .loader_write(
+                RAM_RV,
+                0,
+                &words(&[0x0001_02B7, 0x0210_0313, 0x0062_A023, 0x0000_006F]),
+            )
             .unwrap();
         machine.verify().unwrap();
         let machine = Arc::new(Mutex::new(machine));
@@ -473,7 +501,8 @@ mod tests {
         let mut riscv = UnicornRiscV32::new().unwrap();
         bind_flat_view_shared(&mut arm, &view0, Arc::clone(&machine), CPU0, &shared).unwrap();
         bind_flat_view_shared(&mut riscv, &view_rv, Arc::clone(&machine), CPU_RV, &shared).unwrap();
-        arm.reg_write(mosaic_isa_arm::Register::Pc.into(), 0).unwrap();
+        arm.reg_write(mosaic_isa_arm::Register::Pc.into(), 0)
+            .unwrap();
         riscv.reg_write(RvReg::Pc.into(), 0).unwrap();
 
         let mut driver = MulticoreDriver::new(machine);

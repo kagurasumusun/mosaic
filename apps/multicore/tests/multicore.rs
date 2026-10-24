@@ -42,14 +42,8 @@ fn quantum_shape_does_not_change_observable_outcomes() {
 
 #[test]
 fn cpu_declarations_match_the_engines_they_drive() {
-    assert_eq!(
-        mosaic_cpu_arm_arm926ej_s::CORE.arch,
-        EngineArch::ArmA32Le
-    );
+    assert_eq!(mosaic_cpu_arm_arm926ej_s::CORE.arch, EngineArch::ArmA32Le);
     assert_eq!(mosaic_cpu_arm_arm926ej_s::CORE.model, None);
-    assert_eq!(
-        mosaic_cpu_sifive_e31::CORE.arch,
-        EngineArch::RiscV32Le
-    );
+    assert_eq!(mosaic_cpu_sifive_e31::CORE.arch, EngineArch::RiscV32Le);
     assert_eq!(mosaic_cpu_sifive_e31::CORE.model, Some("sifive-e31"));
 }

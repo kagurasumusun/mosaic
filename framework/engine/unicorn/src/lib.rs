@@ -120,8 +120,8 @@ impl Common {
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
         };
-        let mut uc =
-            Unicorn::new_with_data(arch, mode, EngineData::default()).map_err(|_| EngineError::Backend)?;
+        let mut uc = Unicorn::new_with_data(arch, mode, EngineData::default())
+            .map_err(|_| EngineError::Backend)?;
         // Capture-free: no Rc/host reference can escape the engine through a hook.
         // Native count and MAX_QUANTUM bound the addition below to <= 1_000_000.
         uc.add_code_hook(1, 0, |uc, _, _| {
@@ -294,11 +294,13 @@ impl Common {
 
     fn check_span(&self, base: Addr, size: usize) -> Result<(), EngineError> {
         let end = u128::from(base.0) + size as u128;
-        let inside = |start: u64, len: u64| {
-            base.0 >= start && end <= u128::from(start) + u128::from(len)
-        };
+        let inside =
+            |start: u64, len: u64| base.0 >= start && end <= u128::from(start) + u128::from(len);
         if self.mappings.iter().any(|&(start, len)| inside(start, len))
-            || self.shared.iter().any(|&(start, len, _)| inside(start, len))
+            || self
+                .shared
+                .iter()
+                .any(|&(start, len, _)| inside(start, len))
         {
             Ok(())
         } else {
@@ -734,7 +736,9 @@ mod tests {
         first
             .write_memory(
                 Addr(0x1000),
-                &[0xab, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0],
+                &[
+                    0xab, 0, 0xa0, 0xe3, 0, 0x10, 0x9f, 0xe5, 0, 0, 0xc1, 0xe5, 0, 0, 1, 0,
+                ],
             )
             .unwrap();
         first.reg_write(Register::Pc.into(), 0x1000).unwrap();
@@ -765,7 +769,12 @@ mod tests {
         ));
         // The buffer bounds the mapping size.
         assert_eq!(
-            engine.map_shared_memory(Addr(0x1000), 2 * PAGE_SIZE, Permissions::RW, Arc::clone(&ram)),
+            engine.map_shared_memory(
+                Addr(0x1000),
+                2 * PAGE_SIZE,
+                Permissions::RW,
+                Arc::clone(&ram)
+            ),
             Err(EngineError::InvalidMapping)
         );
         engine
@@ -780,9 +789,18 @@ mod tests {
             Err(EngineError::Overlap)
         );
         // Loader spans resolve against the shared mapping.
-        assert_eq!(engine.write_memory(Addr(0x2000), &[1]), Err(EngineError::Unmapped));
-        assert_eq!(ram.write(PAGE_SIZE as usize, &[1]), Err(EngineError::InvalidMapping));
-        assert_eq!(ram.read(1, &mut [0u8; PAGE_SIZE as usize]), Err(EngineError::InvalidMapping));
+        assert_eq!(
+            engine.write_memory(Addr(0x2000), &[1]),
+            Err(EngineError::Unmapped)
+        );
+        assert_eq!(
+            ram.write(PAGE_SIZE as usize, &[1]),
+            Err(EngineError::InvalidMapping)
+        );
+        assert_eq!(
+            ram.read(1, &mut [0u8; PAGE_SIZE as usize]),
+            Err(EngineError::InvalidMapping)
+        );
     }
 
     #[test]
@@ -1051,7 +1069,9 @@ mod tests {
             engine
                 .write_memory(
                     Addr(0x1000),
-                    &[0x93, 0x02, 0xa0, 0x02, 0x13, 0x83, 0x12, 0x00, 0x13, 0x00, 0x50, 0x00],
+                    &[
+                        0x93, 0x02, 0xa0, 0x02, 0x13, 0x83, 0x12, 0x00, 0x13, 0x00, 0x50, 0x00,
+                    ],
                 )
                 .unwrap();
             for expected_pc in [0x1004, 0x1008] {

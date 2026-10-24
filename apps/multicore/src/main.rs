@@ -42,10 +42,7 @@ fn main() -> std::process::ExitCode {
         report.mhu_stat[0], report.mhu_stat[1], report.mhu_stat[2]
     );
     let edges = report.edge_strings();
-    println!(
-        "edges c0={} c1={} c2={}",
-        edges[0], edges[1], edges[2]
-    );
+    println!("edges c0={} c1={} c2={}", edges[0], edges[1], edges[2]);
     println!(
         "hooks=[{}, {}, {}] events={} rounds={} quantum={} budget={EVENT_BUDGET}",
         report.hooks[0], report.hooks[1], report.hooks[2], report.events, report.rounds, QUANTUM

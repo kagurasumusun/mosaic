@@ -417,10 +417,7 @@ mod tests {
         machine.add_backing(DEVICE, 0x2000).unwrap();
         machine.verify().unwrap();
         let ram = SharedRam::new(0x1000).unwrap();
-        let shared = [SharedRegion {
-            node: DEVICE,
-            ram,
-        }];
+        let shared = [SharedRegion { node: DEVICE, ram }];
         let mut engine = UnicornArm::new().unwrap();
         let result = bind_flat_view_shared(
             &mut engine,
