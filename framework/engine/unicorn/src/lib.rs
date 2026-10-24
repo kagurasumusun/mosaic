@@ -408,6 +408,16 @@ impl Common {
         };
         self.inner.0.get_data_mut().counters.instructions = 0;
         let result = self.inner.0.emu_start(begin, u64::MAX, 0, budget as usize);
+        // TEMP DIAGNOSTIC (remove after M-class bring-up): surface the raw
+        // backend error and begin state on failure.
+        if let Err(err) = &result {
+            let pc = self.inner.0.reg_read(RegisterARM::PC).unwrap_or(u64::MAX);
+            let cpsr = self.inner.0.reg_read(RegisterARM::CPSR).unwrap_or(u64::MAX);
+            eprintln!(
+                "emu_start failed: {err:?} backend={:?} begin={begin:#x} pc_after={pc:#x} cpsr={cpsr:#x}",
+                self.backend
+            );
+        }
         let observed = self.inner.0.get_data().counters.instructions;
         let reason = if result.is_err() || self.inner.0.get_data().fault.is_some() {
             StopReason::Fault
