@@ -57,7 +57,11 @@ jobs:
             name=$(basename "$p")
             size=$(stat -c%s "$p")
             sha=$(sha256sum "$p" | cut -d' ' -f1)
-            jq -n --rawfile c "$p" '{content: $c, encoding: "base64"}' > /tmp/body.json
+            # base64 してから JSON へ埋め込む。--rawfile は生バイナリを
+            # UTF-8 文字列として扱ってしまい、GitHub 側で切り詰められる。
+            base64 -w0 "$p" > /tmp/part.b64
+            jq -n --rawfile c /tmp/part.b64 '{content: $c, encoding: "base64"}' > /tmp/body.json
+
             ok=0
             for attempt in 1 2 3; do
               echo "uploading $name ($size bytes, attempt $attempt)"
