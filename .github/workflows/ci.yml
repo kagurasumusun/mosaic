@@ -199,9 +199,12 @@ jobs:
           fi
 
   # Manual helper for offline development hosts: exports the pinned toolchain
-  # and the Cargo registry cache. Dispatch with `-f export_toolchain=true`.
+  # and the Cargo registry cache. Trigger with a commit whose message contains
+  # `[toolchain-export]`, or dispatch with `-f export_toolchain=true`.
   toolchain-export:
-    if: github.event_name == 'workflow_dispatch' && inputs.export_toolchain
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.export_toolchain) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[toolchain-export]'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
