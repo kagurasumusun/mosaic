@@ -1,0 +1,7 @@
+75:test stm32f103::tests::firmware_vector_table_and_entry ... FAILED
+76:test stm32f103::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq ... FAILED
+78:failures:
+82:thread 'stm32f103::tests::firmware_vector_table_and_entry' panicked at apps/stm32f103/src/stm32f103.rs:457:9:
+106:thread 'stm32f103::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq' panicked at apps/stm32f103/src/stm32f103.rs:427:9:
+129:failures:
+133:test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

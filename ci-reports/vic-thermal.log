@@ -1,2 +1,6 @@
-[1m[31merror[0m[1m:[0m the lock file /home/runner/work/mosaic/mosaic/Cargo.lock needs to be updated but --locked was passed to prevent this
-If you want to try to generate the lock file without accessing the network, remove the --locked flag and use --offline instead.
+[1m[32m   Compiling[0m mosaic-apps-vic-thermal v0.1.0 (/home/runner/work/mosaic/mosaic/apps/vic-thermal)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.47s
+[1m[32m     Running[0m `target/debug/mosaic-apps-vic-thermal`
+console="t=00001900 v=00001400 k=00BEEF00 c=00001000\n"
+hooks=2048 events=5 irq_edges=1
+elapsed_us=8789 instr_per_s=233018

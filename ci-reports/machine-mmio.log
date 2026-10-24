@@ -1,15 +1,2 @@
-[1m[31merror[0m[1m:[0m the lock file /home/runner/work/mosaic/mosaic/Cargo.lock needs to be updated but --locked was passed to prevent this
-If you want to try to generate the lock file without accessing the network, remove the --locked flag and use --offline instead.
---- tests/machine-mmio.stdout	2026-10-24 14:47:05.252119444 +0000
-+++ ci-reports/machine-mmio.stdout	2026-10-24 14:47:26.681098891 +0000
-@@ -1,10 +0,0 @@
--rom loader: [10, 20, 30, 40]
--guest write rom: PermissionDenied
--time=100 signal=1 high=true
--time=300 signal=1 high=true
--sink levels: [true, true]
--ram[0x1000]=0x11223344
--device fault: Device
--unmapped read: Unmapped
--misaligned write: Misaligned
--determinism: identical
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+[1m[32m     Running[0m `target/debug/examples/machine`
