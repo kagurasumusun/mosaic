@@ -1,7 +1,7 @@
 [1m[32m   Compiling[0m mosaic-apps-sensorbus v0.1.0 (/home/runner/work/mosaic/mosaic/apps/sensorbus)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.40s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.49s
 [1m[32m     Running[0m `target/debug/mosaic-apps-sensorbus`
 console="ctl=60 bb=60 spi=60\n"
 hooks=1024 events=0 irq_edges=0
 probes ctrl_meas=25 mux_hidden=true mux_routed=60 phases bus=36 pins=19
-elapsed_us=8037 instr_per_s=127410
+elapsed_us=10598 instr_per_s=96622
