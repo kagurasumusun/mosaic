@@ -75,7 +75,9 @@ impl SharedRam {
     /// Mark the buffer as carrying the loader image. Returns false when
     /// another core already initialized it, so the caller can skip the copy.
     pub fn mark_initialized(&self) -> bool {
-        !self.initialized.swap(true, std::sync::atomic::Ordering::AcqRel)
+        !self
+            .initialized
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
     }
 
     /// Host-side copy into the buffer. Out-of-bounds spans are errors; guest

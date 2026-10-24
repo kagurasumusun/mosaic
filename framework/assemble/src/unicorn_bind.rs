@@ -164,17 +164,11 @@ impl CpuEngine for SharedEngine {
         self.engine.caps()
     }
 
-    fn run(
-        &mut self,
-        instructions: NonZeroU64,
-    ) -> mosaic_contract_cpu_engine::RunOutcome {
+    fn run(&mut self, instructions: NonZeroU64) -> mosaic_contract_cpu_engine::RunOutcome {
         self.engine.run(instructions)
     }
 
-    fn reg_read(
-        &self,
-        reg: mosaic_contract_cpu_engine::RegId,
-    ) -> Result<u64, EngineError> {
+    fn reg_read(&self, reg: mosaic_contract_cpu_engine::RegId) -> Result<u64, EngineError> {
         self.engine.reg_read(reg)
     }
 

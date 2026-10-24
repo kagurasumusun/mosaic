@@ -213,12 +213,12 @@ impl Common {
         if size > ram.len() as u64 {
             return Err(EngineError::InvalidMapping);
         }
-        // The mirror is writable even when the guest may only read the
-        // shared page: the synchronisation path writes it through the
-        // loader API, which ignores guest permissions.
+        // The mirror follows the guest permissions. The synchronisation path
+        // writes it through the loader API, which ignores guest permissions,
+        // so a read-only shared page still synchronises correctly.
         self.inner
             .0
-            .mem_map(base.0, size, Prot::READ | Prot::WRITE)
+            .mem_map(base.0, size, prot_of(permissions))
             .map_err(|_| EngineError::Backend)?;
         self.mappings.push((base.0, size));
         self.shared.push((base.0, size, ram));
@@ -234,7 +234,7 @@ impl Common {
             ram.read(0, &mut bytes)?;
             self.inner
                 .0
-                .mem_write(base, &bytes)
+                .mem_write(*base, &bytes)
                 .map_err(|_| EngineError::Backend)?;
         }
         Ok(())
