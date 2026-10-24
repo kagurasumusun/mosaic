@@ -1,0 +1,5 @@
+315:test tests::thumb_entry_via_pc_bit0_executes_16_bit_instructions ... FAILED
+317:failures:
+321:thread 'tests::thumb_entry_via_pc_bit0_executes_16_bit_instructions' panicked at framework/engine/unicorn/src/lib.rs:835:9:
+344:failures:
+347:test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
