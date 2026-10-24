@@ -57,6 +57,18 @@ impl DeviceArena {
         self.nodes.get_mut(&node.0)?.as_deref_mut()
     }
 
+    pub fn get(&self, node: NodeId) -> Option<&(dyn MachineDevice + 'static)> {
+        self.nodes.get(&node.0)?.as_deref()
+    }
+
+    pub fn get_mut(&mut self, node: NodeId) -> Option<&mut (dyn MachineDevice + 'static)> {
+        self.nodes.get_mut(&node.0)?.as_deref_mut()
+    }
+
+    pub fn node_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.nodes.keys().copied().map(NodeId)
+    }
+
     pub fn is_registered(&self, node: NodeId) -> bool {
         self.nodes.contains_key(&node.0)
     }

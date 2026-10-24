@@ -113,13 +113,18 @@ pub enum SnapshotError {
     VersionMismatch,
     GraphMismatch,
     InvalidState,
+    /// A model, engine or host port has not implemented checkpoint support.
+    CapabilityMissing,
 }
 
-/// Wire encoding is intentionally deferred; host handles never belong in State.
+/// Typed, in-memory snapshot contract. This is not a wire encoding; host
+/// handles never belong in State. `validate` is side-effect free and lets an
+/// aggregate validate every participant before any participant is restored.
 pub trait Snapshot: Send {
     type State: Clone + Send;
     const SCHEMA_VERSION: u32;
     fn save(&self) -> Self::State;
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError>;
     /// Validate before mutating; reject unsupported versions without changing self.
     fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError>;
 }

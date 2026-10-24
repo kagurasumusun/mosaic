@@ -10,7 +10,9 @@
 //! clock trees and persistence of device state are integrated later. It is the
 //! runtime groundwork that those integrations dispatch through.
 
+use std::any::{type_name, Any, TypeId};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, EventTarget};
@@ -22,7 +24,7 @@ use mosaic_core_types::{
 
 use crate::address::{Access, FlatView, Resolved};
 use crate::arena::DeviceArena;
-use crate::backing::BackingStore;
+use crate::backing::{BackingState, BackingStore};
 use crate::context::ModelContext;
 use crate::events::{Event, EventKind, EventQueue, QueueState};
 
@@ -31,8 +33,287 @@ use crate::events::{Event, EventKind, EventQueue, QueueState};
 /// One boxed value serves both MMIO and timer callbacks, so register state is
 /// never split between trait objects. The blanket impl keeps models writing
 /// only the contract traits from `mosaic-contract-*`.
-pub trait MachineDevice: MmioTarget + EventTarget {}
-impl<T: MmioTarget + EventTarget> MachineDevice for T {}
+pub trait MachineDevice: MmioTarget + EventTarget {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+impl<T: MmioTarget + EventTarget + 'static> MachineDevice for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+const MACHINE_SNAPSHOT_SCHEMA: u32 = 1;
+
+/// Exact runtime topology captured alongside its stable, non-cryptographic
+/// fingerprint. The exact value comparison prevents a fingerprint collision
+/// from accepting an incompatible in-memory checkpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MachineTopology {
+    default_view: FlatView,
+    views: BTreeMap<u32, FlatView>,
+    device_nodes: BTreeSet<u32>,
+    sink_nodes: BTreeSet<u32>,
+    backing_sizes: BTreeMap<u32, usize>,
+    outputs: BTreeMap<u32, BTreeSet<u32>>,
+    wiring: BTreeMap<(u32, u32), u32>,
+}
+
+impl MachineTopology {
+    fn fingerprint(&self) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.byte(1); // topology format version
+        hash_view(&mut hash, &self.default_view);
+        hash.usize(self.views.len());
+        for (&master, view) in &self.views {
+            hash.u32(master);
+            hash_view(&mut hash, view);
+        }
+        hash.u32_set(&self.device_nodes);
+        hash.u32_set(&self.sink_nodes);
+        hash.usize(self.backing_sizes.len());
+        for (&node, &size) in &self.backing_sizes {
+            hash.u32(node);
+            hash.usize(size);
+        }
+        hash.usize(self.outputs.len());
+        for (&node, signals) in &self.outputs {
+            hash.u32(node);
+            hash.u32_set(signals);
+        }
+        hash.usize(self.wiring.len());
+        for (&(source, signal), &sink) in &self.wiring {
+            hash.u32(source);
+            hash.u32(signal);
+            hash.u32(sink);
+        }
+        hash.finish()
+    }
+}
+
+struct Fnv64(u64);
+
+impl Fnv64 {
+    const fn new() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+
+    fn byte(&mut self, byte: u8) {
+        self.0 ^= u64::from(byte);
+        self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+
+    fn u32(&mut self, value: u32) {
+        for byte in value.to_le_bytes() {
+            self.byte(byte);
+        }
+    }
+
+    fn u64(&mut self, value: u64) {
+        for byte in value.to_le_bytes() {
+            self.byte(byte);
+        }
+    }
+
+    fn usize(&mut self, value: usize) {
+        self.u64(value as u64);
+    }
+
+    fn u32_set(&mut self, values: &BTreeSet<u32>) {
+        self.usize(values.len());
+        for value in values {
+            self.u32(*value);
+        }
+    }
+
+    const fn finish(self) -> u64 {
+        self.0
+    }
+}
+
+fn hash_view(hash: &mut Fnv64, view: &FlatView) {
+    hash.usize(view.mappings().len());
+    for mapping in view.mappings() {
+        hash.u64(mapping.base.0);
+        hash.u64(mapping.size);
+        hash.u32(mapping.target.0);
+        hash.u64(mapping.offset);
+        hash.byte(match mapping.kind {
+            MemoryKind::Ram => 0,
+            MemoryKind::Rom => 1,
+            MemoryKind::Mmio => 2,
+        });
+        hash.byte(u8::from(mapping.permissions.read));
+        hash.byte(u8::from(mapping.permissions.write));
+        hash.byte(u8::from(mapping.permissions.execute));
+    }
+}
+
+/// Owned, in-memory checkpoint of the runtime portion of one Machine.
+///
+/// This includes the virtual timeline, RAM/ROM bytes, exact address/wiring
+/// topology, and state for every device registered through
+/// [`Machine::register_snapshot_device`]. It intentionally does not include
+/// CPU engine contexts, shared-memory mirrors, signal sinks, host ports, or a
+/// persistent byte encoding. `save_snapshot` rejects machines with devices or
+/// sinks lacking snapshot support instead of silently producing a partial one.
+pub struct MachineSnapshot {
+    schema: u32,
+    graph_fingerprint: u64,
+    topology: MachineTopology,
+    queue: QueueState,
+    backing: BackingState,
+    devices: BTreeMap<u32, ErasedDeviceState>,
+}
+
+impl MachineSnapshot {
+    pub fn schema_version(&self) -> u32 {
+        self.schema
+    }
+
+    /// Stable for an identical topology and independent of hash-randomization.
+    /// This FNV-1a fingerprint is a compatibility checksum, not a security hash.
+    pub fn graph_fingerprint(&self) -> u64 {
+        self.graph_fingerprint
+    }
+
+    pub fn virtual_time(&self) -> VTime {
+        self.queue.now
+    }
+
+    pub fn device_count(&self) -> usize {
+        self.devices.len()
+    }
+
+    pub fn memory_bytes(&self) -> usize {
+        self.backing
+            .blocks
+            .iter()
+            .fold(0usize, |size, block| size.saturating_add(block.bytes.len()))
+    }
+}
+
+impl fmt::Debug for MachineSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MachineSnapshot")
+            .field("schema", &self.schema)
+            .field(
+                "graph_fingerprint",
+                &format_args!("{:016x}", self.graph_fingerprint),
+            )
+            .field("virtual_time", &self.queue.now)
+            .field("pending_events", &self.queue.events.len())
+            .field("memory_bytes", &self.memory_bytes())
+            .field("devices", &self.devices.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+struct ErasedDeviceState {
+    model: &'static str,
+    device_type: TypeId,
+    state_type: TypeId,
+    version: u32,
+    value: Box<dyn Any + Send>,
+}
+
+struct DeviceSnapshotOps {
+    model: &'static str,
+    device_type: TypeId,
+    save: fn(&dyn MachineDevice) -> Result<ErasedDeviceState, SnapshotError>,
+    validate: fn(&dyn MachineDevice, &ErasedDeviceState) -> Result<(), SnapshotError>,
+    load: fn(&mut dyn MachineDevice, &ErasedDeviceState) -> Result<(), SnapshotError>,
+}
+
+impl DeviceSnapshotOps {
+    fn for_type<T>() -> Self
+    where
+        T: MachineDevice + Snapshot + 'static,
+        T::State: 'static,
+    {
+        Self {
+            model: type_name::<T>(),
+            device_type: TypeId::of::<T>(),
+            save: save_device::<T>,
+            validate: validate_device::<T>,
+            load: load_device::<T>,
+        }
+    }
+}
+
+fn save_device<T>(device: &dyn MachineDevice) -> Result<ErasedDeviceState, SnapshotError>
+where
+    T: MachineDevice + Snapshot + 'static,
+    T::State: 'static,
+{
+    let device = device
+        .as_any()
+        .downcast_ref::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    Ok(ErasedDeviceState {
+        model: type_name::<T>(),
+        device_type: TypeId::of::<T>(),
+        state_type: TypeId::of::<T::State>(),
+        version: T::SCHEMA_VERSION,
+        value: Box::new(device.save()),
+    })
+}
+
+fn validate_device<T>(
+    device: &dyn MachineDevice,
+    erased: &ErasedDeviceState,
+) -> Result<(), SnapshotError>
+where
+    T: MachineDevice + Snapshot + 'static,
+    T::State: 'static,
+{
+    if erased.model != type_name::<T>()
+        || erased.device_type != TypeId::of::<T>()
+        || erased.state_type != TypeId::of::<T::State>()
+    {
+        return Err(SnapshotError::IdentityMismatch);
+    }
+    let device = device
+        .as_any()
+        .downcast_ref::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    let state = erased
+        .value
+        .downcast_ref::<T::State>()
+        .ok_or(SnapshotError::InvalidState)?;
+    device.validate(erased.version, state)
+}
+
+fn load_device<T>(
+    device: &mut dyn MachineDevice,
+    state: &ErasedDeviceState,
+) -> Result<(), SnapshotError>
+where
+    T: MachineDevice + Snapshot + 'static,
+    T::State: 'static,
+{
+    if state.model != type_name::<T>()
+        || state.device_type != TypeId::of::<T>()
+        || state.state_type != TypeId::of::<T::State>()
+    {
+        return Err(SnapshotError::IdentityMismatch);
+    }
+    let device = device
+        .as_any_mut()
+        .downcast_mut::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    let model_state = state
+        .value
+        .downcast_ref::<T::State>()
+        .ok_or(SnapshotError::InvalidState)?;
+    device.load(state.version, model_state)
+}
 
 /// Construction and dispatch failures. Bus failures keep the shared
 /// [`BusFault`] vocabulary so device and machine errors use one type.
@@ -78,6 +359,9 @@ pub struct Machine {
     outputs: BTreeMap<u32, BTreeSet<u32>>,
     /// `(source node, signal id) -> sink node`.
     wiring: BTreeMap<(u32, u32), u32>,
+    /// Snapshot vtables for typed devices. Devices without an entry make a
+    /// whole-machine snapshot unavailable rather than silently omitting state.
+    snapshot_devices: BTreeMap<u32, DeviceSnapshotOps>,
 }
 
 impl Machine {
@@ -91,6 +375,7 @@ impl Machine {
             backing: BackingStore::new(),
             outputs: BTreeMap::new(),
             wiring: BTreeMap::new(),
+            snapshot_devices: BTreeMap::new(),
         }
     }
 
@@ -125,6 +410,24 @@ impl Machine {
         device: Box<dyn MachineDevice>,
     ) -> Result<(), MachineError> {
         self.arena.insert(node, device)
+    }
+
+    /// Register a model whose typed State participates in whole-machine
+    /// snapshots. Host ports remain owned by the model and must be excluded
+    /// from its State so restoration preserves the current host connection.
+    pub fn register_snapshot_device<T>(
+        &mut self,
+        node: NodeId,
+        device: T,
+    ) -> Result<(), MachineError>
+    where
+        T: MachineDevice + Snapshot + 'static,
+        T::State: 'static,
+    {
+        self.arena.insert(node, Box::new(device))?;
+        self.snapshot_devices
+            .insert(node.0, DeviceSnapshotOps::for_type::<T>());
+        Ok(())
     }
 
     pub fn register_sink(
@@ -355,6 +658,148 @@ impl Machine {
         Ok(())
     }
 
+    /// Capture the runtime state, refusing to omit unsnapshotable models or
+    /// signal sinks. The resulting checkpoint is reusable in memory and can be
+    /// loaded into another Machine with an exactly matching topology.
+    pub fn save_snapshot(&self) -> Result<MachineSnapshot, SnapshotError> {
+        let topology = self.snapshot_topology();
+        let snapshot_nodes: BTreeSet<_> = self.snapshot_devices.keys().copied().collect();
+        if !topology.sink_nodes.is_empty() || topology.device_nodes != snapshot_nodes {
+            return Err(SnapshotError::CapabilityMissing);
+        }
+        if topology
+            .device_nodes
+            .iter()
+            .any(|node| !self.arena.is_available(NodeId(*node)))
+        {
+            return Err(SnapshotError::InvalidState);
+        }
+
+        let mut devices = BTreeMap::new();
+        for (&node, ops) in &self.snapshot_devices {
+            let device = self
+                .arena
+                .get(NodeId(node))
+                .ok_or(SnapshotError::InvalidState)?;
+            if device.as_any().type_id() != ops.device_type {
+                return Err(SnapshotError::IdentityMismatch);
+            }
+            let state = (ops.save)(device)?;
+            if state.model != ops.model || state.device_type != ops.device_type {
+                return Err(SnapshotError::IdentityMismatch);
+            }
+            (ops.validate)(device, &state)?;
+            devices.insert(node, state);
+        }
+
+        let queue = self.queue.save();
+        validate_snapshot_events(&topology, &devices, &queue)?;
+        let backing = self.backing.save();
+        Ok(MachineSnapshot {
+            schema: MACHINE_SNAPSHOT_SCHEMA,
+            graph_fingerprint: topology.fingerprint(),
+            topology,
+            queue,
+            backing,
+            devices,
+        })
+    }
+
+    /// Restore a checkpoint after validating the graph, queue, backing blocks,
+    /// and every device state. Device loads are prevalidated and rolled back if
+    /// a device violates the Snapshot contract and rejects during application.
+    pub fn load_snapshot(&mut self, snapshot: &MachineSnapshot) -> Result<(), SnapshotError> {
+        if snapshot.schema != MACHINE_SNAPSHOT_SCHEMA {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if snapshot.graph_fingerprint != snapshot.topology.fingerprint() {
+            return Err(SnapshotError::InvalidState);
+        }
+        let topology = self.snapshot_topology();
+        if snapshot.topology != topology || snapshot.graph_fingerprint != topology.fingerprint() {
+            return Err(SnapshotError::GraphMismatch);
+        }
+        let snapshot_nodes: BTreeSet<_> = self.snapshot_devices.keys().copied().collect();
+        if !topology.sink_nodes.is_empty() || topology.device_nodes != snapshot_nodes {
+            return Err(SnapshotError::CapabilityMissing);
+        }
+        let state_nodes: BTreeSet<_> = snapshot.devices.keys().copied().collect();
+        if state_nodes != snapshot_nodes {
+            return Err(SnapshotError::InvalidState);
+        }
+
+        self.queue
+            .validate(EventQueue::SCHEMA_VERSION, &snapshot.queue)?;
+        self.backing
+            .validate(BackingStore::SCHEMA_VERSION, &snapshot.backing)?;
+        validate_snapshot_events(&topology, &snapshot.devices, &snapshot.queue)?;
+
+        // Validate every participant and capture a rollback state before the
+        // first mutation. Snapshot::load itself must be atomic on failure.
+        let mut backups = BTreeMap::new();
+        for (&node, ops) in &self.snapshot_devices {
+            let device = self
+                .arena
+                .get(NodeId(node))
+                .ok_or(SnapshotError::InvalidState)?;
+            if device.as_any().type_id() != ops.device_type {
+                return Err(SnapshotError::IdentityMismatch);
+            }
+            let state = snapshot
+                .devices
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            (ops.validate)(device, state)?;
+            backups.insert(node, (ops.save)(device)?);
+        }
+
+        let mut applied = Vec::new();
+        for (&node, ops) in &self.snapshot_devices {
+            let state = snapshot
+                .devices
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            let device = self
+                .arena
+                .get_mut(NodeId(node))
+                .ok_or(SnapshotError::InvalidState)?;
+            if let Err(error) = (ops.load)(device, state) {
+                if !rollback_device_states(
+                    &mut self.arena,
+                    &self.snapshot_devices,
+                    &backups,
+                    &applied,
+                ) {
+                    return Err(SnapshotError::InvalidState);
+                }
+                return Err(error);
+            }
+            applied.push(node);
+        }
+
+        // These commits are infallible after the side-effect-free validation
+        // above, and replace their indexes/storage in one assignment each.
+        self.backing.restore_validated(&snapshot.backing);
+        self.queue.restore_validated(&snapshot.queue);
+        Ok(())
+    }
+
+    fn snapshot_topology(&self) -> MachineTopology {
+        MachineTopology {
+            default_view: self.view.clone(),
+            views: self.views.clone(),
+            device_nodes: self.arena.node_ids().map(|node| node.0).collect(),
+            sink_nodes: self.sinks.keys().copied().collect(),
+            backing_sizes: self.backing.block_sizes(),
+            outputs: self.outputs.clone(),
+            wiring: self.wiring.clone(),
+        }
+    }
+
+    pub fn graph_fingerprint(&self) -> u64 {
+        self.snapshot_topology().fingerprint()
+    }
+
     pub fn save_queue(&self) -> QueueState {
         self.queue.save()
     }
@@ -373,6 +818,49 @@ impl Machine {
     ) -> Result<EventId, ContextError> {
         self.queue.schedule(node, at, EventKind::Timer { token })
     }
+}
+
+fn validate_snapshot_events(
+    topology: &MachineTopology,
+    devices: &BTreeMap<u32, ErasedDeviceState>,
+    queue: &QueueState,
+) -> Result<(), SnapshotError> {
+    for event in &queue.events {
+        if !devices.contains_key(&event.owner.0) {
+            return Err(SnapshotError::InvalidState);
+        }
+        if let EventKind::Signal { signal, .. } = event.kind {
+            if !topology
+                .outputs
+                .get(&event.owner.0)
+                .is_some_and(|signals| signals.contains(&signal.0))
+            {
+                return Err(SnapshotError::InvalidState);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn rollback_device_states(
+    arena: &mut DeviceArena,
+    ops_by_node: &BTreeMap<u32, DeviceSnapshotOps>,
+    backups: &BTreeMap<u32, ErasedDeviceState>,
+    applied: &[u32],
+) -> bool {
+    for &node in applied.iter().rev() {
+        let (Some(ops), Some(state), Some(device)) = (
+            ops_by_node.get(&node),
+            backups.get(&node),
+            arena.get_mut(NodeId(node)),
+        ) else {
+            return false;
+        };
+        if (ops.load)(device, state).is_err() {
+            return false;
+        }
+    }
+    true
 }
 
 /// Default little-endian, non-secure data attribute for a bus master.
@@ -463,6 +951,122 @@ mod tests {
             }
             Ok(())
         }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct SnapshotProbeState {
+        schema: u32,
+        value: u64,
+        ticks: u64,
+    }
+
+    struct SnapshotProbe {
+        value: u64,
+        ticks: u64,
+    }
+
+    impl SnapshotProbe {
+        fn new() -> Self {
+            Self { value: 0, ticks: 0 }
+        }
+    }
+
+    impl MmioTarget for SnapshotProbe {
+        fn read(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            offset: u64,
+            _size: AccessSize,
+            _attr: &Attr,
+        ) -> Result<u64, BusFault> {
+            match offset {
+                0 => Ok(self.value),
+                4 => Ok(self.ticks),
+                _ => Err(BusFault::Device),
+            }
+        }
+
+        fn write(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            offset: u64,
+            _size: AccessSize,
+            value: u64,
+            _attr: &Attr,
+        ) -> Result<(), BusFault> {
+            if offset != 0 {
+                return Err(BusFault::Device);
+            }
+            self.value = value;
+            Ok(())
+        }
+    }
+
+    impl EventTarget for SnapshotProbe {
+        fn on_timer(&mut self, _ctx: &mut dyn Ctx, token: u64) -> Result<(), ContextError> {
+            self.ticks += token;
+            Ok(())
+        }
+    }
+
+    impl Snapshot for SnapshotProbe {
+        type State = SnapshotProbeState;
+        const SCHEMA_VERSION: u32 = 1;
+
+        fn save(&self) -> Self::State {
+            SnapshotProbeState {
+                schema: 1,
+                value: self.value,
+                ticks: self.ticks,
+            }
+        }
+
+        fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+            if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+                return Err(SnapshotError::VersionMismatch);
+            }
+            Ok(())
+        }
+
+        fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+            self.validate(version, state)?;
+            self.value = state.value;
+            self.ticks = state.ticks;
+            Ok(())
+        }
+    }
+
+    fn snapshot_probe_machine(ram_size: u64) -> Machine {
+        let ram = Region::leaf(
+            Mapping {
+                base: Addr(0x1000),
+                size: ram_size,
+                target: RAM,
+                offset: 0,
+                kind: MemoryKind::Ram,
+                permissions: Permissions::RWX,
+            },
+            0,
+        );
+        let device = Region::leaf(
+            Mapping {
+                base: Addr(0x2000),
+                size: 16,
+                target: DEVICE,
+                offset: 0,
+                kind: MemoryKind::Mmio,
+                permissions: Permissions::RW,
+            },
+            0,
+        );
+        let view = FlatView::build(&[ram, device]).unwrap();
+        let mut machine = Machine::new(view, 8);
+        machine.add_backing(RAM, ram_size).unwrap();
+        machine
+            .register_snapshot_device(DEVICE, SnapshotProbe::new())
+            .unwrap();
+        machine.verify().unwrap();
+        machine
     }
 
     // Test-only shared probe: the boxed sink and the test inspect one vector.
@@ -780,6 +1384,127 @@ mod tests {
     }
 
     #[test]
+    fn full_runtime_snapshot_restores_memory_device_state_and_events_reusably() {
+        let mut first = snapshot_probe_machine(16);
+        first.loader_write(RAM, 0, &[0xAA, 0xBB]).unwrap();
+        first
+            .bus_write(Addr(0x2000), AccessSize::Word, 41, &bus_attr(NodeId(9)))
+            .unwrap();
+        first.schedule_timer(DEVICE, VTime(20), 7).unwrap();
+        let checkpoint = first.save_snapshot().unwrap();
+        assert_eq!(checkpoint.schema_version(), 1);
+        assert_eq!(checkpoint.device_count(), 1);
+        assert_eq!(checkpoint.memory_bytes(), 16);
+        assert_ne!(checkpoint.graph_fingerprint(), 0);
+
+        first.loader_write(RAM, 0, &[0xCC, 0xDD]).unwrap();
+        first
+            .bus_write(Addr(0x2000), AccessSize::Word, 99, &bus_attr(NodeId(9)))
+            .unwrap();
+        first.run_until(VTime(20), 8).unwrap();
+        assert_eq!(first.now(), VTime(20));
+
+        first.load_snapshot(&checkpoint).unwrap();
+        assert_eq!(first.now(), VTime::ZERO);
+        assert_eq!(first.pending_events(), 1);
+        let mut ram = [0; 2];
+        first.loader_read(RAM, 0, &mut ram).unwrap();
+        assert_eq!(ram, [0xAA, 0xBB]);
+        let attr = bus_attr(NodeId(9));
+        assert_eq!(
+            first.bus_read(Addr(0x2000), AccessSize::Word, &attr),
+            Ok(41)
+        );
+        assert_eq!(first.bus_read(Addr(0x2004), AccessSize::Word, &attr), Ok(0));
+        first.run_until(VTime(20), 8).unwrap();
+        assert_eq!(first.bus_read(Addr(0x2004), AccessSize::Word, &attr), Ok(7));
+
+        // The typed checkpoint can be restored into another instance and can
+        // be replayed more than once; EventIds and insertion order are restored.
+        let mut second = snapshot_probe_machine(16);
+        second.load_snapshot(&checkpoint).unwrap();
+        assert_eq!(second.graph_fingerprint(), checkpoint.graph_fingerprint());
+        second.run_until(VTime(20), 8).unwrap();
+        assert_eq!(
+            second.bus_read(Addr(0x2000), AccessSize::Word, &attr),
+            Ok(41)
+        );
+        assert_eq!(
+            second.bus_read(Addr(0x2004), AccessSize::Word, &attr),
+            Ok(7)
+        );
+        assert_eq!(second.now(), VTime(20));
+
+        first.load_snapshot(&checkpoint).unwrap();
+        first.run_until(VTime(20), 8).unwrap();
+        assert_eq!(first.bus_read(Addr(0x2004), AccessSize::Word, &attr), Ok(7));
+    }
+
+    #[test]
+    fn machine_snapshot_prevalidates_every_device_before_mutating() {
+        let mut source = snapshot_probe_machine(16);
+        source.loader_write(RAM, 0, &[0xAA]).unwrap();
+        source
+            .bus_write(Addr(0x2000), AccessSize::Word, 41, &bus_attr(NodeId(9)))
+            .unwrap();
+        let mut checkpoint = source.save_snapshot().unwrap();
+        checkpoint
+            .devices
+            .get_mut(&DEVICE.0)
+            .unwrap()
+            .value
+            .downcast_mut::<SnapshotProbeState>()
+            .unwrap()
+            .schema = 2;
+
+        let mut destination = snapshot_probe_machine(16);
+        destination.loader_write(RAM, 0, &[0x55]).unwrap();
+        destination
+            .bus_write(Addr(0x2000), AccessSize::Word, 99, &bus_attr(NodeId(9)))
+            .unwrap();
+        assert_eq!(
+            destination.load_snapshot(&checkpoint),
+            Err(SnapshotError::VersionMismatch)
+        );
+        let mut byte = [0];
+        destination.loader_read(RAM, 0, &mut byte).unwrap();
+        assert_eq!(byte, [0x55]);
+        assert_eq!(
+            destination.bus_read(Addr(0x2000), AccessSize::Word, &bus_attr(NodeId(9))),
+            Ok(99)
+        );
+    }
+
+    #[test]
+    fn machine_snapshot_rejects_graph_mismatch_without_mutation() {
+        let mut source = snapshot_probe_machine(16);
+        source.loader_write(RAM, 0, &[0xAA]).unwrap();
+        let checkpoint = source.save_snapshot().unwrap();
+
+        let mut incompatible = snapshot_probe_machine(32);
+        incompatible.loader_write(RAM, 0, &[0x55]).unwrap();
+        assert_eq!(
+            incompatible.load_snapshot(&checkpoint),
+            Err(SnapshotError::GraphMismatch)
+        );
+        let mut byte = [0];
+        incompatible.loader_read(RAM, 0, &mut byte).unwrap();
+        assert_eq!(byte, [0x55]);
+    }
+
+    #[test]
+    fn machine_snapshot_refuses_devices_without_snapshot_support() {
+        let mut machine = Machine::new(FlatView::build(&[]).unwrap(), 8);
+        machine
+            .register_device(DEVICE, Box::new(PacingDevice::default()))
+            .unwrap();
+        assert_eq!(
+            machine.save_snapshot().unwrap_err(),
+            SnapshotError::CapabilityMissing
+        );
+    }
+
+    #[test]
     fn per_master_views_resolve_the_same_address_independently() {
         const ROM_A: NodeId = NodeId(5);
         const ROM_B: NodeId = NodeId(6);
@@ -837,6 +1562,7 @@ mod tests {
     fn machine_keeps_the_send_contract() {
         fn assert_send<T: Send>() {}
         assert_send::<Machine>();
+        assert_send::<MachineSnapshot>();
         assert_send::<Box<dyn MachineDevice>>();
     }
 

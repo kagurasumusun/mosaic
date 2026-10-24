@@ -19,7 +19,7 @@
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId, Snapshot, SnapshotError};
 
 mod reg {
     pub const STAT: u64 = 0x000;
@@ -179,6 +179,28 @@ impl EventTarget for Mhu {
     }
 }
 
+impl Snapshot for Mhu {
+    type State = MhuState;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        self.state
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state = *state;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -316,6 +338,30 @@ mod tests {
             .unwrap();
         assert_eq!(edges(&ctx), vec![(2, true), (0, true), (2, false)]);
         assert_eq!(mhu.state().stat, [1, 0, 0]);
+    }
+
+    #[test]
+    fn typed_snapshot_round_trip_restores_doorbells_and_rejects_bad_versions() {
+        let (mut mhu, mut ctx) = mhu();
+        let attr = attr();
+        mhu.write(&mut ctx, BANK0_SET, AccessSize::Word, 0x5, &attr)
+            .unwrap();
+        let checkpoint = mhu.save();
+        mhu.write(&mut ctx, BANK0_CLEAR, AccessSize::Word, 0x5, &attr)
+            .unwrap();
+        assert_eq!(mhu.state().stat[0], 0);
+        mhu.load(Mhu::SCHEMA_VERSION, &checkpoint).unwrap();
+        assert_eq!(mhu.state(), checkpoint);
+
+        let invalid = MhuState {
+            schema: Mhu::SCHEMA_VERSION + 1,
+            stat: [0; reg::BANKS as usize],
+        };
+        assert_eq!(
+            mhu.load(Mhu::SCHEMA_VERSION, &invalid),
+            Err(SnapshotError::VersionMismatch)
+        );
+        assert_eq!(mhu.state(), checkpoint);
     }
 
     #[test]

@@ -141,6 +141,20 @@ impl EventQueue {
         self.now = until;
         Ok(None)
     }
+
+    /// Commit a state that has already passed `Snapshot::validate`.
+    pub(crate) fn restore_validated(&mut self, state: &QueueState) {
+        let mut events = BTreeMap::new();
+        let mut times = BTreeMap::new();
+        for event in &state.events {
+            events.insert((event.at, event.id.0), *event);
+            times.insert(event.id.0, event.at);
+        }
+        self.now = state.now;
+        self.next_id = state.next_id;
+        self.events = events;
+        self.times = times;
+    }
 }
 
 impl Snapshot for EventQueue {
@@ -155,29 +169,28 @@ impl Snapshot for EventQueue {
         }
     }
 
-    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
         if version != Self::SCHEMA_VERSION {
             return Err(SnapshotError::VersionMismatch);
         }
         if state.events.len() > self.capacity {
             return Err(SnapshotError::InvalidState);
         }
-        // Build both indexes off to the side: validation failures are atomic.
-        let mut events = BTreeMap::new();
-        let mut times = BTreeMap::new();
+        let mut ids = BTreeMap::new();
         for event in &state.events {
             if event.at < state.now
                 || event.id.0 >= state.next_id
-                || times.insert(event.id.0, event.at).is_some()
+                || ids.insert(event.id.0, event.at).is_some()
             {
                 return Err(SnapshotError::InvalidState);
             }
-            events.insert((event.at, event.id.0), *event);
         }
-        self.now = state.now;
-        self.next_id = state.next_id;
-        self.events = events;
-        self.times = times;
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.restore_validated(state);
         Ok(())
     }
 }

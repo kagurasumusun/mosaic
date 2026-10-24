@@ -64,9 +64,11 @@ callback をスコープから抜けて Ctx を解放したあと、dispatcher �
 復元前の timeline で保持していた EventId は、State に保存されたモデル状態とともに置き換えてください。
 古い handle と復元後の handle を混用することはサポートしません。
 
-この State はメモリ内の型であり、バイト列の永続化形式ではありません。
-外側の機械識別子・IR ハッシュ・ノードと出力の存在検証は、今後の全機械 snapshot 層の責務です。
-不正な State の拒否はテストしますが、信頼できない巨大ファイルのパース上限はまだ対象外です。
+この QueueState 単体はメモリ内の型であり、バイト列の永続化形式ではありません。
+より上位の `Machine::save_snapshot` は queue に RAM/ROM と snapshot 対応デバイス State を束ね、
+アドレス view / node / wiring の一致を検証します。これは初期 P4 のランタイム checkpoint であり、
+CPU engine context、signal sink、外部共有 RAM、永続化・IR ハッシュ互換性までは含みません。
+[Snapshot ガイド](snapshot.md)を参照してください。
 
 ## 動く例と CI
 
@@ -128,8 +130,10 @@ machine.run_until(VTime(1000), 32).unwrap();
 - **実行予算**: `run_until(deadline, budget)` は期限までイベントを配送します。
   同時刻の無限再予約は `budget` で止まり `MachineError::EventBudgetExceeded` を返します。
   キューが空なら deadline まで時刻を進めます。
-- **キューの snapshot**: `save_queue` / `load_queue` で EventQueue の版付き State を引き継げます。
-  デバイス State・RAM・全機械ヘッダはまだ保存対象ではありません。
+- **runtime snapshot（初期 P4）**: `save_snapshot` / `load_snapshot` は queue、RAM/ROM、
+  `register_snapshot_device` で登録した全デバイス State を一緒に復元します。
+  未対応デバイスまたは SignalSink がある Machine は部分保存せず拒否します。
+  CPU engine / sink / shared mirror と永続形式は未対応です。
 
 ```sh
 cargo run --locked --package mosaic-core-runtime --example machine
@@ -139,6 +143,16 @@ cargo run --locked --package mosaic-core-runtime --example machine
 同一構成を 2 回実行して結果が一致することを確認します。CI は
 `tests/machine-mmio.stdout` と出力を比較します。実ファームウェアや実在デバイスの検査ではありません。
 手動のスループット測定は `mmio_throughput_probe`（`-- --ignored`）です。
+
+### Machine snapshot と replay
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example snapshot
+```
+
+RAM、snapshot 対応デバイスの State、未配送 timer をまとめて保存し、全てを変更した後に復元します。
+同じ typed checkpoint から timer を再配送できることを表示し、CI は `tests/machine-snapshot.stdout` と比較します。
+API の契約・制限・今後の P4 作業は [Snapshot ガイド](snapshot.md)を参照してください。
 
 ### 仕様との対応（マシン基盤）
 

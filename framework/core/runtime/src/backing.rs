@@ -7,9 +7,23 @@
 
 use std::collections::BTreeMap;
 
-use mosaic_core_types::{AccessSize, BusFault, Endian, NodeId};
+use mosaic_core_types::{AccessSize, BusFault, Endian, NodeId, Snapshot, SnapshotError};
 
 use crate::machine::MachineError;
+
+/// Snapshot of every RAM/ROM backing block. Blocks are ordered by `NodeId`;
+/// the byte vectors are owned copies and are not host pointers or dirty-page
+/// deltas. The persistent encoding and page-level COW format are later work.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackingState {
+    pub blocks: Vec<BackingBlockState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackingBlockState {
+    pub node: NodeId,
+    pub bytes: Vec<u8>,
+}
 
 #[derive(Default)]
 pub struct BackingStore {
@@ -92,6 +106,65 @@ impl BackingStore {
         let block = self.blocks.get_mut(&node.0).ok_or(BusFault::Unmapped)?;
         let range = span(block.len(), offset, size.bytes().into())?;
         store(&mut block[range], value, endian);
+        Ok(())
+    }
+
+    /// Commit a state after it has passed `Snapshot::validate`.
+    pub(crate) fn restore_validated(&mut self, state: &BackingState) {
+        self.blocks = state
+            .blocks
+            .iter()
+            .map(|block| (block.node.0, block.bytes.clone()))
+            .collect();
+    }
+
+    pub(crate) fn block_sizes(&self) -> BTreeMap<u32, usize> {
+        self.blocks
+            .iter()
+            .map(|(&node, bytes)| (node, bytes.len()))
+            .collect()
+    }
+}
+
+impl Snapshot for BackingStore {
+    type State = BackingState;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        BackingState {
+            blocks: self
+                .blocks
+                .iter()
+                .map(|(&node, bytes)| BackingBlockState {
+                    node: NodeId(node),
+                    bytes: bytes.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state.blocks.len() != self.blocks.len() {
+            return Err(SnapshotError::GraphMismatch);
+        }
+        let mut seen = BTreeMap::new();
+        for block in &state.blocks {
+            if seen.insert(block.node.0, block.bytes.len()).is_some() {
+                return Err(SnapshotError::InvalidState);
+            }
+        }
+        if seen != self.block_sizes() {
+            return Err(SnapshotError::GraphMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.restore_validated(state);
         Ok(())
     }
 }

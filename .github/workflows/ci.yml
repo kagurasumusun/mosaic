@@ -3,11 +3,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      export_toolchain:
-        description: "Export the pinned toolchain + Cargo registry as an artifact"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -125,6 +120,17 @@ jobs:
           echo "smoke-machine: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
           exit 0
 
+      - name: Runtime machine snapshot and replay smoke test
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-core-runtime --example snapshot > ci-reports/machine-snapshot.stdout 2> ci-reports/machine-snapshot.log
+          code=$?
+          diff -u tests/machine-snapshot.stdout ci-reports/machine-snapshot.stdout >> ci-reports/machine-snapshot.log 2>&1
+          dcode=$?
+          echo "smoke-snapshot: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Unicorn ARM execution smoke test
         if: always()
         run: |
@@ -197,35 +203,3 @@ jobs:
             echo "one or more checks failed; see ci-reports/ on the branch"
             exit 1
           fi
-
-  # Manual helper for offline development hosts: exports the pinned toolchain
-  # and the Cargo registry cache. Trigger with a commit whose message contains
-  # `[toolchain-export]`, or dispatch with `-f export_toolchain=true`.
-  toolchain-export:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.export_toolchain) ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, '[toolchain-export]'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node.js 24)
-      - uses: dtolnay/rust-toolchain@1.85.0
-        with:
-          components: rustfmt, clippy
-
-      - name: Fetch dependency sources
-        run: cargo fetch --locked
-
-      - name: Pack toolchain and registry cache
-        run: |
-          mkdir -p export
-          tar -C "$HOME" -czf export/rustup-home.tar.gz .rustup
-          tar -C "$HOME" -czf export/cargo-registry.tar.gz .cargo/registry
-          tar -C "$HOME" -czf export/cargo-bin.tar.gz .cargo/bin
-          du -sh export/*
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mosaic-toolchain
-          path: export/
-          retention-days: 7

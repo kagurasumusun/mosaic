@@ -2,7 +2,8 @@
 
 Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤、P1 のイベント・アドレス・CPU 実行基盤（ARM926EJ-S + Versatile-PB の垂直スライス）、P2 のバスとピン基盤（I2C / SPI / GPIO）、P3 のマルチコア・ヘテロジニアス実行**を構築済みです。
+[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、P0–P3 の縦スライスを構築し、**P4 の in-memory runtime checkpoint**を開始しました。
+P4 は全 catalog モデル・CPU engine・signal sink・永続形式までは未完です。
 `bringup`・`sensorbus`・`multicore` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
 
 ## 開発を始める
@@ -51,6 +52,10 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - `EngineBus` callback と `mmio_map` による engine 側 MMIO region、バス故障の記録と Fault 停止。
 - デバイスアリーナ（take-out と再入拒否）、RAM/ROM バッキング、FlatView 経由の MMIO ディスパッチ、
   タイマ・signal の配線と配送を持つ `Machine`。
+- P4 初期 runtime snapshot: queue + RAM/ROM + snapshot 対応 device State を束ねた in-memory checkpoint、
+  topology fingerprint / 完全一致検証、事前検証、再ロード・replay の golden test。catalog の初期対応は `mhu`。
+  CPU engine、signal sink / IRQ mailbox、shared mirror、host I/O、永続 codec は未対応で、未対応ノードを含む
+  Machine は部分 snapshot を拒否します（[Snapshot ガイド](docs/guides/snapshot.md)）。
 - L5 `mosaic-assemble`（`unicorn` feature）: FlatView から engine ページと MMIO region を導出する
   `bind_flat_view`、命令量子とイベント配送を交互に行う `MachineDriver`。
 - 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
@@ -100,12 +105,21 @@ cargo run --locked --package mosaic-core-runtime --example machine
 Rom/Ram 権限、MMIO 経由のタイマ予約、signal 配送、BusFault と決定論をトレースします。
 CPU エンジンとの連携や実ファームウェアの起動はまだ含みません。
 
+初期 P4 の runtime checkpoint / replay 例:
+
+```sh
+cargo run --locked --package mosaic-core-runtime --example snapshot
+```
+
+RAM、typed device State、pending timer の復元を確認します。CPU engine context 等を含む VM 全体の
+snapshot ではありません。詳細は [Snapshot ガイド](docs/guides/snapshot.md)を参照してください。
+
 ### 次の実装
 
 P2（バスとピン）と P3（マルチコア・ヘテロジニアス）の終了条件は CI 上で証明済みです。
-次は P4（スナップショットと運用基盤）へ進みます: 全モデルの State とエンジンの
-コンテキストを保存し、復元後に状態ハッシュが一致すること（設計書 §13.5, §22 T4）、
-記録再生、gdbstub、トレース、故障注入（§13.6 の tap 点）が目標です。
+P4 は runtime checkpoint の初期 slice を実装しました。次は catalog の全モデル State 化、CPU engine
+context / IRQ sink / shared mirror の checkpoint、永続化と State migration、状態ハッシュ一致を進めます
+（設計書 §13.5, §22 T4）。その後に記録再生、gdbstub、トレース、故障注入（§13.6 の tap 点）が目標です。
 残る技術項は命令数と VTime を結ぶ clock tree（現在はコアごとの固定周期）、
 Unicorn 2.1.x に無い外部割り込み注入（`EngineCaps::line_injection = false`）、
 キャッシュ/TLB 無効化の粒度、書き込み可能な共有 DMI です。

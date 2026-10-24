@@ -15,7 +15,7 @@ mod machine;
 
 pub use address::{Access, AddressError, FlatView, Region, Resolved};
 pub use arena::DeviceArena;
-pub use backing::BackingStore;
+pub use backing::{BackingBlockState, BackingState, BackingStore};
 pub use context::ModelContext;
 pub use events::{Event, EventKind, EventQueue, QueueState};
-pub use machine::{bus_attr, Machine, MachineDevice, MachineError};
+pub use machine::{bus_attr, Machine, MachineDevice, MachineError, MachineSnapshot};
