@@ -62,6 +62,15 @@ impl EngineCaps {
         exclusive_monitor: false,
         line_injection: false,
     };
+
+    /// Instruction budgets plus precise faults. Still no exclusive monitor and
+    /// no line-driven exception entry (the vector number is not on the line).
+    pub const PRECISE: Self = Self {
+        instruction_count: true,
+        precise_exceptions: true,
+        exclusive_monitor: false,
+        line_injection: false,
+    };
 }
 
 /// Architecture-neutral execution architecture vocabulary for CPU descriptors

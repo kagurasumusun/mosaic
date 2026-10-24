@@ -50,10 +50,8 @@ pub struct StepReport {
 /// Owns one engine and the shared machine it executes against.
 ///
 /// Generic over the engine type so the same cooperative loop drives every
-/// backend adapter — the A32 [`UnicornArm`](mosaic_engine_unicorn::UnicornArm)
-/// and the M-class `UnicornCortexM3` of microcontroller slices alike. The
-/// engine only needs the [`CpuEngine`] contract; backend-specific inspection
-/// (register access, recorded interrupt edges) goes through `engine()`.
+/// backend that implements [`CpuEngine`]. Backend-specific inspection goes
+/// through `engine()`.
 pub struct MachineDriver<E: CpuEngine> {
     engine: E,
     machine: Arc<Mutex<Machine>>,
@@ -198,7 +196,7 @@ impl<E: CpuEngine> MachineDriver<E> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "unicorn"))]
 mod tests {
     use std::sync::{Arc, Mutex};
 

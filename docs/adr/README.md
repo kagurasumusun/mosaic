@@ -22,3 +22,4 @@
 | [0014](0014-multicore-time-semantics.md) | マルチコア時間モデルの保証範囲 | 暫定採用、serial-slice と lockstep を区別 |
 | [0015](0015-checkpoint-identity.md) | checkpoint identity、clock dynamics、catalog State | 暫定採用、永続 codec と CPU context は未対応 |
 | [0016](0016-machine-materialization.md) | MachineGraph の実体化と CPU 宣言の境界 | 初期実装、未対応エッジは deferred |
+| [0017](0017-native-armv7m-engine.md) | ARMv7-M 自前エンジン（Thumb、精密例外、幅を保つ MMIO） | 初期実装、全命令は未対応 |

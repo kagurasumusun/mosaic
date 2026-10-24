@@ -20,14 +20,12 @@ pub use materialize::{
     IncomingWire, InstantiateCtx, MaterializeError,
 };
 
-#[cfg(feature = "unicorn")]
 mod driver;
 #[cfg(feature = "unicorn")]
 mod multicore;
 #[cfg(feature = "unicorn")]
 mod unicorn_bind;
 
-#[cfg(feature = "unicorn")]
 pub use driver::{DriverError, MachineDriver, StepReport};
 #[cfg(feature = "unicorn")]
 pub use multicore::{MulticoreDriver, MulticoreError, RoundReport, DEFAULT_PS_PER_INSTRUCTION};

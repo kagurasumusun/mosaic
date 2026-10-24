@@ -20,6 +20,7 @@ members = [
     "framework/isa/riscv",
     "framework/core/runtime",
     "framework/engine/conformance",
+    "framework/engine/native/armv7m",
     "framework/engine/unicorn",
     "framework/describe",
     "framework/assemble",

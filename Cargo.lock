@@ -265,6 +265,7 @@ dependencies = [
  "mosaic-core-runtime",
  "mosaic-core-types",
  "mosaic-describe",
+ "mosaic-engine-native-armv7m",
  "mosaic-engine-unicorn",
  "mosaic-interconnect-uart-pair",
  "mosaic-ip-arm-scs",
@@ -449,6 +450,15 @@ version = "0.1.0"
 
 [[package]]
 name = "mosaic-engine-conformance"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-cpu-engine",
+ "mosaic-core-types",
+ "mosaic-isa-arm",
+]
+
+[[package]]
+name = "mosaic-engine-native-armv7m"
 version = "0.1.0"
 dependencies = [
  "mosaic-contract-cpu-engine",
