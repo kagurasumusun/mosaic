@@ -1,144 +1,172 @@
-diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
-index d99a73c..0e63b4f 100644
---- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
-+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
-@@ -237,14 +237,8 @@ mod tests {
-         let mut core = Arm926ejS::new(params());
-         let mut ctx = CtxStub;
-         let attr = attr();
--        core.write(
--            &mut ctx,
--            reg::CONTROL,
--            AccessSize::Word,
--            0xFFFF_FFFF,
--            &attr,
--        )
--        .unwrap();
-+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
-+            .unwrap();
-         assert_eq!(
-             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
-             Ok(control::ENABLE as u64)
-@@ -278,15 +272,12 @@ mod tests {
-         let mut core = Arm926ejS::new(params());
-         let mut ctx = CtxStub;
-         let attr = attr();
--        core.write(
--            &mut ctx,
--            reg::CONTROL,
--            AccessSize::Word,
--            0x1234_5678,
--            &attr,
--        )
--        .unwrap();
--        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
-+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
-+            .unwrap();
-+        assert_eq!(
-+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
-+            Ok(0x78)
-+        );
-         assert_eq!(
-             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
-             Ok(0x5678)
-@@ -321,7 +312,10 @@ mod tests {
-         );
-         let mut raz = Arm926ejS::new(params());
-         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
--        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
-+        assert_eq!(
-+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
-+            Ok(())
-+        );
-     }
- 
-     #[test]
-diff --git a/framework/prim/bits/src/lib.rs b/framework/prim/bits/src/lib.rs
-index ad30b24..9249de4 100644
---- a/framework/prim/bits/src/lib.rs
-+++ b/framework/prim/bits/src/lib.rs
-@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
- }
- 
- /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
--pub fn write_u16_le(
--    buf: &mut [u8],
--    value: u16,
--) -> Result<(), PrimError> {
-+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
-     if buf.len() < 2 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -83,10 +80,7 @@ pub fn write_u16_le(
- }
- 
- /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
--pub fn write_u16_be(
--    buf: &mut [u8],
--    value: u16,
--) -> Result<(), PrimError> {
-+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
-     if buf.len() < 2 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -97,10 +91,7 @@ pub fn write_u16_be(
- }
- 
- /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
--pub fn write_u32_le(
--    buf: &mut [u8],
--    value: u32,
--) -> Result<(), PrimError> {
-+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
-     if buf.len() < 4 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -113,10 +104,7 @@ pub fn write_u32_le(
- }
- 
- /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
--pub fn write_u32_be(
--    buf: &mut [u8],
--    value: u32,
--) -> Result<(), PrimError> {
-+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
-     if buf.len() < 4 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -129,10 +117,7 @@ pub fn write_u32_be(
- }
- 
- /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
--pub fn write_u64_le(
--    buf: &mut [u8],
--    value: u64,
--) -> Result<(), PrimError> {
-+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
-     if buf.len() < 8 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -149,10 +134,7 @@ pub fn write_u64_le(
- }
- 
- /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
--pub fn write_u64_be(
--    buf: &mut [u8],
--    value: u64,
--) -> Result<(), PrimError> {
-+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
-     if buf.len() < 8 {
-         return Err(PrimError::BufferTooSmall);
-     }
-@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
-     if width == 0 || shift + width > 64 {
-         return Err(PrimError::FieldRange);
-     }
--    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
-+    let mask = if width == 64 {
-+        u64::MAX
-+    } else {
-+        (1u64 << width) - 1
-+    };
-     Ok((value >> shift) & mask)
- }
- 
+diff --git a/ci-reports/rustfmt.diff b/ci-reports/rustfmt.diff
+index 515b477..e69de29 100644
+--- a/ci-reports/rustfmt.diff
++++ b/ci-reports/rustfmt.diff
+@@ -1,144 +0,0 @@
+-diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+-index d99a73c..0e63b4f 100644
+---- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
+-+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+-@@ -237,14 +237,8 @@ mod tests {
+-         let mut core = Arm926ejS::new(params());
+-         let mut ctx = CtxStub;
+-         let attr = attr();
+--        core.write(
+--            &mut ctx,
+--            reg::CONTROL,
+--            AccessSize::Word,
+--            0xFFFF_FFFF,
+--            &attr,
+--        )
+--        .unwrap();
+-+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
+-+            .unwrap();
+-         assert_eq!(
+-             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
+-             Ok(control::ENABLE as u64)
+-@@ -278,15 +272,12 @@ mod tests {
+-         let mut core = Arm926ejS::new(params());
+-         let mut ctx = CtxStub;
+-         let attr = attr();
+--        core.write(
+--            &mut ctx,
+--            reg::CONTROL,
+--            AccessSize::Word,
+--            0x1234_5678,
+--            &attr,
+--        )
+--        .unwrap();
+--        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
+-+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
+-+            .unwrap();
+-+        assert_eq!(
+-+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
+-+            Ok(0x78)
+-+        );
+-         assert_eq!(
+-             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
+-             Ok(0x5678)
+-@@ -321,7 +312,10 @@ mod tests {
+-         );
+-         let mut raz = Arm926ejS::new(params());
+-         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
+--        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
+-+        assert_eq!(
+-+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
+-+            Ok(())
+-+        );
+-     }
+- 
+-     #[test]
+-diff --git a/framework/prim/bits/src/lib.rs b/framework/prim/bits/src/lib.rs
+-index ad30b24..9249de4 100644
+---- a/framework/prim/bits/src/lib.rs
+-+++ b/framework/prim/bits/src/lib.rs
+-@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
+- }
+- 
+- /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
+--pub fn write_u16_le(
+--    buf: &mut [u8],
+--    value: u16,
+--) -> Result<(), PrimError> {
+-+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
+-     if buf.len() < 2 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -83,10 +80,7 @@ pub fn write_u16_le(
+- }
+- 
+- /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
+--pub fn write_u16_be(
+--    buf: &mut [u8],
+--    value: u16,
+--) -> Result<(), PrimError> {
+-+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
+-     if buf.len() < 2 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -97,10 +91,7 @@ pub fn write_u16_be(
+- }
+- 
+- /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
+--pub fn write_u32_le(
+--    buf: &mut [u8],
+--    value: u32,
+--) -> Result<(), PrimError> {
+-+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
+-     if buf.len() < 4 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -113,10 +104,7 @@ pub fn write_u32_le(
+- }
+- 
+- /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
+--pub fn write_u32_be(
+--    buf: &mut [u8],
+--    value: u32,
+--) -> Result<(), PrimError> {
+-+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
+-     if buf.len() < 4 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -129,10 +117,7 @@ pub fn write_u32_be(
+- }
+- 
+- /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
+--pub fn write_u64_le(
+--    buf: &mut [u8],
+--    value: u64,
+--) -> Result<(), PrimError> {
+-+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
+-     if buf.len() < 8 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -149,10 +134,7 @@ pub fn write_u64_le(
+- }
+- 
+- /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
+--pub fn write_u64_be(
+--    buf: &mut [u8],
+--    value: u64,
+--) -> Result<(), PrimError> {
+-+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
+-     if buf.len() < 8 {
+-         return Err(PrimError::BufferTooSmall);
+-     }
+-@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
+-     if width == 0 || shift + width > 64 {
+-         return Err(PrimError::FieldRange);
+-     }
+--    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+-+    let mask = if width == 64 {
+-+        u64::MAX
+-+    } else {
+-+        (1u64 << width) - 1
+-+    };
+-     Ok((value >> shift) & mask)
+- }
+- 
+diff --git a/ci-reports/status.txt b/ci-reports/status.txt
+index cdc243d..8ad1a3f 100644
+--- a/ci-reports/status.txt
++++ b/ci-reports/status.txt
+@@ -1,15 +1,4 @@
+-run: https://github.com/kagurasumusun/mosaic/actions/runs/40042201613
+-commit: e3a7c99bdb6d194855c3a29bc2eeb081e819c9db
++run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
++commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
+ ref: refs/heads/arena/62448c0d-mosaic
+-started: 2026-10-23T23:55:22Z
+-formatting: fail (code=0, see rustfmt.diff)
+-xtask: ok
+-clippy: ok
+-build: ok
+-test: fail (code=101)
+-smoke-events: ok
+-smoke-machine: ok
+-smoke-unicorn: ok
+-bringup: fail (code=1)
+-doctor: ok
+-finished: 2026-10-23T23:56:23Z
++started: 2026-10-24T00:00:53Z

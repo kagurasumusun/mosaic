@@ -14,17 +14,201 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m tests/bringup.rs (target/debug/deps/bringup-1ba63dc31768c5a4)
 
 running 2 tests
-test firmware_boots_and_emits_the_golden_uart_output ... FAILED
-test independent_runs_are_deterministic ... FAILED
+test firmware_boots_and_emits_the_golden_uart_output ... ok
+test independent_runs_are_deterministic ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_apps_cli-fb82ede163fac807)
+
+running 3 tests
+test unicorn::tests::unicorn_passes_backend_independent_a32_fixture ... ok
+test unicorn::tests::smoke_trace_is_repeatable ... ok
+test unicorn::tests::partitioning_instruction_budgets_preserves_registers_and_memory ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_assemble-df7596b91c306e2d)
+
+running 11 tests
+test bus::tests::engine_bus_resolves_offsets_and_synthesizes_the_master_attribute ... ok
+test driver::tests::clocked_step_advances_vtime_and_drains_due_timer_events ... ok
+test driver::tests::clocked_step_reports_time_overflow_instead_of_wrapping ... ok
+test irq::tests::an_engine_failure_keeps_the_remaining_edges_queued ... ok
+test irq::tests::sink_edges_flush_to_the_engine_in_fifo_order ... ok
+test driver::tests::step_runs_the_quantum_then_delivers_queued_signals ... ok
+test irq::tests::unsupported_line_is_reported_when_nothing_was_delivered ... ok
+test driver::tests::bus_faults_abort_the_step_with_the_recorded_access ... ok
+test unicorn_bind::tests::non_page_aligned_views_are_rejected_before_anything_is_mapped ... ok
+test unicorn_bind::tests::guest_mmio_and_ram_traverse_the_flatview_binding ... ok
+test driver::tests::wired_signal_reaches_the_engine_irq_line ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_can-fc6eb42b1a4fb586)
+
+running 3 tests
+test tests::frames_validate_dlc_and_expose_only_valid_bytes ... ok
+test tests::identifiers_stay_inside_their_widths ... ok
+test tests::arbitration_priority_follows_the_identifier_number ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_clock-2b1b5c6f63f03567)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_cpu_engine-a01ee1e90d019d36)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_gpio-3265754dca0a6e1a)
+
+running 2 tests
+test tests::config_constructors_cover_the_two_default_roles ... ok
+test tests::level_reports_its_boolean_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_i2c-fafdb5eb35101cf8)
+
+running 3 tests
+test tests::ack_carries_its_boolean_state ... ok
+test tests::seven_bit_addresses_reject_reserved_pools ... ok
+test tests::ten_bit_addresses_have_a_1024_entry_range ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_mmio-216d1b124413ba3b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_model-8d9b7a0469e21dc3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_net-3f08f689ce4a7160)
+
+running 1 test
+test tests::net_level_is_constructible_for_conformance_harnesses ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_signal-e75aa40e19590106)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_spi-96fb6de05318159f)
+
+running 1 test
+test tests::mode_numbers_map_to_cpol_cpha ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_stream-a5b4b2724512d98b)
+
+running 1 test
+test tests::error_variants_remain_comparable_for_backpressure_handling ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_uart_line-e54adff99d01c583)
+
+running 2 tests
+test tests::config_rejects_illegal_frames ... ok
+test tests::default_line_is_115200_8n1 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_core_runtime-ed0f46cbef60324a)
+
+running 46 tests
+test address::tests::construction_order_does_not_override_declared_priorities ... ok
+test address::tests::container_holes_fall_through_to_lower_priority_siblings ... ok
+test address::tests::high_priority_overlay_splits_and_preserves_backing_offsets ... ok
+test address::tests::nested_offsets_and_device_local_offsets_are_distinct ... ok
+test address::tests::excessive_nesting_is_rejected ... ok
+test address::tests::permissions_and_independent_views_are_enforced ... ok
+test address::tests::top_address_byte_is_valid_but_a_cross_boundary_access_is_not ... ok
+test address::tests::rejects_ambiguous_empty_out_of_parent_and_overflowing_regions ... ok
+test arena::tests::a_taken_device_is_unavailable_until_restored ... ok
+test arena::tests::duplicate_registration_is_rejected ... ok
+test arena::tests::unknown_nodes_are_distinct_from_taken_nodes ... ok
+test backing::tests::blocks_reject_duplicates_and_zero_size ... ok
+test backing::tests::guest_and_loader_accesses_are_bounds_checked_without_panics ... ok
+test backing::tests::endianness_is_honored_for_every_width ... ok
+test context::tests::contexts_cannot_cancel_other_nodes_timers ... ok
+test context::tests::context_uses_virtual_time_and_node_local_timer_identity ... ok
+test context::tests::full_queue_rejects_signal_without_mutation ... ok
+test context::tests::relative_time_overflow_is_not_saturated_or_wrapped ... ok
+test context::tests::runtime_handles_preserve_the_send_contract ... ok
+test context::tests::signal_changes_are_deferred_and_keep_order_with_same_time_timers ... ok
+test context::tests::unknown_signal_is_rejected_without_mutation ... ok
+test events::tests::cancellation_is_owner_scoped_and_idempotent ... ok
+test events::tests::cancelled_events_are_removed_from_both_indexes ... ok
+test events::tests::capacity_failure_does_not_consume_an_id ... ok
+test events::tests::events_are_time_ordered_and_ties_keep_insertion_order ... ok
+test events::tests::exhausted_id_counter_never_wraps ... ok
+test events::tests::invalid_snapshots_leave_existing_state_untouched ... ok
+test events::tests::past_reservation_is_rejected_without_mutation ... ok
+test events::tests::reservation_does_not_advance_time ... ok
+test events::tests::snapshot_input_order_does_not_change_dispatch_order ... ok
+test events::tests::snapshot_round_trip_preserves_order_cancellation_and_next_id ... ok
+test events::tests::time_window_includes_its_boundary_but_never_skips_events ... ok
+test events::tests::identical_inputs_produce_identical_traces ... ok
+test events::tests::time_window_partition_does_not_change_event_trace ... ok
+test events::tests::zero_capacity_is_well_defined ... ok
+test machine::tests::construction_and_verification_reject_broken_wiring ... ok
+test machine::tests::event_budget_bounds_endless_same_time_rescheduling ... ok
+test machine::tests::idle_run_advances_time_and_unknown_timers_are_reported ... ok
+test machine::tests::machine_keeps_the_send_contract ... ok
+test machine::tests::identical_inputs_produce_identical_machine_traces ... ok
+test machine::tests::mmio_throughput_probe ... ignored, manual throughput probe; never part of deterministic CI output
+test machine::tests::mmio_dispatch_passes_offsets_and_attributes_to_the_device ... ok
+test machine::tests::queue_checkpoint_replay_reproduces_the_machine_trace ... ok
+test machine::tests::taken_device_reports_reentrant_and_is_restored_afterward ... ok
+test machine::tests::timer_events_drive_wired_signals_in_deterministic_order ... ok
+test machine::tests::ram_rom_and_view_permissions_are_enforced ... ok
+
+test result: ok. 45 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_core_types-7469238340208f1b)
+
+running 2 tests
+test tests::rejects_invalid_guest_widths ... ok
+test tests::virtual_time_never_wraps ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_cpu_arm_arm926ej_s-50733bea59477c43)
+
+running 7 tests
+test tests::control_register_is_read_write_and_masks_to_enable_bit ... ok
+test tests::irq_and_fiq_levels_are_reflected_in_status ... ok
+test tests::misaligned_offset_follows_unmapped_policy ... ok
+test tests::midr_identifies_arm926ej_s_and_is_read_only ... ok
+test tests::unknown_offset_follows_unmapped_policy ... ok
+test tests::write_value_is_truncated_to_register_width ... ok
+test tests::byte_and_halfword_reads_return_low_part ... FAILED
 
 failures:
 
----- firmware_boots_and_emits_the_golden_uart_output stdout ----
+---- tests::byte_and_halfword_reads_return_low_part stdout ----
 
-thread 'firmware_boots_and_emits_the_golden_uart_output' panicked at apps/bringup/tests/bringup.rs:9:5:
+thread 'tests::byte_and_halfword_reads_return_low_part' panicked at catalog/cpu/arm/arm926ej-s/src/lib.rs:277:9:
 assertion `left == right` failed
-  left: [109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109]
- right: [109, 111, 115, 97, 105, 99, 10]
+  left: Ok(0)
+ right: Ok(120)
 stack backtrace:
    0: rust_begin_unwind
              at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/std/src/panicking.rs:692:5
@@ -33,34 +217,10 @@ stack backtrace:
    2: core::panicking::assert_failed_inner
    3: core::panicking::assert_failed
              at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/panicking.rs:364:5
-   4: bringup::firmware_boots_and_emits_the_golden_uart_output
-             at ./tests/bringup.rs:9:5
-   5: bringup::firmware_boots_and_emits_the_golden_uart_output::{{closure}}
-             at ./tests/bringup.rs:7:53
-   6: core::ops::function::FnOnce::call_once
-             at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/ops/function.rs:250:5
-   7: core::ops::function::FnOnce::call_once
-             at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/ops/function.rs:250:5
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
-
----- independent_runs_are_deterministic stdout ----
-
-thread 'independent_runs_are_deterministic' panicked at apps/bringup/tests/bringup.rs:20:5:
-assertion `left == right` failed
-  left: [109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109, 109]
- right: [109, 111, 115, 97, 105, 99, 10]
-stack backtrace:
-   0: rust_begin_unwind
-             at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/std/src/panicking.rs:692:5
-   1: core::panicking::panic_fmt
-             at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/panicking.rs:75:14
-   2: core::panicking::assert_failed_inner
-   3: core::panicking::assert_failed
-             at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/panicking.rs:364:5
-   4: bringup::independent_runs_are_deterministic
-             at ./tests/bringup.rs:20:5
-   5: bringup::independent_runs_are_deterministic::{{closure}}
-             at ./tests/bringup.rs:16:40
+   4: mosaic_cpu_arm_arm926ej_s::tests::byte_and_halfword_reads_return_low_part
+             at ./src/lib.rs:277:9
+   5: mosaic_cpu_arm_arm926ej_s::tests::byte_and_halfword_reads_return_low_part::{{closure}}
+             at ./src/lib.rs:271:49
    6: core::ops::function::FnOnce::call_once
              at /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688/library/core/src/ops/function.rs:250:5
    7: core::ops::function::FnOnce::call_once
@@ -69,9 +229,8 @@ note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose bac
 
 
 failures:
-    firmware_boots_and_emits_the_golden_uart_output
-    independent_runs_are_deterministic
+    tests::byte_and_halfword_reads_return_low_part
 
-test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p mosaic-apps-bringup --test bringup`
+[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p mosaic-cpu-arm-arm926ej-s --lib`

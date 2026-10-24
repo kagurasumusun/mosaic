@@ -1,7 +1,5 @@
-17:test firmware_boots_and_emits_the_golden_uart_output ... FAILED
-18:test independent_runs_are_deterministic ... FAILED
-20:failures:
-24:thread 'firmware_boots_and_emits_the_golden_uart_output' panicked at apps/bringup/tests/bringup.rs:9:5:
-48:thread 'independent_runs_are_deterministic' panicked at apps/bringup/tests/bringup.rs:20:5:
-71:failures:
-75:test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+202:test tests::byte_and_halfword_reads_return_low_part ... FAILED
+204:failures:
+208:thread 'tests::byte_and_halfword_reads_return_low_part' panicked at catalog/cpu/arm/arm926ej-s/src/lib.rs:277:9:
+231:failures:
+234:test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
