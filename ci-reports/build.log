@@ -7,8 +7,8 @@
 [1m[32m   Compiling[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
 [1m[32m   Compiling[0m mosaic-contract-mmio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/mmio)
 [1m[32m   Compiling[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/arm)
-[1m[32m   Compiling[0m mosaic-contract-signal v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/signal)
 [1m[32m   Compiling[0m mosaic-contract-cpu-engine v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine)
+[1m[32m   Compiling[0m mosaic-contract-signal v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/signal)
 [1m[32m   Compiling[0m mosaic-core-runtime v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/runtime)
 [1m[32m   Compiling[0m mosaic-contract-gpio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/gpio)
 [1m[32m   Compiling[0m mosaic-contract-stream v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/stream)
@@ -25,20 +25,18 @@
 [1m[32m   Compiling[0m mosaic-interconnect-can-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/can-bus)
 [1m[32m   Compiling[0m mosaic-interconnect-gpio-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/gpio-net)
 [1m[32m   Compiling[0m cexpr v0.6.0
-[1m[32m   Compiling[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
-[1m[32m   Compiling[0m mosaic-part-bosch-bme280 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/parts/bosch/bme280)
-[1m[32m   Compiling[0m bindgen v0.71.1
 [1m[32m   Compiling[0m mosaic-ip-arm-pl022 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl022)
+[1m[32m   Compiling[0m mosaic-part-bosch-bme280 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/parts/bosch/bme280)
 [0m[1m[38;5;9merror[E0502][0m[0m[1m: cannot borrow `*self` as immutable because it is also borrowed as mutable[0m
-[0m   [0m[0m[1m[38;5;12m--> [0m[0mcatalog/ip/arm/pl022/src/lib.rs:241:20[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcatalog/ip/arm/pl022/src/lib.rs:256:20[0m
 [0m    [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m238[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let Some(initiator) = self.initiator.as_mut() else {[0m
+[0m[1m[38;5;12m253[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let Some(initiator) = self.initiator.as_mut() else {[0m
 [0m    [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;12m--------------[0m[0m [0m[0m[1m[38;5;12mmutable borrow occurs here[0m
 [0m[1m[38;5;12m...[0m
-[0m[1m[38;5;12m241[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let mode = self.mode();[0m
+[0m[1m[38;5;12m256[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let mode = self.mode();[0m
 [0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^[0m[0m [0m[0m[1m[38;5;9mimmutable borrow occurs here[0m
 [0m[1m[38;5;12m...[0m
-[0m[1m[38;5;12m244[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        match initiator.exchange(ctx, self.params.cs, mode, &mosi, &mut miso) {[0m
+[0m[1m[38;5;12m259[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        match initiator.exchange(ctx, self.params.cs, mode, &mosi, &mut miso) {[0m
 [0m    [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[38;5;12m---------[0m[0m [0m[0m[1m[38;5;12mmutable borrow later used here[0m
 
 [0m[1mFor more information about this error, try `rustc --explain E0502`.[0m
