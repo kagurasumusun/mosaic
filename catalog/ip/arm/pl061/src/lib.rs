@@ -513,7 +513,8 @@ mod tests {
         let mut device = bench.device;
         let mut ctx = bench.ctx;
         assert_eq!(read(&mut device, &mut ctx, 0xFE0), 0x61);
-        assert_eq!(read(&mut device, &mut ctx, 0xFE4), 0x410);
+        // PID1 = part[11:8] | JEP104 identity[3:0] << 4.
+        assert_eq!(read(&mut device, &mut ctx, 0xFE4), 0x10);
         assert_eq!(read(&mut device, &mut ctx, 0xFF0), 0x0D);
         assert_eq!(read(&mut device, &mut ctx, 0xFFC), 0xB1);
     }

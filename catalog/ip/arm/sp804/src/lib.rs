@@ -37,7 +37,9 @@ mod ctrl {
     pub const PERIODIC: u32 = 1 << 6;
     pub const ENABLE: u32 = 1 << 7;
     /// Defined control bits: oneshot, size, prescale [3:2], IE, mode, enable.
-    pub const MASK: u32 = 0xE3;
+    /// Bit 4 is reserved; the prescale field must survive the write mask
+    /// (DDI 0271 Table 3-6).
+    pub const MASK: u32 = 0xEF;
 }
 
 /// Timer tokens carried by scheduled callbacks; one per hardware timer.
@@ -166,11 +168,13 @@ impl Timer {
         Ok(())
     }
 
-    fn stop(&mut self, ctx: &mut dyn Ctx, tick_ps: NonZeroU64) {
+    /// Cancel the pending expiry and freeze the counter at `frozen`, the
+    /// value computed with the configuration that was active while running.
+    fn stop(&mut self, ctx: &mut dyn Ctx, frozen: u32) {
         if let Some(event) = self.event.take() {
             let _ = ctx.cancel(event);
         }
-        self.state.remaining = self.current_value(ctx.now(), tick_ps);
+        self.state.remaining = frozen;
         self.state.enabled = false;
     }
 
@@ -290,13 +294,17 @@ impl Sp804 {
             reg::BG_LOAD => timer.state.bg_load = value,
             reg::CONTROL => {
                 let was_enabled = timer.state.enabled;
+                // Freeze the counter with the OLD configuration first: a
+                // control write must not reinterpret already elapsed time
+                // through the new mode/width (DDI 0271).
+                let frozen = timer.current_value(ctx.now(), tick_ps);
                 timer.state.control = value & ctrl::MASK;
                 let now_enabled = timer.state.control & ctrl::ENABLE != 0;
                 match (was_enabled, now_enabled) {
                     (false, true) | (true, true) => timer
                         .start(ctx, token, tick_ps)
                         .map_err(|_| BusFault::Device)?,
-                    (true, false) => timer.stop(ctx, tick_ps),
+                    (true, false) => timer.stop(ctx, frozen),
                     (false, false) => {}
                 }
             }

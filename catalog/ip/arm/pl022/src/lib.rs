@@ -493,7 +493,8 @@ mod tests {
     fn primecell_identification_reads_back() {
         let (mut device, _, mut ctx) = device();
         assert_eq!(read(&mut device, &mut ctx, 0xFE0), 0x22);
-        assert_eq!(read(&mut device, &mut ctx, 0xFE4), 0x410);
+        // PID1 = part[11:8] | JEP104 identity[3:0] << 4.
+        assert_eq!(read(&mut device, &mut ctx, 0xFE4), 0x10);
         assert_eq!(read(&mut device, &mut ctx, 0xFF0), 0x0D);
         assert_eq!(read(&mut device, &mut ctx, 0xFF4), 0xF0);
         assert_eq!(read(&mut device, &mut ctx, 0xFF8), 0x05);

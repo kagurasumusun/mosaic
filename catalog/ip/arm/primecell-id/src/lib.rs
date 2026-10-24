@@ -90,7 +90,8 @@ mod tests {
         // PL011 part number 0x011, ARM designer, first revision, no patch.
         let id = PrimeCellId::arm(0x011, 0, 0).unwrap();
         assert_eq!(id.read_word(0xFE0), Some(0x11));
-        assert_eq!(id.read_word(0xFE4), Some(0x11));
+        // PID1 = part[11:8] | JEP104 identity[3:0] << 4 = 0x0 | 0x1 << 4.
+        assert_eq!(id.read_word(0xFE4), Some(0x10));
         assert_eq!(id.read_word(0xFEC), Some(0x84));
         assert_eq!(id.read_word(0xFF0), Some(0x0D));
         assert_eq!(id.read_word(0xFF4), Some(0xF0));
