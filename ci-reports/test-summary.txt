@@ -1,5 +1,0 @@
-202:test tests::byte_and_halfword_reads_return_low_part ... FAILED
-204:failures:
-208:thread 'tests::byte_and_halfword_reads_return_low_part' panicked at catalog/cpu/arm/arm926ej-s/src/lib.rs:277:9:
-231:failures:
-234:test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

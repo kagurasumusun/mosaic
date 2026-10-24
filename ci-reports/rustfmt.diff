@@ -1,163 +1,191 @@
 diff --git a/ci-reports/rustfmt.diff b/ci-reports/rustfmt.diff
-index 515b477..e69de29 100644
+index 7713ae7..e69de29 100644
 --- a/ci-reports/rustfmt.diff
 +++ b/ci-reports/rustfmt.diff
-@@ -1,144 +0,0 @@
--diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
--index d99a73c..0e63b4f 100644
----- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
--+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
--@@ -237,14 +237,8 @@ mod tests {
--         let mut core = Arm926ejS::new(params());
--         let mut ctx = CtxStub;
--         let attr = attr();
---        core.write(
---            &mut ctx,
---            reg::CONTROL,
---            AccessSize::Word,
---            0xFFFF_FFFF,
---            &attr,
---        )
---        .unwrap();
--+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
--+            .unwrap();
--         assert_eq!(
--             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
--             Ok(control::ENABLE as u64)
--@@ -278,15 +272,12 @@ mod tests {
--         let mut core = Arm926ejS::new(params());
--         let mut ctx = CtxStub;
--         let attr = attr();
---        core.write(
---            &mut ctx,
---            reg::CONTROL,
---            AccessSize::Word,
---            0x1234_5678,
---            &attr,
---        )
---        .unwrap();
---        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
--+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
--+            .unwrap();
--+        assert_eq!(
--+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
--+            Ok(0x78)
--+        );
--         assert_eq!(
--             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
--             Ok(0x5678)
--@@ -321,7 +312,10 @@ mod tests {
--         );
--         let mut raz = Arm926ejS::new(params());
--         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
---        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
--+        assert_eq!(
--+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
--+            Ok(())
--+        );
--     }
-- 
--     #[test]
--diff --git a/framework/prim/bits/src/lib.rs b/framework/prim/bits/src/lib.rs
--index ad30b24..9249de4 100644
----- a/framework/prim/bits/src/lib.rs
--+++ b/framework/prim/bits/src/lib.rs
--@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
-- }
-- 
-- /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
---pub fn write_u16_le(
---    buf: &mut [u8],
---    value: u16,
---) -> Result<(), PrimError> {
--+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
--     if buf.len() < 2 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -83,10 +80,7 @@ pub fn write_u16_le(
-- }
-- 
-- /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
---pub fn write_u16_be(
---    buf: &mut [u8],
---    value: u16,
---) -> Result<(), PrimError> {
--+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
--     if buf.len() < 2 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -97,10 +91,7 @@ pub fn write_u16_be(
-- }
-- 
-- /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
---pub fn write_u32_le(
---    buf: &mut [u8],
---    value: u32,
---) -> Result<(), PrimError> {
--+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
--     if buf.len() < 4 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -113,10 +104,7 @@ pub fn write_u32_le(
-- }
-- 
-- /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
---pub fn write_u32_be(
---    buf: &mut [u8],
---    value: u32,
---) -> Result<(), PrimError> {
--+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
--     if buf.len() < 4 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -129,10 +117,7 @@ pub fn write_u32_be(
-- }
-- 
-- /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
---pub fn write_u64_le(
---    buf: &mut [u8],
---    value: u64,
---) -> Result<(), PrimError> {
--+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
--     if buf.len() < 8 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -149,10 +134,7 @@ pub fn write_u64_le(
-- }
-- 
-- /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
---pub fn write_u64_be(
---    buf: &mut [u8],
---    value: u64,
---) -> Result<(), PrimError> {
--+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
--     if buf.len() < 8 {
--         return Err(PrimError::BufferTooSmall);
--     }
--@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
--     if width == 0 || shift + width > 64 {
--         return Err(PrimError::FieldRange);
--     }
---    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
--+    let mask = if width == 64 {
--+        u64::MAX
--+    } else {
--+        (1u64 << width) - 1
--+    };
--     Ok((value >> shift) & mask)
-- }
-- 
+@@ -1,172 +0,0 @@
+-diff --git a/ci-reports/rustfmt.diff b/ci-reports/rustfmt.diff
+-index 515b477..e69de29 100644
+---- a/ci-reports/rustfmt.diff
+-+++ b/ci-reports/rustfmt.diff
+-@@ -1,144 +0,0 @@
+--diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+--index d99a73c..0e63b4f 100644
+----- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
+--+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
+--@@ -237,14 +237,8 @@ mod tests {
+--         let mut core = Arm926ejS::new(params());
+--         let mut ctx = CtxStub;
+--         let attr = attr();
+---        core.write(
+---            &mut ctx,
+---            reg::CONTROL,
+---            AccessSize::Word,
+---            0xFFFF_FFFF,
+---            &attr,
+---        )
+---        .unwrap();
+--+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
+--+            .unwrap();
+--         assert_eq!(
+--             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
+--             Ok(control::ENABLE as u64)
+--@@ -278,15 +272,12 @@ mod tests {
+--         let mut core = Arm926ejS::new(params());
+--         let mut ctx = CtxStub;
+--         let attr = attr();
+---        core.write(
+---            &mut ctx,
+---            reg::CONTROL,
+---            AccessSize::Word,
+---            0x1234_5678,
+---            &attr,
+---        )
+---        .unwrap();
+---        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
+--+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
+--+            .unwrap();
+--+        assert_eq!(
+--+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
+--+            Ok(0x78)
+--+        );
+--         assert_eq!(
+--             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
+--             Ok(0x5678)
+--@@ -321,7 +312,10 @@ mod tests {
+--         );
+--         let mut raz = Arm926ejS::new(params());
+--         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
+---        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
+--+        assert_eq!(
+--+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
+--+            Ok(())
+--+        );
+--     }
+-- 
+--     #[test]
+--diff --git a/framework/prim/bits/src/lib.rs b/framework/prim/bits/src/lib.rs
+--index ad30b24..9249de4 100644
+----- a/framework/prim/bits/src/lib.rs
+--+++ b/framework/prim/bits/src/lib.rs
+--@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
+-- }
+-- 
+-- /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
+---pub fn write_u16_le(
+---    buf: &mut [u8],
+---    value: u16,
+---) -> Result<(), PrimError> {
+--+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
+--     if buf.len() < 2 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -83,10 +80,7 @@ pub fn write_u16_le(
+-- }
+-- 
+-- /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
+---pub fn write_u16_be(
+---    buf: &mut [u8],
+---    value: u16,
+---) -> Result<(), PrimError> {
+--+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
+--     if buf.len() < 2 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -97,10 +91,7 @@ pub fn write_u16_be(
+-- }
+-- 
+-- /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
+---pub fn write_u32_le(
+---    buf: &mut [u8],
+---    value: u32,
+---) -> Result<(), PrimError> {
+--+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
+--     if buf.len() < 4 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -113,10 +104,7 @@ pub fn write_u32_le(
+-- }
+-- 
+-- /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
+---pub fn write_u32_be(
+---    buf: &mut [u8],
+---    value: u32,
+---) -> Result<(), PrimError> {
+--+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
+--     if buf.len() < 4 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -129,10 +117,7 @@ pub fn write_u32_be(
+-- }
+-- 
+-- /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
+---pub fn write_u64_le(
+---    buf: &mut [u8],
+---    value: u64,
+---) -> Result<(), PrimError> {
+--+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
+--     if buf.len() < 8 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -149,10 +134,7 @@ pub fn write_u64_le(
+-- }
+-- 
+-- /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
+---pub fn write_u64_be(
+---    buf: &mut [u8],
+---    value: u64,
+---) -> Result<(), PrimError> {
+--+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
+--     if buf.len() < 8 {
+--         return Err(PrimError::BufferTooSmall);
+--     }
+--@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
+--     if width == 0 || shift + width > 64 {
+--         return Err(PrimError::FieldRange);
+--     }
+---    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+--+    let mask = if width == 64 {
+--+        u64::MAX
+--+    } else {
+--+        (1u64 << width) - 1
+--+    };
+--     Ok((value >> shift) & mask)
+-- }
+-- 
+-diff --git a/ci-reports/status.txt b/ci-reports/status.txt
+-index cdc243d..8ad1a3f 100644
+---- a/ci-reports/status.txt
+-+++ b/ci-reports/status.txt
+-@@ -1,15 +1,4 @@
+--run: https://github.com/kagurasumusun/mosaic/actions/runs/40042201613
+--commit: e3a7c99bdb6d194855c3a29bc2eeb081e819c9db
+-+run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
+-+commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
+- ref: refs/heads/arena/62448c0d-mosaic
+--started: 2026-10-23T23:55:22Z
+--formatting: fail (code=0, see rustfmt.diff)
+--xtask: ok
+--clippy: ok
+--build: ok
+--test: fail (code=101)
+--smoke-events: ok
+--smoke-machine: ok
+--smoke-unicorn: ok
+--bringup: fail (code=1)
+--doctor: ok
+--finished: 2026-10-23T23:56:23Z
+-+started: 2026-10-24T00:00:53Z
 diff --git a/ci-reports/status.txt b/ci-reports/status.txt
-index cdc243d..8ad1a3f 100644
+index 532fae8..4ae3ec5 100644
 --- a/ci-reports/status.txt
 +++ b/ci-reports/status.txt
 @@ -1,15 +1,4 @@
--run: https://github.com/kagurasumusun/mosaic/actions/runs/40042201613
--commit: e3a7c99bdb6d194855c3a29bc2eeb081e819c9db
-+run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
-+commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
+-run: https://github.com/kagurasumusun/mosaic/actions/runs/40042757354
+-commit: b83e3c4f674cd1ddde6e21bd7bf07c87990fc3e3
++run: https://github.com/kagurasumusun/mosaic/actions/runs/40044032540
++commit: 07754c136fe9aec827aaabe35b025d31474764a6
  ref: refs/heads/arena/62448c0d-mosaic
--started: 2026-10-23T23:55:22Z
+-started: 2026-10-24T00:00:53Z
 -formatting: fail (code=0, see rustfmt.diff)
 -xtask: ok
 -clippy: ok
@@ -166,7 +194,88 @@ index cdc243d..8ad1a3f 100644
 -smoke-events: ok
 -smoke-machine: ok
 -smoke-unicorn: ok
--bringup: fail (code=1)
+-bringup: ok
 -doctor: ok
--finished: 2026-10-23T23:56:23Z
-+started: 2026-10-24T00:00:53Z
+-finished: 2026-10-24T00:01:48Z
++started: 2026-10-24T00:15:35Z
+diff --git a/framework/interconnect/i2c-bus/src/lib.rs b/framework/interconnect/i2c-bus/src/lib.rs
+index 578b7ba..7f3e242 100644
+--- a/framework/interconnect/i2c-bus/src/lib.rs
++++ b/framework/interconnect/i2c-bus/src/lib.rs
+@@ -629,14 +629,8 @@ mod tests {
+     /// would: net-facing sinks feed the decoder, master ports wrap them.
+     fn master_ports(decoder: &Arc<Mutex<I2cBitBang>>) -> (BitBangPort, BitBangPort) {
+         let (sda_line, scl_line) = I2cBitBang::lines(Arc::clone(decoder));
+-        let sda = I2cBitBang::sda_port(
+-            Arc::clone(decoder),
+-            Box::new(TestLinePort::new(sda_line)),
+-        );
+-        let scl = I2cBitBang::scl_port(
+-            Arc::clone(decoder),
+-            Box::new(TestLinePort::new(scl_line)),
+-        );
++        let sda = I2cBitBang::sda_port(Arc::clone(decoder), Box::new(TestLinePort::new(sda_line)));
++        let scl = I2cBitBang::scl_port(Arc::clone(decoder), Box::new(TestLinePort::new(scl_line)));
+         (sda, scl)
+     }
+ 
+@@ -678,8 +672,7 @@ mod tests {
+         ctx: &mut dyn Ctx,
+         drive: Option<PinLevel>,
+     ) -> PinLevel {
+-        sda.drive(ctx, drive.unwrap_or(PinLevel::High))
+-            .unwrap();
++        sda.drive(ctx, drive.unwrap_or(PinLevel::High)).unwrap();
+         let observed = sda.current_level();
+         scl.drive(ctx, PinLevel::High).unwrap();
+         scl.drive(ctx, PinLevel::Low).unwrap();
+@@ -738,25 +731,16 @@ mod tests {
+         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x80);
+         // The address is decoded on the eighth pulse, so the target-driven ACK
+         // is observable during the ninth slot.
+-        assert_eq!(
+-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+-            PinLevel::Low
+-        );
++        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
+         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x0D);
+-        assert_eq!(
+-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+-            PinLevel::Low
+-        );
++        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
+         stop(&mut sda, &mut scl, &mut ctx);
+         assert!(lock(&decoder).last_result.is_ok());
+ 
+         // START + address read 0x40 (0x81), two sampled bytes, NACK, STOP.
+         start(&mut sda, &mut scl, &mut ctx);
+         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x81);
+-        assert_eq!(
+-            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+-            PinLevel::Low
+-        );
++        assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, None), PinLevel::Low);
+         let mut read = [0u8; 2];
+         for (index, byte) in read.iter_mut().enumerate() {
+             for _ in 0..8 {
+@@ -773,10 +757,7 @@ mod tests {
+             } else {
+                 PinLevel::Low
+             };
+-            assert_eq!(
+-                ack_pulse(&mut sda, &mut scl, &mut ctx, Some(drive)),
+-                drive
+-            );
++            assert_eq!(ack_pulse(&mut sda, &mut scl, &mut ctx, Some(drive)), drive);
+         }
+         stop(&mut sda, &mut scl, &mut ctx);
+         assert_eq!(read, [0x2D, 0x2E]);
+@@ -842,7 +823,7 @@ mod tests {
+         let mut ctx = DummyCtx;
+         start(&mut sda, &mut scl, &mut ctx);
+         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x82); // 0x41, absent
+-        // With no target present the ACK slot stays released (NACK).
++                                                        // With no target present the ACK slot stays released (NACK).
+         assert_eq!(
+             ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+             PinLevel::High
