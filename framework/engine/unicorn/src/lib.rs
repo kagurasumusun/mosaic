@@ -104,8 +104,11 @@ struct Common {
     mappings: Vec<(u64, u64)>,
     /// Callback-backed MMIO pages; never reachable through loader access.
     mmio: Vec<(u64, u64)>,
-    /// Host-backed shared pages (DMI). The Arc keeps every buffer alive for
-    /// as long as this instance's address space can reference it.
+    /// Host-backed shared pages (DMI). Each entry is the guest address, the
+    /// size and the authoritative buffer. The engine keeps a writable mirror
+    /// of the same bytes; `uc_mem_map_ptr` maps read-only towards the guest
+    /// on Unicorn 2.1.x, so the composition root synchronises the mirrors at
+    /// deterministic slice boundaries (ADR 0010).
     shared: Vec<(u64, u64, Arc<SharedRam>)>,
     /// External interrupt edges in delivery order. Unicorn 2.1.x exposes no
     /// public IRQ injection API, so levels are recorded, not injected
@@ -193,8 +196,12 @@ impl Common {
         Ok(())
     }
 
-    /// Map a host-backed shared region (design §12.3 rule 1). Every instance
-    /// mapping the same buffer sees the same bytes; see [`SharedRam`].
+    /// Map a host-backed shared region (design §12.3 rule 1).
+    ///
+    /// The engine receives a writable private mirror of the page; the
+    /// authoritative buffer stays with the composition root, which copies the
+    /// bytes in and out at deterministic slice boundaries. See [`SharedRam`]
+    /// for why a direct pointer map cannot be used on Unicorn 2.1.x.
     fn map_shared_memory(
         &mut self,
         base: Addr,
@@ -206,8 +213,45 @@ impl Common {
         if size > ram.len() as u64 {
             return Err(EngineError::InvalidMapping);
         }
-        shared::map_host(&mut self.inner.0, base.0, size, prot_of(permissions), &ram)?;
+        // The mirror is writable even when the guest may only read the
+        // shared page: the synchronisation path writes it through the
+        // loader API, which ignores guest permissions.
+        self.inner
+            .0
+            .mem_map(base.0, size, Prot::READ | Prot::WRITE)
+            .map_err(|_| EngineError::Backend)?;
+        self.mappings.push((base.0, size));
         self.shared.push((base.0, size, ram));
+        Ok(())
+    }
+
+    /// Copy the authoritative shared buffers into this engine's mirrors.
+    /// Called before a core slice so the core observes the latest values.
+    fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+        for (base, size, ram) in &self.shared {
+            let length = usize::try_from(*size).map_err(|_| EngineError::InvalidMapping)?;
+            let mut bytes = vec![0u8; length];
+            ram.read(0, &mut bytes)?;
+            self.inner
+                .0
+                .mem_write(base, &bytes)
+                .map_err(|_| EngineError::Backend)?;
+        }
+        Ok(())
+    }
+
+    /// Copy this engine's shared mirrors back into the authoritative
+    /// buffers. Called after a core slice so the next core observes them.
+    fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+        for (base, size, ram) in &self.shared {
+            let length = usize::try_from(*size).map_err(|_| EngineError::InvalidMapping)?;
+            let mut bytes = vec![0u8; length];
+            self.inner
+                .0
+                .mem_read(*base, &mut bytes)
+                .map_err(|_| EngineError::Backend)?;
+            ram.write(0, &bytes)?;
+        }
         Ok(())
     }
 
@@ -478,6 +522,18 @@ macro_rules! unicorn_wrapper {
                 self.0.map_shared_memory(base, size, permissions, ram)
             }
 
+            /// Copy the authoritative shared buffers into this engine's
+            /// mirrors (before a core slice).
+            pub fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+                self.0.sync_shared_in()
+            }
+
+            /// Copy this engine's shared mirrors back into the
+            /// authoritative buffers (after a core slice).
+            pub fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+                self.0.sync_shared_out()
+            }
+
             pub fn take_bus_fault(&mut self) -> Option<EngineBusFault> {
                 self.0.take_bus_fault()
             }
@@ -715,9 +771,9 @@ mod tests {
 
     #[test]
     fn shared_ram_is_coherent_across_engine_instances() {
-        // Design §12.3 rule 1 verification: both instances map one host
-        // buffer, so a guest store through the first core is immediately
-        // visible to the second core and to host-side accessors.
+        // Design §12.3 rule 1 verification. Unicorn 2.1.x maps host pointers
+        // read-only towards the guest, so the shared page is mirrored per
+        // engine and synchronised at deterministic boundaries (ADR 0010).
         let ram = SharedRam::new(PAGE_SIZE).unwrap();
         let mut first = UnicornArm::new().unwrap();
         let mut second = UnicornArm::new().unwrap();
@@ -739,19 +795,28 @@ mod tests {
         first.reg_write(Register::Pc.into(), 0x1000).unwrap();
         let outcome = first.run(NonZeroU64::new(3).unwrap());
         assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        // The guest store lands in the first engine's mirror.
         let mut bytes = [0; 4];
-        second.read_memory(Addr(0x10000), &mut bytes).unwrap();
+        first.read_memory(Addr(0x10000), &mut bytes).unwrap();
         assert_eq!(bytes[0], 0xab);
+        // Copying the mirror back publishes it to the authoritative buffer.
+        first.sync_shared_out().unwrap();
         ram.read(0, &mut bytes).unwrap();
         assert_eq!(bytes[0], 0xab);
-        // Loader writes through the second instance reach the first.
-        second.write_memory(Addr(0x10004), &[7]).unwrap();
-        first.read_memory(Addr(0x10004), &mut bytes[..1]).unwrap();
-        assert_eq!(bytes[0], 7);
-        // Host-side writes are visible to both guests.
+        // The next core sees it after the copy in.
+        second.sync_shared_in().unwrap();
+        second.read_memory(Addr(0x10000), &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0xab);
+        // Host-side writes reach the guests at the next copy in.
         ram.write(8, &[9]).unwrap();
+        second.sync_shared_in().unwrap();
         second.read_memory(Addr(0x10008), &mut bytes[..1]).unwrap();
         assert_eq!(bytes[0], 9);
+        // A guest write in the second core is published on copy out.
+        second.write_memory(Addr(0x10004), &[7]).unwrap();
+        second.sync_shared_out().unwrap();
+        ram.read(4, &mut bytes[..1]).unwrap();
+        assert_eq!(bytes[0], 7);
     }
 
     #[test]
@@ -1095,7 +1160,7 @@ mod tests {
             engine
                 .write_memory(
                     Addr(0x1000),
-                    &[0x83, 0xa3, 0x02, 0x00, 0x23, 0xa0, 0xc3, 0x00],
+                    &[0x03, 0xa3, 0x02, 0x00, 0x23, 0xa0, 0x63, 0x00],
                 )
                 .unwrap();
             engine.reg_write(RvReg::X5.into(), 0x2000).unwrap();
@@ -1104,7 +1169,12 @@ mod tests {
             assert_eq!(outcome.reason, StopReason::BudgetExhausted);
             assert_eq!(engine.reg_read(RvReg::X6.into()), Ok(0x0bad_f00d));
             assert_eq!(record.lock().unwrap().reads, vec![(0x2000, 4)]);
+            // The shared page is mirrored: the guest store lands in the
+            // engine's copy and reaches the authoritative buffer on sync.
             let mut bytes = [0; 4];
+            engine.read_memory(Addr(0x10000), &mut bytes).unwrap();
+            assert_eq!(bytes, 0x0bad_f00du32.to_le_bytes());
+            engine.sync_shared_out().unwrap();
             ram.read(0, &mut bytes).unwrap();
             assert_eq!(bytes, 0x0bad_f00du32.to_le_bytes());
         }

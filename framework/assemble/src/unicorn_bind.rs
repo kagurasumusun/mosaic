@@ -8,6 +8,7 @@
 //! [`MachineBus`]. The FlatView stays the single source of truth: nothing
 //! here invents an address range.
 
+use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
@@ -60,6 +61,10 @@ pub trait EngineMap: CpuEngine {
         permissions: Permissions,
         ram: Arc<SharedRam>,
     ) -> Result<(), EngineError>;
+    /// Copy the authoritative shared buffers into the engine's mirrors.
+    fn sync_shared_in(&mut self) -> Result<(), EngineError>;
+    /// Copy the engine's shared mirrors back into the authoritative buffers.
+    fn sync_shared_out(&mut self) -> Result<(), EngineError>;
 }
 
 impl EngineMap for UnicornArm {
@@ -82,6 +87,14 @@ impl EngineMap for UnicornArm {
     ) -> Result<(), EngineError> {
         UnicornArm::map_shared_memory(self, base, size, permissions, ram)
     }
+
+    fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+        UnicornArm::sync_shared_in(self)
+    }
+
+    fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+        UnicornArm::sync_shared_out(self)
+    }
 }
 
 #[cfg(feature = "unicorn-riscv")]
@@ -103,6 +116,14 @@ impl EngineMap for UnicornRiscV32 {
     ) -> Result<(), EngineError> {
         UnicornRiscV32::map_shared_memory(self, base, size, permissions, ram)
     }
+
+    fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+        UnicornRiscV32::sync_shared_in(self)
+    }
+
+    fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+        UnicornRiscV32::sync_shared_out(self)
+    }
 }
 
 /// A Ram/Rom leaf whose backing is mapped into engines from one host buffer
@@ -110,6 +131,93 @@ impl EngineMap for UnicornRiscV32 {
 pub struct SharedRegion {
     pub node: NodeId,
     pub ram: Arc<SharedRam>,
+}
+
+/// Engine adapter that also carries the shared-page synchronisation hooks.
+///
+/// The adapter owns the engine and forwards the engine-neutral contract
+/// calls, so the driver keeps exactly one object per core. The
+/// synchronisation hooks belong to the same engine because the mirrors live
+/// in its address space.
+pub struct SharedEngine {
+    engine: Box<dyn EngineMap>,
+}
+
+impl SharedEngine {
+    pub fn new(engine: Box<dyn EngineMap>) -> Self {
+        Self { engine }
+    }
+}
+
+impl crate::multicore::SharedSync for SharedEngine {
+    fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+        self.engine.sync_shared_in()
+    }
+
+    fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+        self.engine.sync_shared_out()
+    }
+}
+
+impl CpuEngine for SharedEngine {
+    fn caps(&self) -> mosaic_contract_cpu_engine::EngineCaps {
+        self.engine.caps()
+    }
+
+    fn run(
+        &mut self,
+        instructions: NonZeroU64,
+    ) -> mosaic_contract_cpu_engine::RunOutcome {
+        self.engine.run(instructions)
+    }
+
+    fn reg_read(
+        &self,
+        reg: mosaic_contract_cpu_engine::RegId,
+    ) -> Result<u64, EngineError> {
+        self.engine.reg_read(reg)
+    }
+
+    fn reg_write(
+        &mut self,
+        reg: mosaic_contract_cpu_engine::RegId,
+        value: u64,
+    ) -> Result<(), EngineError> {
+        self.engine.reg_write(reg, value)
+    }
+
+    fn map_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+    ) -> Result<(), EngineError> {
+        self.engine.map_memory(base, size, permissions)
+    }
+
+    fn write_memory(&mut self, base: Addr, data: &[u8]) -> Result<(), EngineError> {
+        self.engine.write_memory(base, data)
+    }
+
+    fn read_memory(&self, base: Addr, data: &mut [u8]) -> Result<(), EngineError> {
+        self.engine.read_memory(base, data)
+    }
+
+    fn set_line(
+        &mut self,
+        line: mosaic_contract_cpu_engine::IrqLine,
+        high: bool,
+    ) -> Result<(), EngineError> {
+        self.engine.set_line(line, high)
+    }
+
+    fn take_bus_fault(&mut self) -> Option<mosaic_contract_cpu_engine::EngineBusFault> {
+        self.engine.take_bus_fault()
+    }
+
+    fn line_edges(&self) -> &[(mosaic_contract_cpu_engine::IrqLine, bool)] {
+        self.engine.line_edges()
+    }
 }
 
 /// Bind `view` onto `engine` using `machine` as the backing and MMIO authority.
@@ -408,8 +516,14 @@ mod tests {
         first.write_memory(Addr(0), &code).unwrap();
         first.reg_write(Register::Pc.into(), 0).unwrap();
         first.run(core::num::NonZeroU64::new(3).unwrap());
+        // The guest store lands in the first core's mirror; the copy out
+        // publishes it to the authoritative buffer, and the copy in makes it
+        // visible to the second core (Unicorn 2.1.x maps host pointers
+        // read-only towards the guest, ADR 0010).
+        first.sync_shared_out().unwrap();
         ram.read(0, &mut bytes).unwrap();
         assert_eq!(bytes[0], 0xAB);
+        second.sync_shared_in().unwrap();
         second.read_memory(Addr(0x10000), &mut bytes).unwrap();
         assert_eq!(bytes[0], 0xAB);
     }

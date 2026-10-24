@@ -1,27 +1,41 @@
-//! Host-backed shared RAM mapped into engine instances (design §12.3 rule 1
-//! and the §13.1 DMI path). One reviewed unsafe call; see ADR 0010.
+//! Host-backed shared RAM for engine instances (design §12.3 rule 1 and the
+//! §13.1 DMI path).
+//!
+//! # Why the pages are synchronised instead of mapped directly
+//!
+//! Unicorn 2.1.x exposes `uc_mem_map_ptr`, which maps a host buffer into an
+//! engine address space. The guest may **read** such a region, but a guest
+//! **store faults** with `UC_ERR_WRITE_UNMAPPED`: the mapping is read-only
+//! towards the guest (verified experimentally on Unicorn 2.1.4, ADR 0010).
+//! A shared RAM that cores can write therefore cannot be a plain host
+//! pointer map in this backend.
+//!
+//! The runtime-backed alternative keeps the single source of truth in the
+//! machine's backing block and synchronises the page at deterministic
+//! boundaries:
+//!
+//! * before a core slice: the authoritative block is copied into the
+//!   engine's writable page (`EngineMap::sync_shared_in`);
+//! * after a core slice: the engine's page is copied back
+//!   (`EngineMap::sync_shared_out`).
+//!
+//! With the fixed-order round-robin scheduler (design §12.4) the copy points
+//! are fixed, so the observable behaviour stays deterministic; a write by one
+//! core becomes visible to the next core in the round, which is exactly what
+//! the doorbell handshake protocol needs. A backend that supports writable
+//! host pointers can implement the same contract with a real shared mapping,
+//! without changing the composition root.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use unicorn_engine::{unicorn_const::Prot, Unicorn};
+use crate::EngineError;
 
-use crate::{EngineData, EngineError};
-
-/// Fixed-capacity host buffer that several engine instances can map at once.
+/// One shared page (or window) of RAM, owned by the composition root and
+/// mirrored into every engine that maps it.
 ///
-/// This is the shared-RAM path between cores: every Unicorn instance maps the
-/// same host memory through `uc_mem_map_ptr`, so one core's guest stores are
-/// immediately visible to every other core mapping the buffer. Cross-instance
-/// coherence was verified experimentally on Unicorn 2.1.x (ADR 0010): an A32
-/// store and an RV32I load through two instances observe one buffer.
-///
-/// The buffer is created at a fixed size and never resized, so its host
-/// pointer stays stable. Engines hold an `Arc<SharedRam>` next to the mapping,
-/// which guarantees the buffer outlives every address space referencing it.
-/// Host-side [`SharedRam::read`] / [`SharedRam::write`] are for the composition
-/// root between run quanta; single-threaded interleaved execution is the
-/// composition invariant (design §12.4: parallel mode is future work, and
-/// guest access during `emu_start` never touches the host mutex).
+/// The buffer is created at a fixed size and never resized, so the engine
+/// mapping stays stable. [`SharedRam`] holds the authoritative bytes; the
+/// engine keeps its own writable copy of the same size.
 pub struct SharedRam {
     bytes: Mutex<Vec<u8>>,
     /// Set once the loader image has been copied in. Later cores binding the
@@ -49,20 +63,19 @@ impl SharedRam {
         self.lock().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Whether the loader image has already been copied into the buffer.
     pub fn is_initialized(&self) -> bool {
-        self.initialized
-            .load(std::sync::atomic::Ordering::Acquire)
+        self.initialized.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// Mark the buffer as carrying the loader image. Returns false when
     /// another core already initialized it, so the caller can skip the copy.
     pub fn mark_initialized(&self) -> bool {
         !self.initialized.swap(true, std::sync::atomic::Ordering::AcqRel)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Host-side copy into the buffer. Out-of-bounds spans are errors; guest
@@ -97,30 +110,4 @@ impl SharedRam {
     fn lock(&self) -> MutexGuard<'_, Vec<u8>> {
         self.bytes.lock().unwrap_or_else(|error| error.into_inner())
     }
-
-    /// Stable host pointer for engine mapping. Safe to produce; only the
-    /// reviewed [`map_host`] call dereferences it inside Unicorn.
-    pub(super) fn as_ptr(&self) -> *mut core::ffi::c_void {
-        self.lock().as_mut_ptr().cast()
-    }
-}
-
-/// Map `ram` into one engine instance's address space.
-#[allow(unsafe_code)]
-pub(super) fn map_host(
-    uc: &mut Unicorn<'_, EngineData>,
-    base: u64,
-    size: u64,
-    prot: Prot,
-    ram: &SharedRam,
-) -> Result<(), EngineError> {
-    // SAFETY: `ram` is a fixed-capacity Vec that is never resized, so the
-    // pointer is stable for the buffer's lifetime; the calling adapter stores
-    // an `Arc<SharedRam>` beside the mapping, keeping the buffer alive at
-    // least as long as the engine address space. `uc_mem_map_ptr` never takes
-    // ownership: closing or unmapping the instance does not free host memory.
-    // Engines run single-threaded and interleaved (design §12.4), so no two
-    // guests touch the buffer simultaneously; host accessors take the mutex
-    // only between run quanta.
-    unsafe { uc.mem_map_ptr(base, size, prot, ram.as_ptr()) }.map_err(|_| EngineError::Backend)
 }

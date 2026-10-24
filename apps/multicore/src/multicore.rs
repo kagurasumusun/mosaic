@@ -23,7 +23,7 @@ use core::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 
 use mosaic_assemble::{
-    bind_flat_view_shared, EngineIrqSink, IrqMailbox, MulticoreDriver, SharedRegion,
+    bind_flat_view_shared, EngineIrqSink, IrqMailbox, MulticoreDriver, SharedEngine, SharedRegion,
 };
 use mosaic_contract_cpu_engine::{CpuEngine, IrqLine};
 use mosaic_contract_model::{ContextError, Ctx};
@@ -332,9 +332,12 @@ pub fn run_multicore(quantum: NonZeroU64, rounds: usize) -> Result<MulticoreRepo
         .map_err(|error| format!("rv pc: {error:?}"))?;
 
     let mut driver = MulticoreDriver::new(machine);
-    driver.add_core(Box::new(core0));
-    driver.add_core(Box::new(core1));
-    driver.add_core(Box::new(core2));
+    // Each core is wrapped in a SharedEngine so the driver can synchronise
+    // the shared page around every slice (Unicorn 2.1.x cannot map a
+    // writable host pointer; ADR 0010).
+    driver.add_core(Box::new(SharedEngine::new(Box::new(core0))));
+    driver.add_core(Box::new(SharedEngine::new(Box::new(core1))));
+    driver.add_core(Box::new(SharedEngine::new(Box::new(core2))));
     for (index, mailbox) in [
         (0, Arc::clone(&mailbox0)),
         (1, Arc::clone(&mailbox1)),
