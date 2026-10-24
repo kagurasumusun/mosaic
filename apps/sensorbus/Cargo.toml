@@ -1,0 +1,46 @@
+[package]
+name = "mosaic-apps-sensorbus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "apps"
+kind = "app"
+level = 6
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The CPU backend stays opt-in, matching the CLI and ADR 0007.
+unicorn = [
+    "dep:mosaic-engine-unicorn",
+    "mosaic-assemble/unicorn",
+]
+
+[dependencies]
+mosaic-assemble = { path = "../../framework/assemble" }
+mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
+mosaic-contract-gpio = { path = "../../framework/contract/gpio" }
+mosaic-contract-i2c = { path = "../../framework/contract/i2c" }
+mosaic-contract-model = { path = "../../framework/contract/model" }
+mosaic-contract-net = { path = "../../framework/contract/net" }
+mosaic-contract-spi = { path = "../../framework/contract/spi" }
+mosaic-contract-stream = { path = "../../framework/contract/stream" }
+mosaic-core-runtime = { path = "../../framework/core/runtime" }
+mosaic-core-types = { path = "../../framework/core/types" }
+mosaic-engine-unicorn = { path = "../../framework/engine/unicorn", optional = true }
+mosaic-interconnect-gpio-net = { path = "../../framework/interconnect/gpio-net" }
+mosaic-interconnect-i2c-bus = { path = "../../framework/interconnect/i2c-bus" }
+mosaic-interconnect-spi-bus = { path = "../../framework/interconnect/spi-bus" }
+mosaic-interconnect-uart-pair = { path = "../../framework/interconnect/uart-pair" }
+mosaic-ip-arm-pl011 = { path = "../../catalog/ip/arm/pl011" }
+mosaic-ip-arm-pl022 = { path = "../../catalog/ip/arm/pl022" }
+mosaic-ip-arm-pl061 = { path = "../../catalog/ip/arm/pl061" }
+mosaic-ip-synopsys-dw-apb-i2c = { path = "../../catalog/ip/synopsys/dw-apb-i2c" }
+mosaic-isa-arm = { path = "../../framework/isa/arm" }
+mosaic-part-bosch-bme280 = { path = "../../catalog/parts/bosch/bme280" }
+mosaic-part-ti-tca9548a = { path = "../../catalog/parts/ti/tca9548a" }

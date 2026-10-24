@@ -25,14 +25,60 @@ use = 'ip:arm/sp804'
 at = { space = 'sysbus', base = 0x101e2000 }
 irq = { pin = 'timer1', to = ['core0.vic:4'] }
 
+# --- P2 スライス追加（構成設計書 §13 P2 / apps/sensorbus と同じ機械地図） ---
+
+# DW-APB-I2C マスタ。このスライスでは 0x10002000 に置く（実 Versatile TRM
+# では同領域は SIC。スライスの宣言は apps/sensorbus の構成と一致させる）。
+# セグメントは PL061 のビットバング線（gpio0 pin0/pin1）と同一バスを共有し、
+# 同じ部品に控制器経路とピン経路の両方から到達できる（P2 完了条件）。
+[[block]]
+name = 'i2c0'
+use = 'ip:synopsys/dw-apb-i2c'
+at = { space = 'sysbus', base = 0x10002000 }
+irq = { pin = 'combined', to = ['core0.vic:13'] }
+
+# PL022 SSP: Versatile/PB では 0x1000D000、VIC 割り込み 11。
+[[block]]
+name = 'ssp0'
+use = 'ip:arm/pl022'
+at = { space = 'sysbus', base = 0x1000d000 }
+irq = { pin = 'combined', to = ['core0.vic:11'] }
+
+# PL061 GPIO0: Versatile/PB では 0x101E4000、VIC 割り込み 6。
+# pin0 = SDA、pin1 = SCL のビットバング線（プルアップネット経由で
+# i2c0 セグメントと同じバス実体に接続する）。
+[[block]]
+name = 'gpio0'
+use = 'ip:arm/pl061'
+at = { space = 'sysbus', base = 0x101e4000 }
+irq = { pin = 'combined', to = ['core0.vic:6'] }
+
 [[view]]
 name = 'sysbus'
+
+[[view.region]]
+name = 'gpio0-mmio'
+base = 0x101e4000
+size = 0x00001000
+kind = 'mmio'
+
+[[view.region]]
+name = 'i2c0-mmio'
+base = 0x10002000
+size = 0x00001000
+kind = 'mmio'
 
 [[view.region]]
 name = 'ram'
 base = 0x00000000
 size = 0x00100000
 kind = 'ram'
+
+[[view.region]]
+name = 'ssp0-mmio'
+base = 0x1000d000
+size = 0x00001000
+kind = 'mmio'
 
 [[view.region]]
 name = 'timer0-mmio'

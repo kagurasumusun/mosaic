@@ -208,6 +208,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-apps-sensorbus"
+version = "0.1.0"
+dependencies = [
+ "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-gpio",
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+ "mosaic-contract-net",
+ "mosaic-contract-spi",
+ "mosaic-contract-stream",
+ "mosaic-core-runtime",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-interconnect-gpio-net",
+ "mosaic-interconnect-i2c-bus",
+ "mosaic-interconnect-spi-bus",
+ "mosaic-interconnect-uart-pair",
+ "mosaic-ip-arm-pl011",
+ "mosaic-ip-arm-pl022",
+ "mosaic-ip-arm-pl061",
+ "mosaic-ip-synopsys-dw-apb-i2c",
+ "mosaic-isa-arm",
+ "mosaic-part-bosch-bme280",
+ "mosaic-part-ti-tca9548a",
+]
+
+[[package]]
 name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [

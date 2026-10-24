@@ -1,9 +1,9 @@
-# P1 ボード記述。実在する Versatile Platform Baseboard の名称を使う。
-# センサなどの実部品は P2 で [[part]] として追加する。
+# P1/P2 スライスボード記述。実在する Versatile Platform Baseboard の名称を
+# 使い、P2 でセンサ部品を [[part]] として追加する（構成設計書 §5.3 の書式）。
 [board]
 id = 'board:arm/versatile-pb'
 soc = 'soc:arm/versatile/arm926ej-s'
-summary = 'Minimal P1 bring-up board: UART console plus dual timer'
+summary = 'P1/P2 slice board: UART console, dual timer, shared I2C segment, SPI'
 
 # uart0 の ByteStream ポートはボード上の 1 対 1 シリアル回線に終端する。
 [[conn]]
@@ -11,3 +11,35 @@ name = 'uart0-console'
 port = 'soc.uart0.stream'
 to = 'wire:uart-console'
 kind = 'stream/byte'
+
+# --- P2 部品（apps/sensorbus の構成と同じ宣言） ---
+
+# env0: i2c0 セグメント直結の BME280。DW 控制器と PL061 ビットバングの
+# 両経路がこの同一インスタンスに到達する（P2 完了条件の宣言側）。
+[[part]]
+name = 'env0'
+use = 'part:bosch/bme280'
+bind = 'i2c'
+conn = { bus = 'soc.i2c0', addr = 0x76 }
+
+# env1: PL022 のチップセレクト 0 にぶら下がる BME280（SPI バインド）。
+[[part]]
+name = 'env1'
+use = 'part:bosch/bme280'
+bind = 'spi'
+conn = { bus = 'soc.ssp0', cs = 0 }
+
+# mux0: セグメント上の TCA9548A スイッチ。
+[[part]]
+name = 'mux0'
+use = 'part:ti/tca9548a'
+bind = 'i2c'
+conn = { bus = 'soc.i2c0', addr = 0x70 }
+
+# env2: mux0 のチャネル 3 背後の BME280。チャネル無効時はセグメントから
+# 隠れ、有効化するとルーティングされる。
+[[part]]
+name = 'env2'
+use = 'part:bosch/bme280'
+bind = 'i2c'
+conn = { bus = 'board.mux0.channel3', addr = 0x77 }

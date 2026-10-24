@@ -39,6 +39,7 @@ members = [
     "catalog/parts/ti/tca9548a",
     "apps/bringup",
     "apps/cli",
+    "apps/sensorbus",
     "xtask",
 ]
 

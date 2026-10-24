@@ -140,6 +140,15 @@ jobs:
           echo "bringup: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           exit 0
 
+      - name: P2 sensor-bus golden test
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-apps-sensorbus --features unicorn > ci-reports/sensorbus.log 2>&1
+          code=$?
+          echo "sensorbus: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Workspace diagnostics
         if: always()
         run: |
