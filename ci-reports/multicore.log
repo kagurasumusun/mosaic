@@ -1,21 +1,13 @@
-[1m[32m   Compiling[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
 [1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
-[1m[32m   Compiling[0m mosaic-isa-riscv v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/riscv)
-[1m[32m   Compiling[0m mosaic-cpu-sifive-e31 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/sifive/e31)
-[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/contract/model/src/lib.rs:28:26[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            .checked_add(delay)[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mexpected `VDelta`, found `VTime`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12marguments to this method are incorrect[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;10mnote[0m[0m: method defined here[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0m/home/runner/work/mosaic/mosaic/framework/core/types/src/lib.rs:24:12[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m24[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn checked_add(self, delta: VDelta) -> Option<Self> {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;10m^^^^^^^^^^^[0m
-
-[0m[1mFor more information about this error, try `rustc --explain E0308`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-contract-model` (lib) due to 1 previous error
-[1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
+[1m[32m   Compiling[0m unicorn-engine v2.1.5
+[1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
+[1m[32m   Compiling[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
+[1m[32m   Compiling[0m mosaic-apps-multicore v0.1.0 (/home/runner/work/mosaic/mosaic/apps/multicore)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1.28s
+[1m[32m     Running[0m `target/debug/mosaic-apps-multicore`
+console="smp=61\namp=bf\n"
+shared=21 61 40 BF
+mhu_stat=0 0 0
+edges c0=TFTF c1=TF c2=TF
+hooks=[3072, 3072, 3072] events=8 rounds=48 quantum=64 budget=32
+elapsed_us=13622 instr_per_s=676552

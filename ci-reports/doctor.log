@@ -1,3 +1,5 @@
 [1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
 [1m[32m     Running[0m `target/debug/mosaic-xtask doctor`
-xtask: catalog/cpu/sifive/e31/cpu.toml: cpu.toml: missing [params] table
+doctor: OK (52 workspace crates)
+Event/MMIO machine runtime with an opt-in Unicorn ARM MMIO binding; no complete machine.
+License/contribution policy and initial ISA/board require owner decisions.

@@ -1,0 +1,10 @@
+rom loader: [10, 20, 30, 40]
+guest write rom: PermissionDenied
+time=100 signal=1 high=true
+time=300 signal=1 high=true
+sink levels: [true, true]
+ram[0x1000]=0x11223344
+device fault: Device
+unmapped read: Unmapped
+misaligned write: Misaligned
+determinism: identical

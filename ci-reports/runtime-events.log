@@ -1,27 +1,2 @@
-[1m[32m   Compiling[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
-[1m[32m   Compiling[0m mosaic-contract-signal v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/signal)
-[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/contract/model/src/lib.rs:28:26[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            .checked_add(delay)[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mexpected `VDelta`, found `VTime`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12marguments to this method are incorrect[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;10mnote[0m[0m: method defined here[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0m/home/runner/work/mosaic/mosaic/framework/core/types/src/lib.rs:24:12[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m24[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn checked_add(self, delta: VDelta) -> Option<Self> {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;10m^^^^^^^^^^^[0m
-
-[0m[1mFor more information about this error, try `rustc --explain E0308`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-contract-model` (lib) due to 1 previous error
---- tests/runtime-events.stdout	2026-10-24 22:12:34.965240809 +0000
-+++ ci-reports/runtime-events.stdout	2026-10-24 22:13:13.110008633 +0000
-@@ -1,6 +0,0 @@
--time=0 node=1 signal=7 high=true
--time=10 node=1 timer=100
--time=10 node=2 timer=200
--time=10 node=2 signal=7 high=false
--time=20 node=1 timer=101
--snapshot replay: identical
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+[1m[32m     Running[0m `target/debug/examples/events`

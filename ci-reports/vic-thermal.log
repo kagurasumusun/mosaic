@@ -1,19 +1,6 @@
-[1m[32m   Compiling[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
-[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
-[0m[1m[38;5;9merror[E0308][0m[0m[1m: mismatched types[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mframework/contract/model/src/lib.rs:28:26[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            .checked_add(delay)[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mexpected `VDelta`, found `VTime`[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12m|[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;12marguments to this method are incorrect[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;10mnote[0m[0m: method defined here[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0m/home/runner/work/mosaic/mosaic/framework/core/types/src/lib.rs:24:12[0m
-[0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m24[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn checked_add(self, delta: VDelta) -> Option<Self> {[0m
-[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;10m^^^^^^^^^^^[0m
-
-[0m[1mFor more information about this error, try `rustc --explain E0308`.[0m
-[1m[31merror[0m[1m:[0m could not compile `mosaic-contract-model` (lib) due to 1 previous error
-[1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
+[1m[32m   Compiling[0m mosaic-apps-vic-thermal v0.1.0 (/home/runner/work/mosaic/mosaic/apps/vic-thermal)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.48s
+[1m[32m     Running[0m `target/debug/mosaic-apps-vic-thermal`
+console="t=00001900 v=00001400 k=00BEEF00 c=00001000\n"
+hooks=2048 events=5 irq_edges=1
+elapsed_us=11322 instr_per_s=180886
