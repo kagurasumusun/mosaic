@@ -10,4 +10,4 @@ shared=21 61 40 BF
 mhu_stat=0 0 0
 edges c0=TFTF c1=TF c2=TF
 hooks=[3072, 3072, 3072] events=8 rounds=48 quantum=64 budget=32
-elapsed_us=13560 instr_per_s=679646
+elapsed_us=13843 instr_per_s=665751
