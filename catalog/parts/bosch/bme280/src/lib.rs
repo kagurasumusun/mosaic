@@ -151,7 +151,7 @@ impl Calibration {
             + (i64::from(self.dig_p4) << 35);
         let var1 =
             ((var1 * var1 * i64::from(self.dig_p3)) >> 8) + ((var1 * i64::from(self.dig_p2)) << 12);
-        let var1 = ((1i64 << 47) + var1) * i64::from(self.dig_p1) >> 33;
+        let var1 = (((1i64 << 47) + var1) * i64::from(self.dig_p1)) >> 33;
         if var1 == 0 {
             return 0;
         }
@@ -225,10 +225,10 @@ impl Bme280Core {
         let mut bank = [0u8; 256];
         // 温度・圧力係数: 0x88..0x9F の 24 バイト、16 ビット LE。
         let tp = [
-            u16::from(calibration.dig_t1),
+            calibration.dig_t1,
             calibration.dig_t2 as u16,
             calibration.dig_t3 as u16,
-            u16::from(calibration.dig_p1),
+            calibration.dig_p1,
             calibration.dig_p2 as u16,
             calibration.dig_p3 as u16,
             calibration.dig_p4 as u16,

@@ -16,7 +16,10 @@ fn firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths() {
     assert_eq!(report.mux_routed_id, 0x60);
     // Polling firmware with all interrupt masks cleared: no line ever moves.
     assert!(report.irq_edges.is_empty());
-    assert_eq!(report.hooks, 1024, "quantum exhausts in the final spin loop");
+    assert_eq!(
+        report.hooks, 1024,
+        "quantum exhausts in the final spin loop"
+    );
 }
 
 #[test]

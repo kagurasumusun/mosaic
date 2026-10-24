@@ -397,11 +397,20 @@ mod tests {
 
     const IRQ: SignalId = SignalId(6);
 
-    #[derive(Default)]
     struct FakeProbe {
         drives: Vec<PinLevel>,
         configs: Vec<PinConfig>,
         level: PinLevel,
+    }
+
+    impl Default for FakeProbe {
+        fn default() -> Self {
+            Self {
+                drives: Vec::new(),
+                configs: Vec::new(),
+                level: PinLevel::Low,
+            }
+        }
     }
 
     struct FakePort(Arc<Mutex<FakeProbe>>);
