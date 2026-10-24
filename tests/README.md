@@ -2,7 +2,7 @@
 
 機械レベル・決定論・互換性・性能の横断テストを配置します。
 単体テストは各クレート内にあります。ファームウェア起動の golden test は `apps/bringup`、
-`apps/sensorbus`、`apps/multicore` にあり、CI で実行します。
+`apps/sensorbus`、`apps/multicore`、`apps/vic-thermal` にあり、CI で実行します。
 
 `runtime-events.stdout` は `mosaic-core-runtime` の `events` 実行例に対する期待出力です。
 GitHub Actions がビルドした例を実行し、このファイルとの一致を比較します。

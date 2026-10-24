@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:arm/pl190'
+summary = 'ARM PrimeCell vectored interrupt controller (PL190) functional register model'
+spec = ['ARM DDI 0181E']
+variants = []
+
+[tags]
+function = ['interrupt-controller']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['irq', 'fiq'] }
+inputs = { contract = 'model/signal', role = 'endpoint', count = 32 }
+
+[params]
+# 割り込み入力 (source node, signal id) → ライン番号 の割当は
+# Pl190::bind_input でモデル構築後に注入する（ADR 0008 ポート注入）。

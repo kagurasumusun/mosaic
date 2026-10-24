@@ -8,11 +8,12 @@
 //! [`MachineBus`]. The FlatView stays the single source of truth: nothing
 //! here invents an address range.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
 use mosaic_core_runtime::{FlatView, Machine};
-use mosaic_core_types::{Addr, BusFault, MemoryKind, NodeId, Permissions};
+use mosaic_core_types::{Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions};
 use mosaic_engine_unicorn::{SharedRam, UnicornArm, PAGE_SIZE};
 
 #[cfg(feature = "unicorn-riscv")]
@@ -124,6 +125,102 @@ pub fn bind_flat_view(
     master: NodeId,
 ) -> Result<Arc<Mutex<Machine>>, BindError> {
     bind_flat_view_shared(engine, view, machine, master, &[])
+}
+
+/// Page-coalescing binder for boards whose blocks are finer than the backend
+/// page granularity.
+///
+/// Real MCUs such as the STM32F1 family place 0x400-byte peripheral blocks at
+/// non-page offsets, which [`bind_flat_view`] rejects as `NotPageAligned`.
+/// This binder walks the FlatView's 4 KiB pages instead of its leaves:
+///
+/// - Every page touched by any leaf becomes exactly one engine region.
+/// - A page becomes native engine memory only when the FlatView covers the
+///   whole page with Ram/Rom leaves sharing one permission set; each leaf's
+///   backing bytes are loader-copied into the engine page. Guest permissions
+///   are then enforced by the engine map like in [`bind_flat_view`].
+/// - Any other page (containing an Mmio leaf, partially covered, or mixing
+///   permissions) becomes a callback region: every guest access routes through
+///   the machine bus, so the FlatView keeps deciding sub-page resolution,
+///   targeting and permissions — including faults for unmapped holes.
+///
+/// Shared host-backed regions are not part of this binder; single-core boards
+/// with fine-grained maps are its scope.
+pub fn bind_flat_view_paged(
+    engine: &mut dyn EngineMap,
+    view: &FlatView,
+    machine: Arc<Mutex<Machine>>,
+    master: NodeId,
+) -> Result<Arc<Mutex<Machine>>, BindError> {
+    engine.attach_bus(Box::new(MachineBus::new(Arc::clone(&machine), master)))?;
+
+    // Collect the leaves per enclosing 4 KiB page. FlatView leaves never
+    // overlap, so a leaf crossing a page boundary contributes to both pages
+    // and each page copies only its own clamped span.
+    let mut pages: BTreeMap<u64, Vec<&Mapping>> = BTreeMap::new();
+    for mapping in view.mappings() {
+        let end = u128::from(mapping.base.0) + u128::from(mapping.size);
+        if mapping.size == 0 || end > 1u128 << 32 {
+            return Err(BindError::NotPageAligned(mapping.base));
+        }
+        let last = u64::try_from(end - 1).map_err(|_| BindError::NotPageAligned(mapping.base))?;
+        for page in mapping.base.0 / PAGE_SIZE..=last / PAGE_SIZE {
+            pages.entry(page * PAGE_SIZE).or_default().push(mapping);
+        }
+    }
+
+    for (page_base, leaves) in pages {
+        let page_end = page_base + PAGE_SIZE;
+        match native_page(&leaves, page_base, page_end) {
+            Some(permissions) => {
+                engine.map_memory(Addr(page_base), PAGE_SIZE, permissions)?;
+                for mapping in leaves {
+                    let start = mapping.base.0.max(page_base);
+                    let finish = (mapping.base.0 + mapping.size).min(page_end);
+                    let length = usize::try_from(finish - start)
+                        .map_err(|_| BindError::BackingTooLarge(Addr(start)))?;
+                    let mut bytes = vec![0u8; length];
+                    {
+                        let guard = machine.lock().map_err(|_| BusFault::Device)?;
+                        let offset = mapping.offset + (start - mapping.base.0);
+                        guard.loader_read(mapping.target, offset, &mut bytes)?;
+                    }
+                    engine.write_memory(Addr(start), &bytes)?;
+                }
+            }
+            None => {
+                engine.map_mmio(Addr(page_base), PAGE_SIZE)?;
+            }
+        }
+    }
+
+    Ok(machine)
+}
+
+/// The permission set when `leaves` tile `[page_base, page_end)` exactly with
+/// Ram/Rom of one permission set; `None` means the page must become a callback
+/// region so the FlatView keeps deciding every access.
+fn native_page(leaves: &[&Mapping], page_base: u64, page_end: u64) -> Option<Permissions> {
+    let mut cursor = page_base;
+    let permissions = leaves.first()?.permissions;
+    let mut ordered = leaves.to_vec();
+    ordered.sort_by_key(|mapping| mapping.base.0);
+    for mapping in ordered {
+        if !matches!(mapping.kind, MemoryKind::Ram | MemoryKind::Rom) {
+            return None;
+        }
+        if mapping.permissions != permissions {
+            return None;
+        }
+        let start = mapping.base.0.max(page_base);
+        let finish = (mapping.base.0 + mapping.size).min(page_end);
+        // Gap before this leaf, or overlap: not an exact tiling.
+        if start != cursor {
+            return None;
+        }
+        cursor = finish;
+    }
+    (cursor == page_end).then_some(permissions)
 }
 
 /// [`bind_flat_view`] with host-backed shared leaves. For every Ram/Rom mapping

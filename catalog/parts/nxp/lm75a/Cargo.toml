@@ -1,0 +1,19 @@
+[package]
+name = "mosaic-part-nxp-lm75a"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "catalog"
+kind = "part"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-types = { path = "../../../../framework/core/types" }
+mosaic-contract-i2c = { path = "../../../../framework/contract/i2c" }
+mosaic-contract-model = { path = "../../../../framework/contract/model" }

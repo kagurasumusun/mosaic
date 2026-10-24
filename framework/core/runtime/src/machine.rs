@@ -458,7 +458,10 @@ impl Machine {
         if !self.arena.is_registered(source) {
             return Err(MachineError::UnknownNode(source));
         }
-        if !self.sinks.contains_key(&sink.0) {
+        // A wired input lands on an arena device (single instance, Ctx-bound
+        // delivery) or on a registered host sink node; anything else is a
+        // wiring mistake that must fail at construction time.
+        if !self.arena.is_registered(sink) && !self.sinks.contains_key(&sink.0) {
             return Err(MachineError::MissingSink(sink));
         }
         self.outputs.entry(source.0).or_default().insert(signal.0);
@@ -647,10 +650,21 @@ impl Machine {
             }
             EventKind::Signal { signal, high } => {
                 if let Some(&sink_node) = self.wiring.get(&(owner.0, signal.0)) {
-                    let Some(sink) = self.sinks.get_mut(&sink_node) else {
-                        return Err(MachineError::MissingSink(NodeId(sink_node)));
-                    };
-                    sink.set_level(high);
+                    let sink_node = NodeId(sink_node);
+                    // Wired inputs land on the arena device when one owns the
+                    // node: a single instance then sees both its MMIO face and
+                    // its signal inputs, with a Ctx bound to its own outputs
+                    // (aggregators such as interrupt controllers, §13.3/§13.4).
+                    if let Some(device) = self.arena.event_target(sink_node) {
+                        let outputs = self.outputs.get(&sink_node.0).cloned().unwrap_or_default();
+                        let mut ctx = ModelContext::new(&mut self.queue, sink_node, &outputs);
+                        device.on_signal(&mut ctx, owner, signal, high)?;
+                    } else {
+                        let Some(sink) = self.sinks.get_mut(&sink_node.0) else {
+                            return Err(MachineError::MissingSink(sink_node));
+                        };
+                        sink.set_level(high);
+                    }
                 }
                 // An unconnected output is a valid optional port: no destination.
             }
@@ -1237,6 +1251,184 @@ mod tests {
             .unwrap();
         machine.run_until(VTime(2000), 32).unwrap();
         assert_eq!(levels(&probe), [true, true, true, false]);
+    }
+
+    #[test]
+    fn wired_inputs_reach_arena_devices_with_source_identity() {
+        // Two producing devices wired into one aggregating arena device: the
+        // aggregator must tell them apart by (node, signal) and may re-emit
+        // its own aggregated output through the delivery Ctx, like a VIC
+        // aggregating IRQ lines (構成設計書 §13.3 / §13.4 rule 1).
+        #[derive(Default)]
+        struct AggregatorDevice {
+            seen: Arc<Mutex<Vec<(u32, u32, bool)>>>,
+            output: Option<SignalId>,
+        }
+        impl MmioTarget for AggregatorDevice {
+            fn read(
+                &mut self,
+                _ctx: &mut dyn Ctx,
+                _offset: u64,
+                _size: AccessSize,
+                _attr: &Attr,
+            ) -> Result<u64, BusFault> {
+                Ok(0)
+            }
+            fn write(
+                &mut self,
+                _ctx: &mut dyn Ctx,
+                _offset: u64,
+                _size: AccessSize,
+                _value: u64,
+                _attr: &Attr,
+            ) -> Result<(), BusFault> {
+                Ok(())
+            }
+        }
+        impl mosaic_contract_model::EventTarget for AggregatorDevice {
+            fn on_timer(
+                &mut self,
+                _ctx: &mut dyn Ctx,
+                _token: u64,
+            ) -> Result<(), mosaic_contract_model::ContextError> {
+                Ok(())
+            }
+            fn on_signal(
+                &mut self,
+                ctx: &mut dyn Ctx,
+                source: NodeId,
+                signal: SignalId,
+                high: bool,
+            ) -> Result<(), mosaic_contract_model::ContextError> {
+                self.seen
+                    .lock()
+                    .expect("probe lock")
+                    .push((source.0, signal.0, high));
+                // Aggregated output: wired onward, so the set_signal must land.
+                if let Some(output) = self.output {
+                    ctx.set_signal(output, high)?;
+                }
+                Ok(())
+            }
+        }
+
+        #[derive(Default)]
+        struct LevelRecorder {
+            levels: Arc<Mutex<Vec<bool>>>,
+        }
+        impl SignalSink for LevelRecorder {
+            fn set_level(&mut self, high: bool) {
+                self.levels.lock().expect("recorder lock").push(high);
+            }
+        }
+
+        #[derive(Default)]
+        struct EmitDevice {
+            output: Option<SignalId>,
+        }
+        impl MmioTarget for EmitDevice {
+            fn read(
+                &mut self,
+                _ctx: &mut dyn Ctx,
+                _offset: u64,
+                _size: AccessSize,
+                _attr: &Attr,
+            ) -> Result<u64, BusFault> {
+                Ok(0)
+            }
+            fn write(
+                &mut self,
+                ctx: &mut dyn Ctx,
+                _offset: u64,
+                _size: AccessSize,
+                value: u64,
+                _attr: &Attr,
+            ) -> Result<(), BusFault> {
+                let Some(output) = self.output else {
+                    return Ok(());
+                };
+                ctx.set_signal(output, value & 1 == 1)
+                    .map_err(|_| BusFault::Device)
+            }
+        }
+        impl mosaic_contract_model::EventTarget for EmitDevice {
+            fn on_timer(
+                &mut self,
+                _ctx: &mut dyn Ctx,
+                _token: u64,
+            ) -> Result<(), mosaic_contract_model::ContextError> {
+                Ok(())
+            }
+        }
+
+        let first = NodeId(10);
+        let second = NodeId(11);
+        let aggregator = NodeId(12);
+        let final_node = NodeId(13);
+        let aggregated_out = SignalId(7);
+        let view = FlatView::build(&[
+            leaf(0x2000, 0x1000, first, MemoryKind::Mmio, Permissions::RW),
+            leaf(0x3000, 0x1000, second, MemoryKind::Mmio, Permissions::RW),
+        ])
+        .unwrap();
+        let mut machine = Machine::new(view, 8);
+        machine
+            .register_device(
+                first,
+                Box::new(EmitDevice {
+                    output: Some(SignalId(2)),
+                }),
+            )
+            .unwrap();
+        machine
+            .register_device(
+                second,
+                Box::new(EmitDevice {
+                    output: Some(SignalId(1)),
+                }),
+            )
+            .unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        // One instance, two faces: MMIO target and signal aggregator.
+        machine
+            .register_device(
+                aggregator,
+                Box::new(AggregatorDevice {
+                    seen: Arc::clone(&seen),
+                    output: Some(aggregated_out),
+                }),
+            )
+            .unwrap();
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        machine
+            .register_sink(
+                final_node,
+                Box::new(LevelRecorder {
+                    levels: Arc::clone(&levels),
+                }),
+            )
+            .unwrap();
+        machine.connect(first, SignalId(2), aggregator).unwrap();
+        machine.connect(second, SignalId(1), aggregator).unwrap();
+        // The aggregator's own output is wired like any device output.
+        machine
+            .connect(aggregator, aggregated_out, final_node)
+            .unwrap();
+        machine.verify().unwrap();
+
+        let attr = bus_attr(first);
+        machine
+            .bus_write(Addr(0x2000), AccessSize::Word, 1, &attr)
+            .unwrap();
+        machine
+            .bus_write(Addr(0x3000), AccessSize::Word, 1, &attr)
+            .unwrap();
+        machine.run_until(VTime(1), 8).unwrap();
+        assert_eq!(
+            *seen.lock().expect("probe lock"),
+            vec![(first.0, 2, true), (second.0, 1, true)]
+        );
+        assert_eq!(*levels.lock().expect("recorder lock"), vec![true, true]);
     }
 
     #[test]

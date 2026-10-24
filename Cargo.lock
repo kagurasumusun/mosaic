@@ -254,6 +254,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-apps-vic-thermal"
+version = "0.1.0"
+dependencies = [
+ "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+ "mosaic-contract-stream",
+ "mosaic-core-runtime",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-interconnect-i2c-bus",
+ "mosaic-interconnect-uart-pair",
+ "mosaic-ip-arm-pl011",
+ "mosaic-ip-arm-pl190",
+ "mosaic-ip-synopsys-dw-apb-i2c",
+ "mosaic-isa-arm",
+ "mosaic-part-nxp-lm75a",
+]
+
+[[package]]
 name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [
@@ -519,6 +540,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-arm-pl190"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+ "mosaic-ip-arm-primecell-id",
+]
+
+[[package]]
 name = "mosaic-ip-arm-primecell-id"
 version = "0.1.0"
 
@@ -569,6 +600,15 @@ dependencies = [
  "mosaic-contract-spi",
  "mosaic-core-types",
  "mosaic-prim-bits",
+]
+
+[[package]]
+name = "mosaic-part-nxp-lm75a"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+ "mosaic-core-types",
 ]
 
 [[package]]

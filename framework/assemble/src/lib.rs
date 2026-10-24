@@ -25,4 +25,6 @@ pub use driver::{DriverError, MachineDriver, StepReport};
 #[cfg(feature = "unicorn")]
 pub use multicore::{MulticoreDriver, MulticoreError, RoundReport, DEFAULT_PS_PER_INSTRUCTION};
 #[cfg(feature = "unicorn")]
-pub use unicorn_bind::{bind_flat_view, bind_flat_view_shared, BindError, EngineMap, SharedRegion};
+pub use unicorn_bind::{
+    bind_flat_view, bind_flat_view_paged, bind_flat_view_shared, BindError, EngineMap, SharedRegion,
+};

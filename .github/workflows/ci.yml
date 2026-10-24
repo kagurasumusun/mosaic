@@ -169,6 +169,15 @@ jobs:
           echo "multicore: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           exit 0
 
+      - name: P3 VIC thermal golden test
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-apps-vic-thermal --features unicorn > ci-reports/vic-thermal.log 2>&1
+          code=$?
+          echo "vic-thermal: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
       - name: Workspace diagnostics
         if: always()
         run: |

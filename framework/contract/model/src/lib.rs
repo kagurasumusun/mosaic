@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 //! Provisional synchronous model context. More services require an ADR.
 
-use mosaic_core_types::{EventId, SignalId, VTime};
+use mosaic_core_types::{EventId, NodeId, SignalId, VTime};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -45,4 +45,23 @@ pub trait Ctx: Send {
 /// Timer tokens are model-defined values from the model's own reservations.
 pub trait EventTarget: Send {
     fn on_timer(&mut self, ctx: &mut dyn Ctx, token: u64) -> Result<(), ContextError>;
+
+    /// Delivery of one wired input signal edge, with the producing node and
+    /// its output pin (構成設計書 §13.3: multiple sources, named pins).
+    ///
+    /// Aggregator models — interrupt controllers, wired-OR nets — override
+    /// this to track per-source line levels and assert their own aggregated
+    /// outputs through `ctx`, which the runtime binds to this node. Effects
+    /// are queued events, never synchronous re-entry (§13.4 rule 1, ADR 0001).
+    /// The default no-op mirrors optional ports: an unwired or ignored input
+    /// is not a guest fault.
+    fn on_signal(
+        &mut self,
+        _ctx: &mut dyn Ctx,
+        _source: NodeId,
+        _signal: SignalId,
+        _high: bool,
+    ) -> Result<(), ContextError> {
+        Ok(())
+    }
 }

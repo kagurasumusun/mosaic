@@ -1,0 +1,47 @@
+# NXP LM75A デジタル温度センサの記述。値は NXP LM75A データシート
+# (UM10204 / LM75A product data sheet, Rev. 04) に基づく。現フェーズは
+# 宣言のみで、消費するパーサは後続フェーズ（describe 実装）で導入する。
+[part]
+id = 'part:nxp/lm75a'
+origin = 'nxp'
+name = 'LM75A'
+summary = 'Digital temperature sensor and thermal watchdog with I2C interface'
+bindings = ['i2c']
+provenance = { doc = 'NXP LM75A datasheet', confidence = 'high' }
+
+# I2C: アドレスは A0-A2 ピンで 0x48..0x4F。書き込みフレームの先頭バイトが
+# ポインタ（2 ビット、0=Temp / 1=Conf / 2=Thyst / 3=Tos）で、以降のデータ
+# バイトはポインタレジスタへ自動インクリメントで書き込まれる。
+[i2c]
+addresses = [0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F]
+pointer-width = 2
+
+[[register]]
+name = 'temp'
+offset = 0x00
+size = 2
+access = 'ro'
+note = '11 ビット 2 の補数、0.125 °C/LSB。byte0 = temp[10:3]、byte1[7:5] = temp[2:0]'
+
+[[register]]
+name = 'conf'
+offset = 0x01
+access = 'rw'
+reset = 0x00
+note = 'bit0 SHUTDOWN / bit1 OS_COMP_INT / bit2 OS_POL / bit[4:3] fault queue'
+
+[[register]]
+name = 'thyst'
+offset = 0x02
+size = 2
+access = 'rw'
+reset = 0x4B00
+note = 'T_hyst、9 ビット、0.5 °C/LSB（パワーアップ既定 75 °C）'
+
+[[register]]
+name = 'tos'
+offset = 0x03
+size = 2
+access = 'rw'
+reset = 0x5000
+note = 'T_os、9 ビット、0.5 °C/LSB（パワーアップ既定 80 °C）'
