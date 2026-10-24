@@ -1,0 +1,39 @@
+# Utility workflow: export the pinned Rust toolchain and the Cargo registry
+# cache as an artifact for offline development hosts. Manually dispatched only;
+# it never runs on push and does not affect the CI pipeline.
+name: Toolchain export
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node.js 24)
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Fetch dependency sources
+        run: |
+          cargo fetch --locked
+          cargo xtask --version || cargo build --locked --package mosaic-xtask
+
+      - name: Pack toolchain and registry cache
+        run: |
+          mkdir -p export
+          tar -C "$HOME" -czf export/rustup-home.tar.gz .rustup
+          tar -C "$HOME" -czf export/cargo-registry.tar.gz .cargo/registry
+          tar -C "$HOME" -czf export/cargo-bin.tar.gz .cargo/bin
+          du -sh export/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mosaic-toolchain
+          path: export/
+          retention-days: 7
