@@ -1,559 +1,215 @@
-diff --git a/catalog/cpu/arm/arm926ej-s/src/lib.rs b/catalog/cpu/arm/arm926ej-s/src/lib.rs
-index f71503c..440036b 100644
---- a/catalog/cpu/arm/arm926ej-s/src/lib.rs
-+++ b/catalog/cpu/arm/arm926ej-s/src/lib.rs
-@@ -274,7 +274,10 @@ mod tests {
-         let attr = attr();
-         // CONTROL keeps only the ENABLE bit, so width masking is observed on
-         // the full-width read-only MIDR (0x4105_9261).
--        assert_eq!(core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr), Ok(0x61));
-+        assert_eq!(
-+            core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr),
-+            Ok(0x61)
-+        );
-         assert_eq!(
-             core.read(&mut ctx, reg::MIDR, AccessSize::HalfWord, &attr),
-             Ok(0x9261)
-diff --git a/catalog/ip/arm/pl022/src/lib.rs b/catalog/ip/arm/pl022/src/lib.rs
-index bfee3a7..3a891c8 100644
---- a/catalog/ip/arm/pl022/src/lib.rs
-+++ b/catalog/ip/arm/pl022/src/lib.rs
-@@ -28,7 +28,7 @@ extern crate alloc;
- use alloc::boxed::Box;
- use alloc::collections::VecDeque;
- use mosaic_contract_mmio::MmioTarget;
--use mosaic_contract_model::{Ctx, ContextError, EventTarget};
-+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
- use mosaic_contract_spi::{SpiCs, SpiError, SpiInitiator, SpiMode};
- use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
- use mosaic_ip_arm_primecell_id::PrimeCellId;
-@@ -403,12 +403,7 @@ mod tests {
+diff --git a/apps/sensorbus/src/sensorbus.rs b/apps/sensorbus/src/sensorbus.rs
+index f12cb05..cf22c7d 100644
+--- a/apps/sensorbus/src/sensorbus.rs
++++ b/apps/sensorbus/src/sensorbus.rs
+@@ -150,20 +150,10 @@ impl I2cInitiator for SharedInitiator {
+     fn set_speed(&mut self, speed: I2cSpeed) {
+         lock(&self.0).set_speed(speed);
      }
- 
-     impl SpiInitiator for FakeHandle {
--        fn select(
--            &mut self,
--            _ctx: &mut dyn Ctx,
--            cs: SpiCs,
--            assert: bool,
--        ) -> Result<(), SpiError> {
-+        fn select(&mut self, _ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError> {
-             lock(&self.0).selects.push((cs, assert));
-             Ok(())
-         }
-@@ -443,11 +438,7 @@ mod tests {
-         fn now(&self) -> VTime {
-             VTime::ZERO
-         }
--        fn schedule(
--            &mut self,
--            _at: VTime,
--            _token: u64,
--        ) -> Result<EventId, ContextError> {
-+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
-             Err(ContextError::ResourceExhausted)
-         }
-         fn cancel(&mut self, _event: EventId) -> bool {
-@@ -477,13 +468,17 @@ mod tests {
-             Pl022Params::new(IRQ),
-             Some(Box::new(FakeHandle(Arc::clone(&fake)))),
-         );
--        (device, fake, TestCtx { signals: Vec::new() })
-+        (
-+            device,
-+            fake,
-+            TestCtx {
-+                signals: Vec::new(),
-+            },
-+        )
-     }
- 
-     fn read(device: &mut Pl022, ctx: &mut TestCtx, offset: u64) -> u32 {
--        device
--            .read(ctx, offset, AccessSize::Word, &attr())
--            .unwrap() as u32
-+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
-     }
- 
-     fn write(device: &mut Pl022, ctx: &mut TestCtx, offset: u64, value: u32) {
-@@ -520,7 +515,10 @@ mod tests {
-         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
-         assert_eq!(lock(&fake).selects.len(), 1);
-         write(&mut device, &mut ctx, reg::CR1, 0);
--        assert_eq!(lock(&fake).selects, vec![(SpiCs(0), true), (SpiCs(0), false)]);
-+        assert_eq!(
-+            lock(&fake).selects,
-+            vec![(SpiCs(0), true), (SpiCs(0), false)]
-+        );
-     }
- 
-     #[test]
-@@ -542,7 +540,12 @@ mod tests {
-     #[test]
-     fn cr0_cpol_cpha_reach_the_exchange_mode() {
-         let (mut device, fake, mut ctx) = device();
--        write(&mut device, &mut ctx, reg::CR0, 0x07 | cr0::CPOL | cr0::CPHA);
-+        write(
-+            &mut device,
-+            &mut ctx,
-+            reg::CR0,
-+            0x07 | cr0::CPOL | cr0::CPHA,
-+        );
-         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
-         write(&mut device, &mut ctx, reg::DR, 0x01);
-         assert_eq!(
-@@ -645,7 +648,9 @@ mod tests {
-     #[test]
-     fn unwired_port_tolerates_dr_writes() {
-         let mut device = Pl022::new(Pl022Params::new(IRQ), None);
--        let mut ctx = TestCtx { signals: Vec::new() };
-+        let mut ctx = TestCtx {
-+            signals: Vec::new(),
-+        };
-         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
-         write(&mut device, &mut ctx, reg::DR, 0x55);
-         assert_eq!(read(&mut device, &mut ctx, reg::SR) & sr::RNE, 0);
-diff --git a/catalog/ip/arm/pl061/src/lib.rs b/catalog/ip/arm/pl061/src/lib.rs
-index 213e13b..d9c8f7a 100644
---- a/catalog/ip/arm/pl061/src/lib.rs
-+++ b/catalog/ip/arm/pl061/src/lib.rs
-@@ -29,7 +29,7 @@ extern crate alloc;
- use alloc::boxed::Box;
- use mosaic_contract_gpio::{GpioPort, PinConfig, PinDirection, PinLevel, Pull};
- use mosaic_contract_mmio::MmioTarget;
--use mosaic_contract_model::{Ctx, ContextError, EventTarget};
-+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
- use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
- use mosaic_ip_arm_primecell_id::PrimeCellId;
- 
-@@ -145,11 +145,7 @@ impl Pl061 {
- 
-     /// ピンにポートを接続する。接続時点のレベルをエッジ検出の基準に
-     /// 採用する（リセット直後のスパurious エッジを防ぐ）。
--    pub fn attach_pin(
+-    fn write(
 -        &mut self,
--        pin: u8,
--        port: Box<dyn GpioPort>,
--    ) -> Result<(), Pl061Error> {
-+    pub fn attach_pin(&mut self, pin: u8, port: Box<dyn GpioPort>) -> Result<(), Pl061Error> {
-         if usize::from(pin) >= PINS {
-             return Err(Pl061Error::PinOutOfRange);
-         }
-@@ -445,11 +441,7 @@ mod tests {
-         fn now(&self) -> VTime {
-             VTime::ZERO
-         }
--        fn schedule(
--            &mut self,
--            _at: VTime,
--            _token: u64,
--        ) -> Result<EventId, ContextError> {
-+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
-             Err(ContextError::ResourceExhausted)
-         }
-         fn cancel(&mut self, _event: EventId) -> bool {
-@@ -489,15 +481,15 @@ mod tests {
-         }
-         Bench {
-             device,
--            ctx: TestCtx { signals: Vec::new() },
-+            ctx: TestCtx {
-+                signals: Vec::new(),
-+            },
-             probes,
-         }
+-        ctx: &mut dyn Ctx,
+-        addr: I2cAddr,
+-        bytes: &[u8],
+-    ) -> Result<(), I2cError> {
++    fn write(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, bytes: &[u8]) -> Result<(), I2cError> {
+         lock(&self.0).write(ctx, addr, bytes)
      }
- 
-     fn read(device: &mut Pl061, ctx: &mut TestCtx, offset: u64) -> u32 {
--        device
--            .read(ctx, offset, AccessSize::Word, &attr())
--            .unwrap() as u32
-+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
+-    fn read(
+-        &mut self,
+-        ctx: &mut dyn Ctx,
+-        addr: I2cAddr,
+-        buf: &mut [u8],
+-    ) -> Result<(), I2cError> {
++    fn read(&mut self, ctx: &mut dyn Ctx, addr: I2cAddr, buf: &mut [u8]) -> Result<(), I2cError> {
+         lock(&self.0).read(ctx, addr, buf)
      }
+     fn write_read(
+@@ -196,82 +186,63 @@ fn leaf(base: u64, size: u64, node: NodeId, kind: MemoryKind, perms: Permissions
+ /// peripheral simulation; `firmware.S` holds the matching listing and the
+ /// final four words are the literal pool (I2C, GPIO, SSP, UART bases).
+ static FIRMWARE_WORDS: [u32; 461] = [
+-    0xE59F271C, 0xE3A00001, 0xE582006C, 0xE3A00076, 0xE5820004, 0xE3A000D0,
+-    0xE5820010, 0xE3A00C07, 0xE5820010, 0xE5920070, 0xE3100008, 0x0AFFFFFC,
+-    0xE5924010, 0xE3A00000, 0xE582006C, 0xE59F26E4, 0xE3A000FF, 0xE5820400,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE582000C, 0xE3A00001, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00003, 0xE582000C, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE582000C, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00003, 0xE582000C, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE582000C,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008,
+-    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
+-    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A05000, 0xE1A05085,
+-    0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000,
+-    0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002,
+-    0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
+-    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085,
+-    0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000,
+-    0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002,
+-    0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
+-    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085,
+-    0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000,
+-    0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001, 0xE1855000, 0xE3A00002,
+-    0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000,
+-    0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00003,
+-    0xE582000C, 0xE1A07005, 0xE59F2104, 0xE3A00007, 0xE5820000, 0xE3A00002,
+-    0xE5820004, 0xE3A000D0, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE5920008,
+-    0xE5926008, 0xE3A00000, 0xE5820004, 0xE59F20D4, 0xE3A00001, 0xE3800C01,
+-    0xE5820030, 0xE3A00063, 0xEB000021, 0xE3A00074, 0xEB00001F, 0xE3A0006C,
+-    0xEB00001D, 0xE3A0003D, 0xEB00001B, 0xE1A05004, 0xEB00001B, 0xE3A00020,
+-    0xEB000017, 0xE3A00062, 0xEB000015, 0xE3A00062, 0xEB000013, 0xE3A0003D,
+-    0xEB000011, 0xE1A05007, 0xEB000011, 0xE3A00020, 0xEB00000D, 0xE3A00073,
+-    0xEB00000B, 0xE3A00070, 0xEB000009, 0xE3A00069, 0xEB000007, 0xE3A0003D,
+-    0xEB000005, 0xE1A05006, 0xEB000005, 0xE3A0000A, 0xEB000001, 0xEAFFFFFF,
+-    0xEAFFFFFE, 0xE5820000, 0xE12FFF1E, 0xE52DE004, 0xE1A00225, 0xEB000002,
+-    0xE205000F, 0xEB000000, 0xE49DF004, 0xE350000A, 0xB2800030, 0xA2800057,
++    0xE59F271C, 0xE3A00001, 0xE582006C, 0xE3A00076, 0xE5820004, 0xE3A000D0, 0xE5820010, 0xE3A00C07,
++    0xE5820010, 0xE5920070, 0xE3100008, 0x0AFFFFFC, 0xE5924010, 0xE3A00000, 0xE582006C, 0xE59F26E4,
++    0xE3A000FF, 0xE5820400, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE582000C, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00003, 0xE582000C, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE582000C, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00003, 0xE582000C, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE582000C, 0xE3A00001, 0xE5820004,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008,
++    0xE3A00000, 0xE5820008, 0xE3A00001, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008,
++    0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A05000, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE1A05085, 0xE59203FC, 0xE2000001,
++    0xE1855000, 0xE3A00002, 0xE5820008, 0xE3A00000, 0xE5820008, 0xE3A00002, 0xE5820008, 0xE3A00000,
++    0xE5820008, 0xE3A00000, 0xE5820004, 0xE3A00002, 0xE5820008, 0xE3A00003, 0xE582000C, 0xE1A07005,
++    0xE59F2104, 0xE3A00007, 0xE5820000, 0xE3A00002, 0xE5820004, 0xE3A000D0, 0xE5820008, 0xE3A00000,
++    0xE5820008, 0xE5920008, 0xE5926008, 0xE3A00000, 0xE5820004, 0xE59F20D4, 0xE3A00001, 0xE3800C01,
++    0xE5820030, 0xE3A00063, 0xEB000021, 0xE3A00074, 0xEB00001F, 0xE3A0006C, 0xEB00001D, 0xE3A0003D,
++    0xEB00001B, 0xE1A05004, 0xEB00001B, 0xE3A00020, 0xEB000017, 0xE3A00062, 0xEB000015, 0xE3A00062,
++    0xEB000013, 0xE3A0003D, 0xEB000011, 0xE1A05007, 0xEB000011, 0xE3A00020, 0xEB00000D, 0xE3A00073,
++    0xEB00000B, 0xE3A00070, 0xEB000009, 0xE3A00069, 0xEB000007, 0xE3A0003D, 0xEB000005, 0xE1A05006,
++    0xEB000005, 0xE3A0000A, 0xEB000001, 0xEAFFFFFF, 0xEAFFFFFE, 0xE5820000, 0xE12FFF1E, 0xE52DE004,
++    0xE1A00225, 0xEB000002, 0xE205000F, 0xEB000000, 0xE49DF004, 0xE350000A, 0xB2800030, 0xA2800057,
+     0xEAFFFFF3, 0x10002000, 0x101E4000, 0x1000D000, 0x101F1000,
+ ];
  
-     fn write(device: &mut Pl061, ctx: &mut TestCtx, offset: u64, value: u32) {
-@@ -678,19 +670,17 @@ mod tests {
-         assert_eq!(read(&mut bench.device, &mut bench.ctx, 0x500), 0);
-         write(&mut bench.device, &mut bench.ctx, 0x500, 1);
-         assert_eq!(
--            bench.device.write(
--                &mut bench.ctx,
--                reg::DIR,
--                AccessSize::DoubleWord,
--                0,
--                &attr()
--            ),
-+            bench
-+                .device
-+                .write(&mut bench.ctx, reg::DIR, AccessSize::DoubleWord, 0, &attr()),
-             Err(BusFault::InvalidSize)
-         );
-         let mut params = Pl061Params::new(IRQ);
-         params.unmapped = UnmappedPolicy::Fault;
-         let mut strict = Pl061::new(params);
--        let mut ctx = TestCtx { signals: Vec::new() };
-+        let mut ctx = TestCtx {
-+            signals: Vec::new(),
-+        };
-         assert_eq!(
-             strict.read(&mut ctx, 0x500, AccessSize::Word, &attr()),
-             Err(BusFault::Device)
-diff --git a/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs b/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
-index e61a4c2..2aebb06 100644
---- a/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
-+++ b/catalog/ip/synopsys/dw-apb-i2c/src/lib.rs
-@@ -33,7 +33,7 @@ use alloc::collections::VecDeque;
- use alloc::vec::Vec;
- use mosaic_contract_i2c::{I2cAddr, I2cError, I2cInitiator, I2cSpeed};
- use mosaic_contract_mmio::MmioTarget;
--use mosaic_contract_model::{Ctx, ContextError, EventTarget};
-+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
- use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+@@ -297,15 +268,13 @@ pub fn run_sensorbus() -> Result<SensorbusReport, String> {
  
- /// DW_apb_i2c レジスタオフセット（APB_DATA_WIDTH = 32 の構成）。
-@@ -116,8 +116,15 @@ mod intr {
- 
-     /// IC_CLR_INTR が落とすビット群（TX_ABRT/TX_EMPTY/RX_FULL は専用
-     /// クリアかレベル条件なので含まれない）。
--    pub const CLR_INTR_MASK: u32 =
--        RX_UNDER | RX_OVER | TX_OVER | RD_REQ | RX_DONE | ACTIVITY | STOP_DET | START_DET | GEN_CALL;
-+    pub const CLR_INTR_MASK: u32 = RX_UNDER
-+        | RX_OVER
-+        | TX_OVER
-+        | RD_REQ
-+        | RX_DONE
-+        | ACTIVITY
-+        | STOP_DET
-+        | START_DET
-+        | GEN_CALL;
+     // Shared I2C bus: BME280-A plus the mux with BME280-C on channel 3.
+     let mut bus = I2cBus::new();
+-    bus.add_target(Box::new(Bme280I2c::new(Bme280I2cParams::new(
+-        seven(SENSOR_A)?,
+-    ))));
++    bus.add_target(Box::new(Bme280I2c::new(Bme280I2cParams::new(seven(
++        SENSOR_A,
++    )?))));
+     let mut mux = Tca9548a::new(Tca9548aParams::new(seven(MUX_ADDR)?));
+     mux.attach(
+         MUX_CHANNEL,
+-        Box::new(Bme280I2c::new(Bme280I2cParams::new(seven(
+-            SENSOR_C,
+-        )?))),
++        Box::new(Bme280I2c::new(Bme280I2cParams::new(seven(SENSOR_C)?))),
+     )
+     .map_err(|error| format!("mux attach: {error:?}"))?;
+     bus.add_target(Box::new(mux));
+@@ -374,10 +343,7 @@ pub fn run_sensorbus() -> Result<SensorbusReport, String> {
+     machine
+         .register_device(
+             SSP,
+-            Box::new(Pl022::new(
+-                Pl022Params::new(SSP_IRQ),
+-                Some(Box::new(spi)),
+-            )),
++            Box::new(Pl022::new(Pl022Params::new(SSP_IRQ), Some(Box::new(spi)))),
+         )
+         .map_err(|error| format!("ssp register: {error:?}"))?;
+     machine
+diff --git a/apps/sensorbus/tests/sensorbus.rs b/apps/sensorbus/tests/sensorbus.rs
+index 8e0c18a..735441d 100644
+--- a/apps/sensorbus/tests/sensorbus.rs
++++ b/apps/sensorbus/tests/sensorbus.rs
+@@ -16,7 +16,10 @@ fn firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths() {
+     assert_eq!(report.mux_routed_id, 0x60);
+     // Polling firmware with all interrupt masks cleared: no line ever moves.
+     assert!(report.irq_edges.is_empty());
+-    assert_eq!(report.hooks, 1024, "quantum exhausts in the final spin loop");
++    assert_eq!(
++        report.hooks, 1024,
++        "quantum exhausts in the final spin loop"
++    );
  }
  
- /// IC_TX_ABRT_SOURCE の主要ビット。
-@@ -739,7 +746,8 @@ mod tests {
-             input: &mut [u8],
-         ) -> Result<(), I2cError> {
-             let mut fake = lock(&self.0);
--            fake.ops.push(Op::WriteRead(addr, out.to_vec(), input.len()));
-+            fake.ops
-+                .push(Op::WriteRead(addr, out.to_vec(), input.len()));
-             if let Some(error) = fake.fail {
-                 return Err(error);
-             }
-@@ -761,11 +769,7 @@ mod tests {
-         fn now(&self) -> VTime {
-             VTime::ZERO
-         }
--        fn schedule(
--            &mut self,
--            _at: VTime,
--            _token: u64,
--        ) -> Result<EventId, ContextError> {
-+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
-             Err(ContextError::ResourceExhausted)
-         }
-         fn cancel(&mut self, _event: EventId) -> bool {
-@@ -795,13 +799,17 @@ mod tests {
-             DwApbI2cParams::new(IRQ),
-             Box::new(FakeHandle(Arc::clone(&fake))),
-         );
--        (device, fake, TestCtx { signals: Vec::new() })
-+        (
-+            device,
-+            fake,
-+            TestCtx {
-+                signals: Vec::new(),
-+            },
-+        )
-     }
- 
-     fn read(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64) -> u32 {
--        device
--            .read(ctx, offset, AccessSize::Word, &attr())
--            .unwrap() as u32
-+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
-     }
- 
-     fn write(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64, value: u32) {
-@@ -831,7 +839,10 @@ mod tests {
-     fn data_cmd_is_ignored_while_disabled() {
-         let (mut device, fake, mut ctx) = device();
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0xD0 | data_cmd::STOP);
--        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
-+        assert_eq!(
-+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
-+            0
-+        );
-         assert!(lock(&fake).ops.is_empty());
-     }
- 
-@@ -843,7 +854,10 @@ mod tests {
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
-         // STOP 前はキューに積まれるだけ。
-         assert_eq!(lock(&fake).ops.len(), 0);
--        assert_ne!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
-+        assert_ne!(
-+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
-+            0
-+        );
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0x01 | data_cmd::STOP);
-         assert_eq!(
-             lock(&fake).ops,
-@@ -909,10 +923,7 @@ mod tests {
-         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 2);
-         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x00);
-         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x01);
--        assert_eq!(
--            read(&mut device, &mut ctx, reg::STATUS) & status::RFNE,
--            0
--        );
-+        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::RFNE, 0);
-     }
- 
-     #[test]
-@@ -922,7 +933,12 @@ mod tests {
-         write(&mut device, &mut ctx, reg::TAR, 0x76);
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
-         write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ);
--        write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ | data_cmd::STOP);
-+        write(
-+            &mut device,
-+            &mut ctx,
-+            reg::DATA_CMD,
-+            data_cmd::CMD_READ | data_cmd::STOP,
-+        );
-         assert_eq!(
-             lock(&fake).ops,
-             vec![
-@@ -989,7 +1005,12 @@ mod tests {
-         write(&mut device, &mut ctx, reg::ENABLE, 1);
-         write(&mut device, &mut ctx, reg::TAR, 0x76);
-         // MASTER_MODE ビットを落とした CON へ書き換える。
--        write(&mut device, &mut ctx, reg::CON, con::SPEED_FAST | con::RESTART_EN);
-+        write(
-+            &mut device,
-+            &mut ctx,
-+            reg::CON,
-+            con::SPEED_FAST | con::RESTART_EN,
-+        );
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20 | data_cmd::STOP);
-         assert!(lock(&fake).ops.is_empty());
-         assert_eq!(read(&mut device, &mut ctx, reg::TX_ABRT_SOURCE), 1 << 11);
-@@ -1047,7 +1068,10 @@ mod tests {
-         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
-         write(&mut device, &mut ctx, reg::ENABLE, 0);
-         assert!(lock(&fake).ops.is_empty());
--        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
-+        assert_eq!(
-+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
-+            0
-+        );
-         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 0);
-         assert_eq!(
-             read(&mut device, &mut ctx, reg::RAW_INTR_STAT) & intr::TX_EMPTY,
-@@ -1110,19 +1134,15 @@ mod tests {
-         assert_eq!(read(&mut device, &mut ctx, 0x0A0), 0);
-         write(&mut device, &mut ctx, 0x0A0, 1);
-         assert_eq!(
--            device.write(
--                &mut ctx,
--                reg::DATA_CMD,
--                AccessSize::DoubleWord,
--                0,
--                &attr()
--            ),
-+            device.write(&mut ctx, reg::DATA_CMD, AccessSize::DoubleWord, 0, &attr()),
-             Err(BusFault::InvalidSize)
-         );
-         let mut strict = DwApbI2cParams::new(IRQ);
-         strict.unmapped = UnmappedPolicy::Fault;
--        let mut strict_device =
--            DwApbI2c::new(strict, Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))));
-+        let mut strict_device = DwApbI2c::new(
-+            strict,
-+            Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))),
-+        );
-         assert_eq!(
-             strict_device.read(&mut ctx, 0x0A0, AccessSize::Word, &attr()),
-             Err(BusFault::Device)
-diff --git a/catalog/parts/bosch/bme280/src/bind_i2c.rs b/catalog/parts/bosch/bme280/src/bind_i2c.rs
-index 1518fe5..eafcb90 100644
---- a/catalog/parts/bosch/bme280/src/bind_i2c.rs
-+++ b/catalog/parts/bosch/bme280/src/bind_i2c.rs
-@@ -139,11 +139,9 @@ mod tests {
-         assert_eq!(&buf[3..6], &[0x7E, 0xED, 0x00]);
-         assert_eq!(&buf[6..8], &[0x80, 0x00]);
-         assert_eq!(buf[8], 0x00); // 0xFF は未使用領域
--        // ポインタは 0xFF の次で 0x00 へ折り返す。
-+                                  // ポインタは 0xFF の次で 0x00 へ折り返す。
-         let mut wrapped = [0u8; 1];
--        device
--            .target_read(&mut ctx, &addr, &mut wrapped)
--            .unwrap();
-+        device.target_read(&mut ctx, &addr, &mut wrapped).unwrap();
-         assert_eq!(wrapped[0], 0x00);
-     }
- 
-@@ -152,7 +150,9 @@ mod tests {
-         let mut device = part();
-         let mut ctx = CtxStub;
-         let addr = I2cAddr::Seven(0x76);
--        device.target_write(&mut ctx, &addr, &[reg::CHIP_ID]).unwrap();
-+        device
-+            .target_write(&mut ctx, &addr, &[reg::CHIP_ID])
-+            .unwrap();
-         let mut id = [0u8; 1];
-         device.target_read(&mut ctx, &addr, &mut id).unwrap();
-         assert_eq!(id[0], CHIP_ID_BME280);
-@@ -168,11 +168,15 @@ mod tests {
-         device
-             .target_write(&mut ctx, &addr, &[reg::CTRL_HUM, 0x01, 0x00, 0x25, 0xA0])
-             .unwrap();
--        device.target_write(&mut ctx, &addr, &[reg::CTRL_MEAS]).unwrap();
-+        device
-+            .target_write(&mut ctx, &addr, &[reg::CTRL_MEAS])
-+            .unwrap();
-         let mut buf = [0u8; 2];
-         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
-         assert_eq!(buf, [0x25, 0xA0]); // ctrl_meas, config
--        device.target_write(&mut ctx, &addr, &[reg::CTRL_HUM]).unwrap();
-+        device
-+            .target_write(&mut ctx, &addr, &[reg::CTRL_HUM])
-+            .unwrap();
-         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
-         assert_eq!(buf, [0x01, 0x00]); // ctrl_hum、status は常に 0
-     }
-diff --git a/catalog/parts/bosch/bme280/src/bind_spi.rs b/catalog/parts/bosch/bme280/src/bind_spi.rs
-index 23cfae3..d03c7a2 100644
---- a/catalog/parts/bosch/bme280/src/bind_spi.rs
-+++ b/catalog/parts/bosch/bme280/src/bind_spi.rs
-@@ -177,7 +177,9 @@ mod tests {
-         // 再アサート後の 1 バイト目はコマンドとして解釈される（ダミー 0x00）。
-         device.selected(&mut ctx, true);
-         assert_eq!(
--            device.exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80).unwrap(),
-+            device
-+                .exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80)
-+                .unwrap(),
-             0x00
-         );
-         assert_eq!(
-diff --git a/catalog/parts/bosch/bme280/src/lib.rs b/catalog/parts/bosch/bme280/src/lib.rs
-index 23610ea..ba82bbe 100644
---- a/catalog/parts/bosch/bme280/src/lib.rs
-+++ b/catalog/parts/bosch/bme280/src/lib.rs
-@@ -149,8 +149,8 @@ impl Calibration {
-         let var2 = var1 * var1 * i64::from(self.dig_p6)
-             + ((var1 * i64::from(self.dig_p5)) << 17)
-             + (i64::from(self.dig_p4) << 35);
--        let var1 = ((var1 * var1 * i64::from(self.dig_p3)) >> 8)
--            + ((var1 * i64::from(self.dig_p2)) << 12);
-+        let var1 =
-+            ((var1 * var1 * i64::from(self.dig_p3)) >> 8) + ((var1 * i64::from(self.dig_p2)) << 12);
-         let var1 = ((1i64 << 47) + var1) * i64::from(self.dig_p1) >> 33;
-         if var1 == 0 {
-             return 0;
-@@ -256,16 +256,8 @@ impl Bme280Core {
- 
-         bank[usize::from(reg::CHIP_ID)] = CHIP_ID_BME280;
-         // status / ctrl_hum / ctrl_meas / config / reset は POR = 0x00。
--        Self::encode_20bit(
--            &mut bank,
--            reg::PRESS_MSB,
--            scene.adc_p & 0x000F_FFFF,
--        );
--        Self::encode_20bit(
--            &mut bank,
--            reg::TEMP_MSB,
--            scene.adc_t & 0x000F_FFFF,
--        );
-+        Self::encode_20bit(&mut bank, reg::PRESS_MSB, scene.adc_p & 0x000F_FFFF);
-+        Self::encode_20bit(&mut bank, reg::TEMP_MSB, scene.adc_t & 0x000F_FFFF);
-         bank[usize::from(reg::HUM_MSB)] = (scene.adc_h >> 8) as u8;
-         bank[usize::from(reg::HUM_MSB) + 1] = (scene.adc_h & 0xFF) as u8;
-         Self { bank }
-@@ -315,10 +307,8 @@ impl Bme280Core {
-             read_u16_le(&self.bank[tp + index * 2..tp + index * 2 + 2]).unwrap_or(0)
-         };
-         let h_base = usize::from(reg::CALIB_H_START);
--        let h4 = (u16::from(self.bank[h_base + 3]) << 4)
--            | u16::from(self.bank[h_base + 4] & 0x0F);
--        let h5 = (u16::from(self.bank[h_base + 5]) << 4)
--            | u16::from(self.bank[h_base + 4] >> 4);
-+        let h4 = (u16::from(self.bank[h_base + 3]) << 4) | u16::from(self.bank[h_base + 4] & 0x0F);
-+        let h5 = (u16::from(self.bank[h_base + 5]) << 4) | u16::from(self.bank[h_base + 4] >> 4);
-         Calibration {
-             dig_t1: word(0),
-             dig_t2: word(1) as i16,
-diff --git a/catalog/parts/ti/tca9548a/src/lib.rs b/catalog/parts/ti/tca9548a/src/lib.rs
-index bff5d90..cac7edb 100644
---- a/catalog/parts/ti/tca9548a/src/lib.rs
-+++ b/catalog/parts/ti/tca9548a/src/lib.rs
-@@ -63,11 +63,7 @@ impl Tca9548a {
-     }
- 
-     /// チャネルに部品を接続する。再アタッチは前の部品を置き換える。
--    pub fn attach(
--        &mut self,
--        channel: u8,
--        target: Box<dyn I2cTarget>,
--    ) -> Result<(), Tca9548aError> {
-+    pub fn attach(&mut self, channel: u8, target: Box<dyn I2cTarget>) -> Result<(), Tca9548aError> {
-         if channel >= CHANNELS {
-             return Err(Tca9548aError::ChannelOutOfRange);
-         }
-@@ -102,14 +98,10 @@ impl Tca9548a {
- impl I2cTarget for Tca9548a {
-     fn matches(&self, addr: &I2cAddr) -> bool {
-         *addr == self.address
--            || self
--                .downstream
--                .iter()
--                .enumerate()
--                .any(|(channel, target)| {
--                    self.control & (1 << channel as u8) != 0
--                        && target.as_ref().is_some_and(|t| t.matches(addr))
--                })
-+            || self.downstream.iter().enumerate().any(|(channel, target)| {
-+                self.control & (1 << channel as u8) != 0
-+                    && target.as_ref().is_some_and(|t| t.matches(addr))
-+            })
-     }
- 
-     fn target_write(
-@@ -266,9 +258,7 @@ mod tests {
-     fn downstream_parts_are_invisible_until_enabled() {
-         let mut device = mux();
-         let mut ctx = CtxStub;
--        device
--            .attach(3, Box::new(PointerPart::new(0x77)))
--            .unwrap();
-+        device.attach(3, Box::new(PointerPart::new(0x77))).unwrap();
-         let part_addr = I2cAddr::Seven(0x77);
-         assert!(!device.matches(&part_addr));
-         assert_eq!(
-@@ -279,9 +269,7 @@ mod tests {
-             .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 3])
-             .unwrap();
-         assert!(device.matches(&part_addr));
--        device
--            .target_write(&mut ctx, &part_addr, &[0x20])
--            .unwrap();
-+        device.target_write(&mut ctx, &part_addr, &[0x20]).unwrap();
-         let mut buf = [0u8; 1];
-         device.target_read(&mut ctx, &part_addr, &mut buf).unwrap();
-         assert_eq!(buf[0], 0x20);
-@@ -291,12 +279,8 @@ mod tests {
-     fn disabled_channels_do_not_leak_forwarded_frames() {
-         let mut device = mux();
-         let mut ctx = CtxStub;
--        device
--            .attach(0, Box::new(PointerPart::new(0x50)))
--            .unwrap();
--        device
--            .attach(1, Box::new(PointerPart::new(0x50)))
--            .unwrap();
-+        device.attach(0, Box::new(PointerPart::new(0x50))).unwrap();
-+        device.attach(1, Box::new(PointerPart::new(0x50))).unwrap();
-         // 同じアドレスの部品が 2 チャネルにあっても、イネーブルされた
-         // 側のインスタンスだけがフレームを受け取る。
-         device
+ #[test]
