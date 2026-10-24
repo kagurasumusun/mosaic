@@ -1,7 +1,6 @@
 [1m[32m   Compiling[0m mosaic-apps-vic-thermal v0.1.0 (/home/runner/work/mosaic/mosaic/apps/vic-thermal)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.51s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.42s
 [1m[32m     Running[0m `target/debug/mosaic-apps-vic-thermal`
 console="t=00001900 v=00001400 k=00BEEF00 c=00001000\n"
 hooks=2048 events=5 irq_edges=1
-elapsed_us=13328 instr_per_s=153661
-golden mismatch: got [116, 61, 48, 48, 48, 48, 49, 57, 48, 48, 32, 118, 61, 48, 48, 48, 48, 49, 52, 48, 48, 32, 107, 61, 48, 48, 66, 69, 69, 70, 48, 48, 32, 99, 61, 48, 48, 48, 48, 49, 48, 48, 48, 10]
+elapsed_us=8122 instr_per_s=252154
