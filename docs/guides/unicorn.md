@@ -64,6 +64,22 @@ engine は runtime の型を知りません。MMIO は次の経路で一意に�
 - instruction_count は true、precise_exceptions / exclusive_monitor は false。
 - native handle・vendor enum・Context・user hook は公開しない。
 
+## M-class（Cortex-M3）構成
+
+`UnicornCortexM3` は `UC_MODE_MCLASS` で構成した ARMv7-M 用アダプタです。
+A32 (`UnicornArm`) では CPSR.T 書込みも begin アドレス bit 0 も T32 への
+切替に機能しない（Unicorn 2.1.5 で実証、CI で観測）。M-profile の CPU
+モデルはリセットから常に T32 であるため、状態切替の問題を回避できます。
+
+- PC 書込みは半語整列（偶数）。A32 側は 4 バイト整列を維持し、奇数値を
+  `InvalidValue` で拒否します（黙って A32 実行するのを防ぐ）。
+- `set_line` は `IrqLine(0)`（maskable exception 入力）のみ受理します。
+  ARMv7-M に FIQ 入力はありません。
+- ISA 語彙は `mosaic-isa-arm` を共用します。
+
+採用の経緯と他案は [ADR 0012](../adr/0012-mclass-t32-execution.md) を
+参照してください。STM32F103 スライスが end-to-end の検証を担います。
+
 Send の不変条件と 1 箇所の unsafe impl については [ADR 0007](../adr/0007-unicorn-arm.md) を参照してください。
 
 ## ライセンスと配布

@@ -53,6 +53,8 @@ pub struct EngineData {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Backend {
     Arm,
+    /// ARMv7-M class core (Cortex-M3): T32 execution from reset.
+    ArmMClass,
     #[cfg(feature = "arch-riscv")]
     RiscV32,
 }
@@ -120,6 +122,9 @@ impl Common {
     fn new(backend: Backend) -> Result<Self, EngineError> {
         let (arch, mode) = match backend {
             Backend::Arm => (Arch::ARM, Mode::ARM | Mode::LITTLE_ENDIAN),
+            // MCLASS selects the Cortex-M3 CPU model, which is Thumb-only and
+            // enters T32 from reset (ADR 0012).
+            Backend::ArmMClass => (Arch::ARM, Mode::MCLASS | Mode::LITTLE_ENDIAN),
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
         };
@@ -299,7 +304,7 @@ impl Common {
 
     fn register_id(&self, reg: RegId) -> Result<i32, EngineError> {
         match self.backend {
-            Backend::Arm => {
+            Backend::Arm | Backend::ArmMClass => {
                 let mapped = match reg.0 {
                     0 => RegisterARM::R0,
                     1 => RegisterARM::R1,
@@ -368,6 +373,14 @@ impl Common {
                 };
                 pc | ((cpsr >> 5) & 1)
             }
+            // M-profile cores are Thumb-only and read PC already aligned;
+            // composing an odd begin address is an A32-backend idiom.
+            Backend::ArmMClass => {
+                let Ok(pc) = self.inner.0.reg_read(RegisterARM::PC) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                pc
+            }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => {
                 let Ok(pc) = self.inner.0.reg_read(RegisterRISCV::PC) else {
@@ -402,20 +415,28 @@ impl Common {
         if value > u64::from(u32::MAX) {
             return Err(EngineError::InvalidValue);
         }
-        // 32-bit backends only; PC writes must stay instruction-aligned. The
-        // RV32I test firmware never uses the compressed extension, so 4-byte
-        // alignment holds for both backends. Thumb entry (PC bit 0, like a BX
-        // target) is not supported by this backend: neither a CPSR.T write
-        // nor an odd emu_start begin address switches Unicorn 2.1.x into T32
-        // (verified empirically on 2.1.5); a Thumb-capable backend needs a
-        // dedicated construction (Mode::THUMB) and its own conformance run.
+        // 32-bit backends only; PC writes must stay instruction-aligned.
+        // A32 keeps the 4-byte rule. T32 is reachable only through the
+        // dedicated M-class construction (ADR 0012): on the A32 backend
+        // neither a CPSR.T write nor an odd emu_start begin address switches
+        // Unicorn 2.1.x into Thumb (verified empirically on 2.1.5), so an
+        // odd PC is rejected instead of silently executing as A32. M-profile
+        // cores are always in T32 and use halfword alignment.
         let pc_id = match self.backend {
-            Backend::Arm => 15,
+            Backend::Arm | Backend::ArmMClass => 15,
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => 32,
         };
-        if reg.0 == pc_id && value % 4 != 0 {
-            return Err(EngineError::InvalidValue);
+        if reg.0 == pc_id {
+            let aligned = match self.backend {
+                Backend::Arm => value % 4 == 0,
+                Backend::ArmMClass => value % 2 == 0,
+                #[cfg(feature = "arch-riscv")]
+                Backend::RiscV32 => value % 4 == 0,
+            };
+            if !aligned {
+                return Err(EngineError::InvalidValue);
+            }
         }
         self.inner
             .0
@@ -470,6 +491,9 @@ impl Common {
             // ARMv7-A exposes the physical IRQ and FIQ inputs; any other
             // number is a composition error, not a guest fault.
             Backend::Arm => line.0 <= 1,
+            // ARMv7-M routes external interrupts through the NVIC; the core
+            // itself exposes only the (maskable) exception input.
+            Backend::ArmMClass => line.0 == 0,
             // RV32I cores take the machine external interrupt on line 0.
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => line.0 == 0,
@@ -613,6 +637,14 @@ unicorn_wrapper! {
     UnicornArm => Backend::Arm
 }
 
+unicorn_wrapper! {
+    /// ARMv7-M little-endian core adapter (Cortex-M3 class). Constructed
+    /// with `UC_MODE_MCLASS`, so the model executes T32 from reset and PC
+    /// writes use halfword alignment (ADR 0012). Intended for M-profile
+    /// board slices such as STM32F103.
+    UnicornCortexM3 => Backend::ArmMClass
+}
+
 #[cfg(feature = "arch-riscv")]
 unicorn_wrapper! {
     /// RISC-V RV32I little-endian core adapter (SiFive E31 class cores run
@@ -685,6 +717,47 @@ mod tests {
             .unwrap();
         engine.reg_write(Register::Pc.into(), 0x1000).unwrap();
         engine
+    }
+
+    #[test]
+    fn mclass_backend_executes_t32_from_reset() {
+        // ADR 0012: the M-class construction runs Thumb-2 from reset without
+        // any state switch, which the A32 backend cannot offer. The listing is
+        // Thumb code: MOVS r0,#42 ; MOVS r1,#1 ; ADDS r0,r0,r1 ; STR r1,[r2]
+        let mut engine = UnicornCortexM3::new().unwrap();
+        engine
+            .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+            .unwrap();
+        engine
+            .write_memory(
+                Addr(0x1000),
+                &[0x2a, 0x20, 0x01, 0x21, 0x40, 0x18, 0x41, 0x60],
+            )
+            .unwrap();
+        engine.reg_write(Register::R2.into(), 0x1100).unwrap();
+        engine.reg_write(Register::Pc.into(), 0x1000).unwrap();
+        let outcome = engine.run(NonZeroU64::new(4).unwrap());
+        assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        assert_eq!(outcome.instruction_hooks, 4);
+        assert_eq!(engine.reg_read(Register::R0.into()), Ok(43));
+        assert_eq!(engine.reg_read(Register::Pc.into()), Ok(0x1008));
+        let mut bytes = [0; 4];
+        engine.read_memory(Addr(0x1100), &mut bytes).unwrap();
+        assert_eq!(bytes[0], 1);
+        // M-profile PC writes are halfword aligned; odd values stay invalid.
+        engine.reg_write(Register::Pc.into(), 0x1002).unwrap();
+        assert_eq!(
+            engine.reg_write(Register::Pc.into(), 0x1003),
+            Err(EngineError::InvalidValue)
+        );
+        // The A32 backend still rejects halfword targets outright.
+        let mut a32 = UnicornArm::new().unwrap();
+        a32.map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+            .unwrap();
+        assert_eq!(
+            a32.reg_write(Register::Pc.into(), 0x1002),
+            Err(EngineError::InvalidValue)
+        );
     }
 
     #[test]

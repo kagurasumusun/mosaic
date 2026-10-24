@@ -17,3 +17,4 @@
 | [0009](0009-cpu-irq-line-contract.md) | CPU 割り込みラインの contract と受信経路 | 暫定採用 |
 | [0010](0010-multicore-heterogeneous.md) | ヘテロジニアス・マルチコア実行（per-master ビュー、共有ホスト RAM、固定順ラウンドロビン） | 暫定採用 |
 | [0011](0011-runtime-snapshot.md) | runtime State の初期 P4 checkpoint と復元検証 | 暫定採用、engine / sink / 永続化は未対応 |
+| [0012](0012-mclass-t32-execution.md) | T32 実行のための M-class エンジン構成（Cortex-M3、半語整列 PC） | 暫定採用 |
