@@ -3,4 +3,4 @@
 [1m[32m     Running[0m `target/debug/mosaic-apps-bringup`
 console="mosaic\n"
 hooks=64 events=0 irq_edges=0
-elapsed_us=6579 instr_per_s=9727
+elapsed_us=6388 instr_per_s=10018
