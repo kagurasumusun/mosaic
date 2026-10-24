@@ -136,6 +136,20 @@ impl Common {
             uc.get_data_mut().counters.instructions += 1;
         })
         .map_err(|_| EngineError::Backend)?;
+        if matches!(backend, Backend::ArmMClass) {
+            // M-profile reset loads the T bit from the vector table at 0x0
+            // (unmapped at construction time), so the core wakes executing
+            // A32 and faults on every T32 opcode. UC_MODE_THUMB cannot help:
+            // unicorn 2.1.x sets uc->thumb there but never reads it back.
+            // The sanctioned path is a CPSR write - unicorn_arm.c routes it
+            // to cpsr_write with mask ~0, which applies the T bit to
+            // env->thumb and rebuilds the translation flags.
+            let cpsr = uc
+                .reg_read(RegisterARM::CPSR)
+                .map_err(|_| EngineError::Backend)?;
+            uc.reg_write(RegisterARM::CPSR as i32, cpsr | (1 << 5))
+                .map_err(|_| EngineError::Backend)?;
+        }
         Ok(Self {
             backend,
             inner: OwnedUnicorn(uc),
@@ -373,13 +387,16 @@ impl Common {
                 };
                 pc | ((cpsr >> 5) & 1)
             }
-            // M-profile cores are Thumb-only and read PC already aligned;
-            // composing an odd begin address is an A32-backend idiom.
+            // M-profile cores are always in T32. emu_start writes begin
+            // back through the PC register path, whose bit 0 re-asserts
+            // env->thumb on every resume (unicorn_arm.c reg_write case R15);
+            // this keeps the construction-time CPSR.T sticky even if an
+            // aligned PC write momentarily cleared it.
             Backend::ArmMClass => {
                 let Ok(pc) = self.inner.0.reg_read(RegisterARM::PC) else {
                     return outcome(StopReason::Fault, 0);
                 };
-                pc
+                pc | 1
             }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => {
@@ -721,9 +738,10 @@ mod tests {
 
     #[test]
     fn mclass_backend_executes_t32_from_reset() {
-        // ADR 0012: the M-class construction runs Thumb-2 from reset without
-        // any state switch, which the A32 backend cannot offer. The listing is
-        // Thumb code: MOVS r0,#42 ; MOVS r1,#1 ; ADDS r0,r0,r1 ; STR r1,[r2]
+        // ADR 0012: the M-class construction (Cortex-M33 via UC_MODE_MCLASS,
+        // CPSR.T asserted at construction) runs T32 from reset, which the A32
+        // backend cannot offer. Listing: MOVS r0,#42 ; MOVS r1,#1 ;
+        // ADDS r0,r0,r1 ; STR r1,[r2,#0] (encoding 0x6041).
         let mut engine = UnicornCortexM3::new().unwrap();
         engine
             .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
