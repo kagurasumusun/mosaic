@@ -12,6 +12,3 @@ level = 4
 
 [lints]
 workspace = true
-
-[dependencies]
-mosaic-core-types = { path = "../core/types" }

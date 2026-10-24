@@ -1,6 +1,6 @@
 # NXP LM75A デジタル温度センサの記述。値は NXP LM75A データシート
 # (UM10204 / LM75A product data sheet, Rev. 04) に基づく。現フェーズは
-# 宣言のみで、消費するパーサは後続フェーズ（describe 実装）で導入する。
+# xtask の lint-catalog が部品メタデータと参照を検証する。
 [part]
 id = 'part:nxp/lm75a'
 origin = 'nxp'

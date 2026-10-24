@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 //! Architecture checks use all declared dependencies, not only active features.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod catalog;
 mod policy;
 pub use policy::{
     dependency_allowed, external_dependency_allowed, forbidden_name, kebab_case, lint_layers,
@@ -176,6 +177,287 @@ pub fn lint_names(root: &Path, packages: &[Package]) -> CheckResult<Vec<String>>
     Ok(errors)
 }
 
+/// Validate typed SoC/board manifests, enforce globally unique catalog IDs,
+/// and resolve every `use`/`soc` reference to a declared catalog object.
+/// The describe layer owns format-independent schema/semantic checks; tooling
+/// owns TOML parsing, filesystem traversal, and repository-wide policy.
+pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
+    use crate::catalog::{
+        parse_board, parse_soc, validate_graph_ports, validate_leaf_catalog_manifest,
+    };
+    use mosaic_describe::{BoardManifest, MachineGraph, SocManifest};
+
+    fn collect(path: &Path, files: &mut Vec<PathBuf>) -> CheckResult<()> {
+        for entry in fs::read_dir(path).map_err(|e| format!("{}: {e}", path.display()))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') || matches!(name.as_ref(), "target" | "node_modules") {
+                continue;
+            }
+            let path = entry.path();
+            if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+                collect(&path, files)?;
+            } else if matches!(
+                name.as_ref(),
+                "cpu.toml" | "ip.toml" | "part.toml" | "soc.toml" | "board.toml"
+            ) {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    let catalog_root = root.join("catalog");
+    let origins_text = fs::read_to_string(catalog_root.join("origins.toml"))
+        .map_err(|error| format!("catalog/origins.toml: {error}"))?;
+    let origins_value: toml::Value = toml::from_str(&origins_text)
+        .map_err(|error| format!("catalog/origins.toml: {error}"))?;
+    let origins_table = origins_value
+        .get("origins")
+        .and_then(toml::Value::as_table)
+        .ok_or("catalog/origins.toml: [origins] must be a table")?;
+    let known_origins: BTreeSet<String> = origins_table.keys().cloned().collect();
+    let mut files = Vec::new();
+    collect(&catalog_root, &mut files)?;
+    files.sort();
+
+    let mut errors = Vec::new();
+    let mut ids: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut leaf_metadata: BTreeMap<String, toml::Value> = BTreeMap::new();
+    struct Located<T> {
+        source: PathBuf,
+        value: T,
+    }
+    let mut references: Vec<(PathBuf, String)> = Vec::new();
+    let mut soc_manifests: BTreeMap<String, Located<SocManifest>> = BTreeMap::new();
+    let mut board_manifests: BTreeMap<String, Located<BoardManifest>> = BTreeMap::new();
+    for file in files {
+        let text = match fs::read_to_string(&file) {
+            Ok(text) => text,
+            Err(error) => {
+                errors.push(format!("{}: {error}", file.display()));
+                continue;
+            }
+        };
+        let relative = file
+            .strip_prefix(root)
+            .map_err(|error| error.to_string())?
+            .to_path_buf();
+        let value: toml::Value = match toml::from_str(&text) {
+            Ok(value) => value,
+            Err(error) => {
+                errors.push(format!("{}: invalid TOML: {error}", relative.display()));
+                continue;
+            }
+        };
+
+        const CPU_PREFIXES: &[&str] = &["cpu:"];
+        const IP_PREFIXES: &[&str] = &["ip:", "ip-lib:"];
+        const PART_PREFIXES: &[&str] = &["part:"];
+        const SOC_PREFIXES: &[&str] = &["soc:"];
+        const BOARD_PREFIXES: &[&str] = &["board:"];
+        if let Some(file_name) = file.file_name().and_then(|name| name.to_str()) {
+            if matches!(file_name, "cpu.toml" | "ip.toml" | "part.toml") {
+                if let Err(error) =
+                    validate_leaf_catalog_manifest(file_name, &value, &known_origins)
+                {
+                    errors.push(format!("{}: {error}", relative.display()));
+                }
+            }
+        }
+
+        let expected: Option<(&str, &[&str])> =
+            match file.file_name().and_then(|name| name.to_str()) {
+                Some("cpu.toml") => Some(("identity", CPU_PREFIXES)),
+                Some("ip.toml") => Some(("identity", IP_PREFIXES)),
+                Some("part.toml") => Some(("part", PART_PREFIXES)),
+                Some("soc.toml") => Some(("soc", SOC_PREFIXES)),
+                Some("board.toml") => Some(("board", BOARD_PREFIXES)),
+                _ => None,
+            };
+        let id = expected
+            .and_then(|(section, _)| value.get(section).and_then(|v| v.get("id")))
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned);
+        if matches!(
+            file.file_name().and_then(|name| name.to_str()),
+            Some("cpu.toml" | "ip.toml" | "part.toml")
+        ) {
+            if let Some(catalog_id) = id.as_ref() {
+                leaf_metadata.insert(catalog_id.clone(), value.clone());
+            }
+        }
+
+        match (expected, id) {
+            (Some((section, prefixes)), Some(id)) if !id.trim().is_empty() => {
+                if !prefixes.iter().any(|prefix| id.starts_with(prefix)) {
+                    errors.push(format!(
+                        "{}: ID {id:?} must use one of the expected namespaces: {}",
+                        relative.display(),
+                        prefixes.join(", ")
+                    ));
+                }
+                let path_prefix = match file.file_name().and_then(|name| name.to_str()) {
+                    Some("cpu.toml") => Some(Path::new("catalog/cpu")),
+                    Some("ip.toml") => Some(Path::new("catalog/ip")),
+                    Some("part.toml") => Some(Path::new("catalog/parts")),
+                    Some("soc.toml") => Some(Path::new("catalog/soc")),
+                    Some("board.toml") => Some(Path::new("catalog/board")),
+                    _ => None,
+                };
+                if let (Some(prefix), Some(parent), Some((_, id_suffix))) = (
+                    path_prefix,
+                    relative.parent(),
+                    id.split_once(':'),
+                ) {
+                    if let Ok(relative_id) = parent.strip_prefix(prefix) {
+                        let canonical_suffix = relative_id.to_string_lossy().replace('\\', "/");
+                        if canonical_suffix != id_suffix {
+                            errors.push(format!(
+                                "{}: ID suffix {id_suffix:?} must match canonical catalog \
+                                 path {canonical_suffix:?}",
+                                relative.display()
+                            ));
+                        }
+                    }
+                }
+                let summary = value
+                    .get(section)
+                    .and_then(|entry| entry.get("summary"))
+                    .and_then(toml::Value::as_str);
+                if summary.is_none_or(|value| value.trim().is_empty()) {
+                    errors.push(format!(
+                        "{}: [{section}] must have a non-empty summary",
+                        relative.display()
+                    ));
+                }
+                match ids.entry(id.clone()) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert(relative.clone());
+                    }
+                    std::collections::btree_map::Entry::Occupied(entry) => {
+                        errors.push(format!(
+                            "{}: catalog ID {id:?} is already declared by {}",
+                            relative.display(),
+                            entry.get().display()
+                        ));
+                    }
+                }
+            }
+            _ => errors.push(format!(
+                "{}: expected a non-empty id and summary in the manifest's expected section",
+                relative.display()
+            )),
+        }
+
+        match file.file_name().and_then(|name| name.to_str()) {
+            Some("soc.toml") => match parse_soc(&value) {
+                Ok(manifest) => {
+                    references.extend(
+                        manifest
+                            .cpu
+                            .iter()
+                            .map(|cpu| (relative.clone(), cpu.use_id.clone())),
+                    );
+                    references.extend(
+                        manifest
+                            .block
+                            .iter()
+                            .map(|block| (relative.clone(), block.use_id.clone())),
+                    );
+                    soc_manifests.insert(
+                        manifest.soc.id.clone(),
+                        Located { source: relative.clone(), value: manifest },
+                    );
+                }
+                Err(error) => errors.push(format!("{}: {error}", relative.display())),
+            },
+            Some("board.toml") => match parse_board(&value) {
+                Ok(manifest) => {
+                    references.push((relative.clone(), manifest.board.soc.clone()));
+                    references.extend(
+                        manifest
+                            .part
+                            .iter()
+                            .map(|part| (relative.clone(), part.use_id.clone())),
+                    );
+                    board_manifests.insert(
+                        manifest.board.id.clone(),
+                        Located { source: relative.clone(), value: manifest },
+                    );
+                }
+                Err(error) => errors.push(format!("{}: {error}", relative.display())),
+            },
+            _ => {}
+        }
+    }
+
+    for (source, reference) in references {
+        if !ids.contains_key(&reference) {
+            errors.push(format!(
+                "{}: unresolved catalog reference {reference:?}",
+                source.display()
+            ));
+        }
+    }
+
+    // Build the normalized declarative graph only after every manifest has been
+    // collected, because the board may sort before its SoC file on disk.
+    for (id, located) in &soc_manifests {
+        if let Err(error) = MachineGraph::build(&located.value, None) {
+            errors.push(format!("{}: {error}", located.source.display()));
+        }
+        if !ids.contains_key(id) {
+            errors.push(format!(
+                "{}: SoC manifest ID {id:?} was not indexed",
+                located.source.display()
+            ));
+        }
+    }
+    let mut port_checked_socs = BTreeSet::new();
+    for (id, located) in &board_manifests {
+        match soc_manifests.get(&located.value.board.soc) {
+            Some(soc) => match MachineGraph::build(&soc.value, Some(&located.value)) {
+                Ok(graph) => {
+                    errors.extend(
+                        validate_graph_ports(&graph, &leaf_metadata)
+                            .into_iter()
+                            .map(|error| format!("{}: {error}", located.source.display())),
+                    );
+                    port_checked_socs.insert(located.value.board.soc.clone());
+                }
+                Err(error) => errors.push(format!("{}: {error}", located.source.display())),
+            },
+            None => errors.push(format!(
+                "{}: cannot build graph; referenced SoC {:?} has no valid manifest",
+                located.source.display(), located.value.board.soc
+            )),
+        }
+        if !ids.contains_key(id) {
+            errors.push(format!(
+                "{}: board manifest ID {id:?} was not indexed",
+                located.source.display()
+            ));
+        }
+    }
+    for (id, located) in &soc_manifests {
+        if port_checked_socs.contains(id) {
+            continue;
+        }
+        match MachineGraph::build(&located.value, None) {
+            Ok(graph) => errors.extend(
+                validate_graph_ports(&graph, &leaf_metadata)
+                    .into_iter()
+                    .map(|error| format!("{}: {error}", located.source.display())),
+            ),
+            Err(error) => errors.push(format!("{}: {error}", located.source.display())),
+        }
+    }
+    errors.sort();
+    Ok(errors)
+}
+
 pub fn workspace_root() -> CheckResult<PathBuf> {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -277,4 +559,38 @@ mod tests {
         f.write("catalog/ip/arm/pl011/src/lib.rs", "");
         assert!(lint_names(&f.0, &[]).unwrap().is_empty());
     }
+
+    #[test]
+    fn catalog_lint_rejects_duplicate_global_ids() {
+        let fixture = Fixture::new();
+        fixture.write(
+            "catalog/cpu/arm/core-a/cpu.toml",
+            "[identity]\nid='cpu:test'\nsummary='first core'\n",
+        );
+        fixture.write(
+            "catalog/cpu/arm/core-b/cpu.toml",
+            "[identity]\nid='cpu:test'\nsummary='second core'\n",
+        );
+        let errors = lint_catalog(&fixture.0).unwrap();
+        assert!(errors.iter().any(|error| error.contains("already declared")));
+    }
+
+    #[test]
+    fn catalog_id_suffix_must_match_canonical_path() {
+        let fixture = Fixture::new();
+        fixture.write(
+            "catalog/cpu/arm/core-a/cpu.toml",
+            "[identity]\nid='cpu:other/core-a'\nsummary='test core'\n",
+        );
+        let errors = lint_catalog(&fixture.0).unwrap();
+        assert!(errors.iter().any(|error| error.contains("match canonical catalog path")));
+    }
+
+    #[test]
+    fn checked_in_catalog_manifests_validate_and_resolve() {
+        let root = workspace_root().unwrap();
+        let errors = lint_catalog(&root).unwrap();
+        assert!(errors.is_empty(), "catalog errors:\n{}", errors.join("\n"));
+    }
+
 }

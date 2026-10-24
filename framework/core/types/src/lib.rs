@@ -9,15 +9,20 @@ pub use memory::{Mapping, MemoryKind, Permissions};
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Addr(pub u64);
 
-/// Virtual time in picoseconds. Overflow must be handled, never wrapped.
+/// Absolute virtual time in picoseconds. Overflow must be handled, never wrapped.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct VTime(pub u64);
+
+/// Non-negative virtual duration in picoseconds. Kept distinct from `VTime` so
+/// an absolute timestamp cannot accidentally be passed where a delta is expected.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct VDelta(pub u64);
 
 impl VTime {
     pub const ZERO: Self = Self(0);
 
-    pub fn checked_add(self, duration: Self) -> Option<Self> {
-        self.0.checked_add(duration.0).map(Self)
+    pub fn checked_add(self, delta: VDelta) -> Option<Self> {
+        self.0.checked_add(delta.0).map(Self)
     }
 }
 
@@ -135,8 +140,8 @@ mod tests {
 
     #[test]
     fn virtual_time_never_wraps() {
-        assert_eq!(VTime(u64::MAX).checked_add(VTime(1)), None);
-        assert_eq!(VTime(3).checked_add(VTime(4)), Some(VTime(7)));
+        assert_eq!(VTime(u64::MAX).checked_add(VDelta(1)), None);
+        assert_eq!(VTime(3).checked_add(VDelta(4)), Some(VTime(7)));
     }
 
     #[test]

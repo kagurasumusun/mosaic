@@ -34,7 +34,7 @@
 //!   の責務。
 
 use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cTarget};
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::SignalId;
 
 /// ポインタレジスタの値。
@@ -188,9 +188,9 @@ impl Lm75a {
 
     /// OS 状態を再評価し、変化があれば ctx 経由で通知する。
     /// SHUTDOWN 中は評価しない（直前状態を保持）。
-    fn evaluate_os(&mut self, ctx: &mut dyn Ctx) {
+    fn evaluate_os(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         if self.conf & conf_bits::SHUTDOWN != 0 {
-            return;
+            return Ok(());
         }
         let temp = self.scene_temp_x500();
         let comparator_mode = self.conf & conf_bits::OS_COMP_INT == 0;
@@ -205,18 +205,19 @@ impl Lm75a {
             // interrupt モード: 交差でラッチ。解除は Temp 読み出し側で行う。
             self.os_asserted = true;
         }
-        self.emit_os(ctx);
+        self.emit_os(ctx)
     }
 
     /// ピンレベルの変化エッジだけを通知する。
-    fn emit_os(&mut self, ctx: &mut dyn Ctx) {
+    fn emit_os(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let level = self.os_pin_high();
         if self.os_pin_level != Some(level) {
-            self.os_pin_level = Some(level);
             if let Some(os) = self.params.os {
-                let _ = ctx.set_signal(os, level);
+                set_optional_signal(ctx, os, level)?;
             }
+            self.os_pin_level = Some(level);
         }
+        Ok(())
     }
 
     /// レーンの現在バイト値。
@@ -282,7 +283,7 @@ impl I2cTarget for Lm75a {
             lane = (lane + 1) % 7;
         }
         // しきい値・設定の変化で OS を再評価する。
-        self.evaluate_os(ctx);
+        self.evaluate_os(ctx).map_err(|_| I2cError::Overflow)?;
         Ok(Ack::Ack)
     }
 
@@ -305,7 +306,7 @@ impl I2cTarget for Lm75a {
         if started_at_temp && !buf.is_empty() && self.conf & conf_bits::OS_COMP_INT != 0 {
             self.os_asserted = false;
         }
-        self.emit_os(ctx);
+        self.emit_os(ctx).map_err(|_| I2cError::Overflow)?;
         Ok(Ack::Ack)
     }
 }

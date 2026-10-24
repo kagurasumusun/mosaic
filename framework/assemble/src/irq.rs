@@ -16,6 +16,8 @@ use mosaic_contract_signal::SignalSink;
 #[derive(Default)]
 pub struct IrqMailbox {
     edges: Mutex<VecDeque<(IrqLine, bool)>>,
+    /// Serializes consumers without holding the queue lock across engine code.
+    drain_lock: Mutex<()>,
 }
 
 impl IrqMailbox {
@@ -26,41 +28,61 @@ impl IrqMailbox {
     fn push(&self, line: IrqLine, high: bool) {
         self.edges
             .lock()
-            .expect("IRQ mailbox mutex poisoned")
+            .unwrap_or_else(|poison| poison.into_inner())
             .push_back((line, high));
     }
 
     /// Edges waiting for the next engine flush.
     pub fn len(&self) -> usize {
-        self.edges.lock().expect("IRQ mailbox mutex poisoned").len()
+        self.edges
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.edges
             .lock()
-            .expect("IRQ mailbox mutex poisoned")
+            .unwrap_or_else(|poison| poison.into_inner())
             .is_empty()
     }
 
-    /// Forward every queued edge to `engine` in FIFO order. On an engine error
-    /// the failing edge and all later edges stay queued so the composition root
-    /// can retry or report the fault without losing interrupt history.
+    /// Forward queued edges to `engine` in FIFO order. On an engine error,
+    /// return the error even if earlier edges were delivered; those earlier
+    /// edges have been removed, while the rejected edge and every successor
+    /// remain queued. This avoids treating a partial flush as success.
+    ///
+    /// The consumer lock serializes drains, but the queue lock is released
+    /// around `set_line`: backend code must not execute while holding the lock
+    /// used by signal producers. Producers can safely append during a flush.
     pub fn drain_into(&self, engine: &mut dyn CpuEngine) -> Result<usize, EngineError> {
-        let mut guard = self.edges.lock().expect("IRQ mailbox mutex poisoned");
+        let _consumer = self
+            .drain_lock
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let mut delivered = 0;
-        while let Some((line, high)) = guard.front().copied() {
-            if let Err(error) = engine.set_line(line, high) {
-                if delivered == 0 {
-                    return Err(error);
-                }
-                // Earlier edges already landed; surface the fault while the
-                // remainder stays queued for the next flush.
+        loop {
+            let next = self
+                .edges
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .front()
+                .copied();
+            let Some((line, high)) = next else {
                 return Ok(delivered);
-            }
-            guard.pop_front();
+            };
+
+            // Do not remove the head until the engine confirms delivery.
+            // The consumer lock guarantees no other drain can change it.
+            engine.set_line(line, high)?;
+            let mut edges = self
+                .edges
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            debug_assert_eq!(edges.front().copied(), Some((line, high)));
+            edges.pop_front();
             delivered += 1;
         }
-        Ok(delivered)
     }
 }
 
@@ -158,16 +180,17 @@ mod tests {
     }
 
     #[test]
-    fn an_engine_failure_keeps_the_remaining_edges_queued() {
+    fn an_engine_failure_is_reported_after_partial_delivery() {
         let mailbox = Arc::new(IrqMailbox::new());
         mailbox.push(IrqLine(0), true);
         mailbox.push(IrqLine(9), true);
         mailbox.push(IrqLine(0), false);
         let mut engine = RecordingEngine { edges: Vec::new() };
-        let delivered = mailbox.drain_into(&mut engine).unwrap();
-        assert_eq!(delivered, 1);
+        let error = mailbox.drain_into(&mut engine).unwrap_err();
+        assert_eq!(error, EngineError::LineNotSupported);
         assert_eq!(engine.edges, vec![(IrqLine(0), true)]);
-        // The rejected edge and its successor remain for a later retry.
+        // The rejected edge and its successor remain for a later retry, but
+        // the partial success is no longer misreported as an overall success.
         assert_eq!(mailbox.len(), 2);
     }
 

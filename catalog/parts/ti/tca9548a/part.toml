@@ -1,5 +1,5 @@
 # TI TCA9548A I2C スイッチの記述。値は TI TCA9548A データシート (SCDS147)
-# に基づく。現フェーズは宣言のみで、消費するパーサは後続フェーズで導入する。
+# に基づく。xtask の lint-catalog が部品メタデータと参照を検証する。
 [part]
 id = 'part:ti/tca9548a'
 origin = 'ti'

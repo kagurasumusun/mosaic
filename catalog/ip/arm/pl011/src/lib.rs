@@ -13,7 +13,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_stream::ByteStream;
 use mosaic_core_types::{AccessKind, AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
@@ -159,7 +159,10 @@ impl Pl011 {
         };
         while let Some(byte) = self.tx.peek() {
             match port.write_bytes(ctx, &[byte]) {
-                Ok(accepted) if accepted > 0 => {
+                // The supplied slice contains exactly one byte. A peer that
+                // reports accepting more than its slice length violates the
+                // ByteStream contract; do not silently treat it as valid.
+                Ok(1) => {
                     self.tx.pop();
                 }
                 // No progress (zero-length write) or any peer error including
@@ -182,7 +185,8 @@ impl Pl011 {
         while !self.rx.is_full() {
             let mut byte = [0u8; 1];
             match port.read_bytes(ctx, &mut byte) {
-                Ok(read) if read > 0 => {
+                // A one-byte destination can legally report only 0 or 1.
+                Ok(1) => {
                     if self.rx.push(byte[0]).is_err() {
                         self.state.raw_interrupts |= ris::ERROR;
                         break;
@@ -200,12 +204,13 @@ impl Pl011 {
 
     /// Re-evaluate the combined IRQ line. An unwired pin is an optional port:
     /// the context reports it unknown and the device keeps running.
-    fn update_irq(&mut self, ctx: &mut dyn Ctx) {
+    fn update_irq(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let asserted = self.masked_interrupts() != 0;
         if asserted != self.irq_asserted {
+            set_optional_signal(ctx, self.params.combined_irq, asserted)?;
             self.irq_asserted = asserted;
-            let _ = ctx.set_signal(self.params.combined_irq, asserted);
         }
+        Ok(())
     }
 
     fn read_word(&mut self, ctx: &mut dyn Ctx, offset: u64, debug: bool) -> Result<u32, BusFault> {
@@ -305,7 +310,7 @@ impl Pl011 {
                 }
             }
         }
-        self.update_irq(ctx);
+        self.update_irq(ctx).map_err(|_| BusFault::Device)?;
         Ok(())
     }
 
@@ -325,6 +330,11 @@ impl MmioTarget for Pl011 {
         size: AccessSize,
         attr: &Attr,
     ) -> Result<u64, BusFault> {
+        if matches!(size, AccessSize::DoubleWord) {
+            // These PrimeCell register banks are 32-bit wide; reject before
+            // performing FIFO/interrupt side effects of the read.
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -333,6 +343,8 @@ impl MmioTarget for Pl011 {
         };
         let debug = attr.kind == AccessKind::Debug;
         let word = self.read_word(ctx, offset, debug)?;
+        // Reading DR can clear RXRIS, so recompute IRQ on reads as well as writes.
+        self.update_irq(ctx).map_err(|_| BusFault::Device)?;
         Ok(u64::from(word & mask))
     }
 

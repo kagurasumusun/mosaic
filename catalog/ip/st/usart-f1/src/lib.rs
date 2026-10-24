@@ -23,7 +23,7 @@
 #![forbid(unsafe_code)]
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_stream::ByteStream;
 use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
 
@@ -103,14 +103,15 @@ impl StUsartF1 {
     }
 
     /// 結合割り込み出力の再評価。
-    fn update_irq(&mut self, ctx: &mut dyn Ctx) {
+    fn update_irq(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let level = self.sr & sr::RXNE != 0 && self.cr1 & cr1::RXNEIE != 0
             || self.sr & sr::TC != 0 && self.cr1 & cr1::TCIE != 0
             || self.sr & sr::TXE != 0 && self.cr1 & cr1::TXEIE != 0;
         if level != self.irq_level {
+            set_optional_signal(ctx, self.params.irq, level)?;
             self.irq_level = level;
-            let _ = ctx.set_signal(self.params.irq, level);
         }
+        Ok(())
     }
 }
 
@@ -171,7 +172,7 @@ impl MmioTarget for StUsartF1 {
                 if value & sr::TC == 0 {
                     self.sr &= !sr::TC;
                 }
-                self.update_irq(ctx);
+                self.update_irq(ctx).map_err(|_| BusFault::Device)?;
             }
             0x04 => {
                 // DR: UE|TE が立っていれば送信 (下 8 ビット)。
@@ -179,7 +180,13 @@ impl MmioTarget for StUsartF1 {
                 if self.cr1 & (cr1::UE | cr1::TE) == (cr1::UE | cr1::TE) {
                     if let Some(port) = self.stream.as_mut() {
                         let byte = (value & 0xFF) as u8;
-                        let _ = port.write_bytes(ctx, core::slice::from_ref(&byte));
+                        match port.write_bytes(ctx, core::slice::from_ref(&byte)) {
+                            Ok(1) => {}
+                            // A one-byte transfer must make exactly one byte
+                            // of progress. Surface back-pressure instead of
+                            // silently dropping the guest's transmitted byte.
+                            _ => return Err(BusFault::Device),
+                        }
                     }
                 }
                 // 読み出しで RXNE を落とす規則は受信未実装のため省略。
@@ -187,7 +194,7 @@ impl MmioTarget for StUsartF1 {
             0x08 => self.brr = value & 0xFFFF,
             0x0C => {
                 self.cr1 = value & cr1::MASK;
-                self.update_irq(ctx);
+                self.update_irq(ctx).map_err(|_| BusFault::Device)?;
             }
             0x10 => self.cr2 = value & 0x7F7F,
             0x14 => self.cr3 = value & 0x05FF,

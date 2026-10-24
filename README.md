@@ -43,8 +43,9 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - 44 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
 - `lint-layers`: framework の逆依存、L3 間依存、catalog 横依存、glue の依存を検査。
 - `lint-names`: 禁止語、kebab-case、クレート名、正規の出自を検査。
+- `lint-catalog`: CPU/IP/part/SoC/board manifest のスキーマ、catalog ID／参照、I²C アドレス／SPI CS、IRQ 複数ルート、正規化 MachineGraph の port/pin/role/index を検査。TOML パーサは tooling 層に隔離。
 - `check` / `doctor`、fast CI（fmt、構成 lint、Clippy、単体テスト）。
-- `Addr` / `VTime` / `Attr` / `BusFault` / 型付き Snapshot の境界。
+- `Addr` / `VTime` / `VDelta` / `Attr` / `BusFault` / 型付き Snapshot の境界。
 - 最小限の model context、MMIO、signal、clock、CPU-engine contract（暫定 API）。
 - 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
 - Region 木 → FlatView、優先度 overlay、境界・permission・device offset 解決。

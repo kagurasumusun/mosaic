@@ -104,6 +104,10 @@ pub enum GpioError {
     Disconnected,
     /// The net rejected the requested configuration.
     Unsupported,
+    /// A sink or port is already attached to this node/function.
+    AlreadyConnected,
+    /// A downstream port is already executing a callback through this mux.
+    Reentrant,
 }
 
 /// Output-side port held by a model and implemented by the net adapter.
@@ -111,10 +115,16 @@ pub enum GpioError {
 /// Calls happen inside an existing model callback, so the same scoped
 /// [`Ctx`] is forwarded for any deferred effect the adapter may schedule.
 pub trait GpioPort: Send {
-    /// Drive the pin. Open-drain ports map [`PinLevel::High`] to high-Z.
+    /// Drive an output pin. Open-drain ports map [`PinLevel::High`] to high-Z.
     fn drive(&mut self, ctx: &mut dyn Ctx, level: PinLevel) -> Result<(), GpioError>;
 
-    /// Apply a new pin configuration.
+    /// Release the pin to high impedance and notify any connected sinks.
+    /// A direction change to input must use this instead of merely changing
+    /// configuration, because configuration alone cannot carry a runtime Ctx.
+    fn release(&mut self, ctx: &mut dyn Ctx) -> Result<(), GpioError>;
+
+    /// Apply a new pin configuration. This does not itself drive or release
+    /// the electrical line; call `drive` or `release` for that transition.
     fn configure(&mut self, config: PinConfig) -> Result<(), GpioError>;
 
     /// Last resolved level observable on the pin, for input read-back.

@@ -101,6 +101,48 @@ impl EventQueue {
         Ok(id)
     }
 
+    /// Atomically replace one pending event owned by `owner`.
+    ///
+    /// If the ID is stale or belongs to another node, this behaves like a new
+    /// reservation. Replacing a valid event does not require an extra queue
+    /// slot, and validation/counter exhaustion failures leave the old event
+    /// untouched.
+    pub fn reschedule(
+        &mut self,
+        owner: NodeId,
+        id: EventId,
+        at: VTime,
+        kind: EventKind,
+    ) -> Result<EventId, ContextError> {
+        if at < self.now {
+            return Err(ContextError::TimeInPast);
+        }
+        let old_at = self.times.get(&id.0).copied();
+        let old_event = old_at.and_then(|old_at| self.events.get(&(old_at, id.0)).copied());
+        if old_event.is_none_or(|event| event.owner != owner) {
+            return self.schedule(owner, at, kind);
+        }
+
+        let next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or(ContextError::ResourceExhausted)?;
+        let replacement_id = EventId(self.next_id);
+        let replacement = Event {
+            id: replacement_id,
+            at,
+            owner,
+            kind,
+        };
+        let old_at = old_at.expect("a validated old event has a timestamp");
+        self.events.remove(&(old_at, id.0));
+        self.times.remove(&id.0);
+        self.events.insert((at, replacement_id.0), replacement);
+        self.times.insert(replacement_id.0, at);
+        self.next_id = next_id;
+        Ok(replacement_id)
+    }
+
     /// A node can only cancel its own pending events, including signal changes.
     pub fn cancel(&mut self, owner: NodeId, id: EventId) -> bool {
         let Some(&at) = self.times.get(&id.0) else {
@@ -244,6 +286,32 @@ mod tests {
         );
         assert_eq!(queue.save(), before);
         timer(&mut queue, 0, 10, 0); // Scheduling at now is valid.
+    }
+
+    #[test]
+    fn rescheduling_at_capacity_replaces_the_old_event_atomically() {
+        let mut queue = EventQueue::new(1);
+        let old = timer(&mut queue, 3, 10, 1);
+        let replacement = queue
+            .reschedule(NodeId(3), old, VTime(20), EventKind::Timer { token: 2 })
+            .unwrap();
+
+        assert_eq!(queue.len(), 1);
+        assert_ne!(replacement, old);
+        assert_eq!(queue.next_time(), Some(VTime(20)));
+        assert_eq!(queue.pop_next().unwrap().kind, EventKind::Timer { token: 2 });
+    }
+
+    #[test]
+    fn failed_reschedule_keeps_the_old_event_and_timeline() {
+        let mut queue = EventQueue::new(1);
+        let old = timer(&mut queue, 3, 10, 1);
+        let before = queue.save();
+        assert_eq!(
+            queue.reschedule(NodeId(3), old, VTime(9), EventKind::Timer { token: 2 }),
+            Err(ContextError::TimeInPast)
+        );
+        assert_eq!(queue.save(), before);
     }
 
     #[test]

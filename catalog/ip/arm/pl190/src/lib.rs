@@ -33,7 +33,7 @@
 extern crate alloc;
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
@@ -70,6 +70,8 @@ pub enum Pl190Error {
     LineOutOfRange,
     /// 同じ (source, signal) を複数ラインへ割り当てようとした。
     DuplicateBinding,
+    /// すでに別の入力が割り当てられたラインを再利用しようとした。
+    LineAlreadyBound,
 }
 
 /// 未マップオフセットの扱い。
@@ -188,12 +190,14 @@ impl Pl190 {
         if usize::from(line) >= INPUT_LINES {
             return Err(Pl190Error::LineOutOfRange);
         }
-        for slot in &self.routing {
-            if slot == &Some((source, signal)) {
-                return Err(Pl190Error::DuplicateBinding);
-            }
+        let index = usize::from(line);
+        if self.routing[index].is_some() {
+            return Err(Pl190Error::LineAlreadyBound);
         }
-        self.routing[usize::from(line)] = Some((source, signal));
+        if self.routing.iter().any(|slot| *slot == Some((source, signal))) {
+            return Err(Pl190Error::DuplicateBinding);
+        }
+        self.routing[index] = Some((source, signal));
         Ok(())
     }
 
@@ -213,16 +217,30 @@ impl Pl190 {
     }
 
     /// 集約出力の再計算と変化エッジの送出（§13.4 rule 1: Ctx 経由のみ）。
-    fn update_outputs(&mut self, ctx: &mut dyn Ctx) {
+    fn update_outputs(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let irq = self.irq_mask() != 0;
         let fiq = self.fiq_mask() != 0;
+        let mut first_error = None;
         if irq != self.state.irq_level {
-            self.state.irq_level = irq;
-            let _ = ctx.set_signal(self.params.irq, irq);
+            match set_optional_signal(ctx, self.params.irq, irq) {
+                Ok(()) => self.state.irq_level = irq,
+                Err(error) => first_error = Some(error),
+            }
         }
+        // Always attempt both lines; an exhausted queue on IRQ must not block
+        // an independent FIQ transition. Each cached level changes only after
+        // its own edge was accepted, so a later access can retry either edge.
         if fiq != self.state.fiq_level {
-            self.state.fiq_level = fiq;
-            let _ = ctx.set_signal(self.params.fiq, fiq);
+            match set_optional_signal(ctx, self.params.fiq, fiq) {
+                Ok(()) => self.state.fiq_level = fiq,
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 
@@ -329,7 +347,7 @@ impl Pl190 {
                 }
             }
         }
-        self.update_outputs(ctx);
+        self.update_outputs(ctx).map_err(|_| BusFault::Device)?;
         Ok(())
     }
 
@@ -350,6 +368,11 @@ impl MmioTarget for Pl190 {
         attr: &Attr,
     ) -> Result<u64, BusFault> {
         self.check_access(attr)?;
+        if matches!(size, AccessSize::DoubleWord) {
+            // Reject unsupported widths before a read such as VECTADDR can
+            // acknowledge an interrupt or mutate the priority stack.
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -401,7 +424,7 @@ impl EventTarget for Pl190 {
             } else {
                 self.state.hw_lines &= !bit;
             }
-            self.update_outputs(ctx);
+            self.update_outputs(ctx)?;
         }
         Ok(())
     }
@@ -511,6 +534,10 @@ mod tests {
         assert_eq!(
             vic.bind_input(1, UART_NODE, UART_IRQ),
             Err(Pl190Error::DuplicateBinding)
+        );
+        assert_eq!(
+            vic.bind_input(0, TIMER_NODE, TIMER_IRQ),
+            Err(Pl190Error::LineAlreadyBound)
         );
     }
 

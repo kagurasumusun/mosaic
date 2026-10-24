@@ -1,16 +1,18 @@
 #![forbid(unsafe_code)]
 
-use mosaic_xtask::{lint_layers, lint_names, load_packages, workspace_root, CheckResult};
+use mosaic_xtask::{
+    lint_catalog, lint_layers, lint_names, load_packages, workspace_root, CheckResult,
+};
 
 fn run() -> CheckResult<()> {
     let command = std::env::args().nth(1).unwrap_or_else(|| "help".into());
     if matches!(command.as_str(), "help" | "--help" | "-h") {
-        println!("cargo xtask <check | lint-layers | lint-names | doctor>\n\ncheck runs both architecture checks. doctor reports the workspace status.");
+        println!("cargo xtask <check | lint-layers | lint-names | lint-catalog | doctor>\n\ncheck runs layer, naming, and catalog validation. doctor reports the workspace status.");
         return Ok(());
     }
     if !matches!(
         command.as_str(),
-        "check" | "lint-layers" | "lint-names" | "doctor"
+        "check" | "lint-layers" | "lint-names" | "lint-catalog" | "doctor"
     ) {
         return Err(format!("unknown command: {command}; run cargo xtask help"));
     }
@@ -22,6 +24,9 @@ fn run() -> CheckResult<()> {
     }
     if matches!(command.as_str(), "check" | "lint-names" | "doctor") {
         errors.extend(lint_names(&root, &packages)?);
+    }
+    if matches!(command.as_str(), "check" | "lint-catalog" | "doctor") {
+        errors.extend(lint_catalog(&root)?);
     }
     if !errors.is_empty() {
         return Err(errors.join("\n"));

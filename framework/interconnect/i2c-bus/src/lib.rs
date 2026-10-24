@@ -201,6 +201,10 @@ impl GpioPort for BitBangPort {
         self.inner.drive(ctx, level)
     }
 
+    fn release(&mut self, ctx: &mut dyn Ctx) -> Result<(), GpioError> {
+        self.inner.release(ctx)
+    }
+
     fn configure(&mut self, config: PinConfig) -> Result<(), GpioError> {
         self.inner.configure(config)
     }
@@ -615,6 +619,11 @@ mod tests {
         fn drive(&mut self, ctx: &mut dyn Ctx, level: PinLevel) -> Result<(), GpioError> {
             self.level = level;
             self.line.level_changed(ctx, level);
+            Ok(())
+        }
+        fn release(&mut self, ctx: &mut dyn Ctx) -> Result<(), GpioError> {
+            self.level = PinLevel::High;
+            self.line.level_changed(ctx, self.level);
             Ok(())
         }
         fn configure(&mut self, _config: PinConfig) -> Result<(), GpioError> {

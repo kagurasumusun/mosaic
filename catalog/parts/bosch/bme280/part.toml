@@ -1,6 +1,6 @@
 # Bosch BME280 統合環境センサの記述。値は Bosch BME280 データシート
 # (BST-BME280-DS002) に基づく。現フェーズは宣言のみで、消費するパーサは
-# 後続フェーズ（describe 実装）で導入する。
+# xtask の lint-catalog が部品メタデータと参照を検証する。
 [part]
 id = 'part:bosch/bme280'
 origin = 'bosch'

@@ -3,7 +3,7 @@
 [board]
 id = 'board:arm/versatile-pb'
 soc = 'soc:arm/versatile/arm926ej-s'
-summary = 'P1/P2 slice board: UART console, dual timer, shared I2C segment, SPI'
+summary = 'Synthetic P1/P2 integration fixture using Versatile/PB-derived IP; not a faithful physical board configuration'
 
 # uart0 の ByteStream ポートはボード上の 1 対 1 シリアル回線に終端する。
 [[conn]]
@@ -20,21 +20,21 @@ kind = 'stream/byte'
 name = 'env0'
 use = 'part:bosch/bme280'
 bind = 'i2c'
-conn = { bus = 'soc.i2c0', addr = 0x76 }
+conn = { bus = 'soc.i2c0.i2c', addr = 0x76 }
 
 # env1: PL022 のチップセレクト 0 にぶら下がる BME280（SPI バインド）。
 [[part]]
 name = 'env1'
 use = 'part:bosch/bme280'
 bind = 'spi'
-conn = { bus = 'soc.ssp0', cs = 0 }
+conn = { bus = 'soc.ssp0.spi', cs = 0 }
 
 # mux0: セグメント上の TCA9548A スイッチ。
 [[part]]
 name = 'mux0'
 use = 'part:ti/tca9548a'
 bind = 'i2c'
-conn = { bus = 'soc.i2c0', addr = 0x70 }
+conn = { bus = 'soc.i2c0.i2c', addr = 0x70 }
 
 # env2: mux0 のチャネル 3 背後の BME280。チャネル無効時はセグメントから
 # 隠れ、有効化するとルーティングされる。

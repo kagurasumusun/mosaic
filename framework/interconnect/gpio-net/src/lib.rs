@@ -6,10 +6,13 @@
 //! levels themselves; they drive [`mosaic_contract_gpio::GpioPort`] adapters and
 //! observe results through [`mosaic_contract_gpio::GpioSink`] callbacks.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use mosaic_contract_gpio::{DriveMode, GpioError, GpioPort, GpioSink, PinConfig, PinLevel};
+use mosaic_contract_gpio::{
+    DriveMode, GpioError, GpioPort, GpioSink, PinConfig, PinDirection, PinLevel, Pull,
+};
 use mosaic_contract_model::Ctx;
 use mosaic_contract_net::{DigitalNet, NetDrive, NetLevel, NetNode, NetPull};
 
@@ -21,15 +24,22 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[derive(Clone, Copy)]
 struct NodeState {
+    /// Physical pull resistor attached to the net by the board composition.
     pull: NetPull,
+    /// The port's internal pull configured by its GPIO model.
+    pin_pull: NetPull,
     drive: NetDrive,
 }
 
 struct NetInner {
     nodes: BTreeMap<u32, NodeState>,
-    sinks: BTreeMap<u32, Box<dyn GpioSink>>,
-    next: u32,
+    // None means this sink is temporarily executing outside the net lock.
+    // The key remains reserved so a concurrent attach cannot replace it.
+    sinks: BTreeMap<u32, Option<Box<dyn GpioSink>>>,
+    next: u64,
     resolved: NetLevel,
+    pending: VecDeque<(u32, PinLevel)>,
+    notifying: bool,
 }
 
 /// Concrete digital net. Output adapters created through [`GpioNet::port`]
@@ -51,6 +61,8 @@ impl GpioNet {
             sinks: BTreeMap::new(),
             next: 0,
             resolved: NetLevel::new(PinLevel::High, false),
+            pending: VecDeque::new(),
+            notifying: false,
         };
         Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -63,7 +75,10 @@ impl GpioNet {
         if !inner.nodes.contains_key(&node.0) {
             return Err(GpioError::Disconnected);
         }
-        inner.sinks.insert(node.0, sink);
+        if inner.sinks.contains_key(&node.0) {
+            return Err(GpioError::AlreadyConnected);
+        }
+        inner.sinks.insert(node.0, Some(sink));
         Ok(())
     }
 
@@ -88,11 +103,13 @@ impl GpioNet {
                 // HighZ and any future drive variant contribute no level.
                 _ => {}
             }
-            match state.pull {
-                NetPull::Up => pull_up = true,
-                NetPull::Down => pull_down = true,
-                // None and any future pull variant leave the net unpulled.
-                _ => {}
+            for pull in [state.pull, state.pin_pull] {
+                match pull {
+                    NetPull::Up => pull_up = true,
+                    NetPull::Down => pull_down = true,
+                    // None and any future pull variant leave the net unpulled.
+                    _ => {}
+                }
             }
         }
         // Deterministic tie-breaks keep simulations reproducible: on an
@@ -116,12 +133,16 @@ impl GpioNet {
         inner: &mut NetInner,
         node: NetNode,
         drive: NetDrive,
+        pin_pull: Option<NetPull>,
     ) -> Result<Vec<(u32, PinLevel)>, GpioError> {
         let state = inner
             .nodes
             .get_mut(&node.0)
             .ok_or(GpioError::Disconnected)?;
         state.drive = drive;
+        if let Some(pin_pull) = pin_pull {
+            state.pin_pull = pin_pull;
+        }
         let resolved = Self::resolve(inner);
         let previous = inner.resolved;
         inner.resolved = resolved;
@@ -136,12 +157,55 @@ impl GpioNet {
     }
 
     fn notify(inner: &Arc<Mutex<NetInner>>, pending: Vec<(u32, PinLevel)>, ctx: &mut dyn Ctx) {
-        for (node, level) in pending {
+        // Queue notifications under the lock, but never call model code while
+        // holding it. A callback may drive another port on this same net; its
+        // newly generated edges are appended and drained after the current
+        // callback returns instead of deadlocking or recursively re-entering.
+        {
             let mut guard = lock(inner);
-            let Some(sink) = guard.sinks.get_mut(&node) else {
+            guard.pending.extend(pending);
+            if guard.notifying {
+                return;
+            }
+            guard.notifying = true;
+        }
+
+        loop {
+            let next = {
+                let mut guard = lock(inner);
+                let Some((node, level)) = guard.pending.pop_front() else {
+                    guard.notifying = false;
+                    return;
+                };
+                guard
+                    .sinks
+                    .get_mut(&node)
+                    .and_then(Option::take)
+                    .map(|sink| (node, level, sink))
+            };
+
+            let Some((node, level, mut sink)) = next else {
+                // No sink was attached for this node. The resolved net level
+                // remains available to any later port read.
                 continue;
             };
-            sink.level_changed(ctx, level);
+            let result = catch_unwind(AssertUnwindSafe(|| sink.level_changed(ctx, level)));
+            {
+                let mut guard = lock(inner);
+                if let Some(slot) = guard.sinks.get_mut(&node) {
+                    // The map key remains present while the sink is out of
+                    // the lock, and attach_sink rejects replacement of it.
+                    *slot = Some(sink);
+                }
+                if result.is_err() {
+                    // Keep notifications queued by the callback for a later
+                    // call; do not leave the dispatcher permanently marked busy.
+                    guard.notifying = false;
+                }
+            }
+            if let Err(payload) = result {
+                resume_unwind(payload);
+            }
         }
     }
 }
@@ -149,12 +213,15 @@ impl GpioNet {
 impl DigitalNet for GpioNet {
     fn attach(&mut self, pull: NetPull) -> NetNode {
         let mut inner = lock(&self.inner);
-        let node = NetNode(inner.next);
+        let raw_node = u32::try_from(inner.next)
+            .expect("GpioNet exhausted its u32 NetNode identifier space");
+        let node = NetNode(raw_node);
         inner.next += 1;
         inner.nodes.insert(
             node.0,
             NodeState {
                 pull,
+                pin_pull: NetPull::None,
                 drive: NetDrive::HighZ,
             },
         );
@@ -165,7 +232,7 @@ impl DigitalNet for GpioNet {
     fn drive(&mut self, ctx: &mut dyn Ctx, node: NetNode, drive: NetDrive) {
         let pending = {
             let mut inner = lock(&self.inner);
-            Self::apply(&mut inner, node, drive).unwrap_or_default()
+            Self::apply(&mut inner, node, drive, None).unwrap_or_default()
         };
         Self::notify(&self.inner, pending, ctx);
     }
@@ -183,26 +250,59 @@ pub struct GpioNetPort {
     config: PinConfig,
 }
 
+fn net_pull(pull: Pull) -> NetPull {
+    match pull {
+        Pull::Up => NetPull::Up,
+        Pull::Down => NetPull::Down,
+        Pull::None => NetPull::None,
+        // Pull is non-exhaustive; unknown future values have no modeled effect.
+        _ => NetPull::None,
+    }
+}
+
 impl GpioPort for GpioNetPort {
     fn drive(&mut self, ctx: &mut dyn Ctx, level: PinLevel) -> Result<(), GpioError> {
-        let drive = match (self.config.drive, level) {
-            (DriveMode::OpenDrain, PinLevel::High) => NetDrive::HighZ,
-            (_, PinLevel::Low) => NetDrive::StrongLow,
-            (_, PinLevel::High) => NetDrive::StrongHigh,
-            // PinLevel is non_exhaustive; an unknown future level is rejected.
+        let drive = match (self.config.direction, self.config.drive, level) {
+            // Input mode must release any prior output drive, even if a model
+            // writes the GPIO data latch while the pin is configured as input.
+            (PinDirection::Input, _, _) => NetDrive::HighZ,
+            (PinDirection::Output, DriveMode::OpenDrain, PinLevel::High) => NetDrive::HighZ,
+            (PinDirection::Output, _, PinLevel::Low) => NetDrive::StrongLow,
+            (PinDirection::Output, _, PinLevel::High) => NetDrive::StrongHigh,
+            // Public pin enums are non-exhaustive; reject future unknown values.
             _ => return Err(GpioError::Unsupported),
         };
         let pending = {
             let mut inner = lock(&self.inner);
-            GpioNet::apply(&mut inner, self.node, drive)?
+            GpioNet::apply(
+                &mut inner,
+                self.node,
+                drive,
+                Some(net_pull(self.config.pull)),
+            )?
+        };
+        GpioNet::notify(&self.inner, pending, ctx);
+        Ok(())
+    }
+
+    fn release(&mut self, ctx: &mut dyn Ctx) -> Result<(), GpioError> {
+        let pending = {
+            let mut inner = lock(&self.inner);
+            GpioNet::apply(
+                &mut inner,
+                self.node,
+                NetDrive::HighZ,
+                Some(net_pull(self.config.pull)),
+            )?
         };
         GpioNet::notify(&self.inner, pending, ctx);
         Ok(())
     }
 
     fn configure(&mut self, config: PinConfig) -> Result<(), GpioError> {
-        // Configuration alone never changes the driven level; the next drive()
-        // call interprets the new topology.
+        // Configuration alone has no Ctx to deliver net edges. Callers pair
+        // it with drive() or release(), which atomically apply the new pull
+        // state and drive mode and then notify sinks if the resolved level moved.
         self.config = config;
         Ok(())
     }
@@ -276,6 +376,24 @@ mod tests {
     }
 
     #[test]
+    fn pin_internal_pull_is_resolved_separately_from_board_pull() {
+        let mut net = GpioNet::new();
+        let node = net.attach(NetPull::None);
+        let mut port = net.port(node, PinConfig::input(mosaic_contract_gpio::Pull::None));
+        assert_eq!(net.level().level, PinLevel::High);
+
+        port.configure(PinConfig::input(Pull::Down)).unwrap();
+        port.release(&mut DummyCtx).unwrap();
+        assert_eq!(net.level().level, PinLevel::Low);
+
+        // The board has no pull-down, so changing the internal pull to up
+        // changes the floating level without changing the external resistor.
+        port.configure(PinConfig::input(Pull::Up)).unwrap();
+        port.release(&mut DummyCtx).unwrap();
+        assert_eq!(net.level().level, PinLevel::High);
+    }
+
+    #[test]
     fn open_drain_high_releases_the_net() {
         let mut net = GpioNet::new();
         let node = net.attach(NetPull::Up);
@@ -307,6 +425,57 @@ mod tests {
         net.drive(&mut DummyCtx, driver, NetDrive::StrongLow);
         net.drive(&mut DummyCtx, driver, NetDrive::HighZ);
         assert_eq!(lock(&changes).as_slice(), &[PinLevel::Low, PinLevel::High]);
+    }
+
+    #[test]
+    fn duplicate_sink_registration_is_rejected_without_replacing_the_original() {
+        let mut net = GpioNet::new();
+        let driver = net.attach(NetPull::None);
+        let observer = net.attach(NetPull::Up);
+        let first = RecordingSink::default();
+        let first_changes = Arc::clone(&first.changes);
+        net.attach_sink(observer, Box::new(first)).unwrap();
+        let replacement = RecordingSink::default();
+        assert_eq!(
+            net.attach_sink(observer, Box::new(replacement)),
+            Err(GpioError::AlreadyConnected)
+        );
+        let mut port = net.port(driver, PinConfig::output(PinLevel::Low));
+        port.drive(&mut DummyCtx, PinLevel::Low).unwrap();
+        assert_eq!(lock(&first_changes).as_slice(), &[PinLevel::Low]);
+    }
+
+    struct ReentrantSink {
+        driver: GpioNetPort,
+        changes: Arc<Mutex<Vec<PinLevel>>>,
+    }
+
+    impl GpioSink for ReentrantSink {
+        fn level_changed(&mut self, ctx: &mut dyn Ctx, level: PinLevel) {
+            lock(&self.changes).push(level);
+            if level == PinLevel::Low {
+                // Drive the same net while inside the notification callback.
+                // This used to re-lock NetInner and deadlock.
+                self.driver.drive(ctx, PinLevel::High).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn sink_can_reenter_the_same_net_and_notifications_are_drained_fifo() {
+        let mut net = GpioNet::new();
+        let driver = net.attach(NetPull::None);
+        let observer = net.attach(NetPull::Up);
+        let changes = Arc::new(Mutex::new(Vec::new()));
+        let sink = ReentrantSink {
+            driver: net.port(driver, PinConfig::output(PinLevel::High)),
+            changes: Arc::clone(&changes),
+        };
+        net.attach_sink(observer, Box::new(sink)).unwrap();
+        let mut port = net.port(driver, PinConfig::output(PinLevel::Low));
+        port.drive(&mut DummyCtx, PinLevel::Low).unwrap();
+        assert_eq!(lock(&changes).as_slice(), &[PinLevel::Low, PinLevel::High]);
+        assert_eq!(net.level().level, PinLevel::High);
     }
 
     #[test]

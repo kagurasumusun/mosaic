@@ -28,7 +28,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_spi::{SpiCs, SpiError, SpiInitiator, SpiMode};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
@@ -147,6 +147,9 @@ pub struct Pl022 {
     rx: VecDeque<u8>,
     identity: PrimeCellId,
     initiator: Option<Box<dyn SpiInitiator>>,
+    /// Last chip-select level accepted by the interconnect. Kept separately
+    /// from CR1 so a rejected select can be retried by rewriting CR1.
+    cs_asserted: bool,
 }
 
 impl Pl022 {
@@ -161,6 +164,7 @@ impl Pl022 {
             identity: PrimeCellId::arm(Self::PART_NUMBER, 0, 0)
                 .expect("PL022 part number fits the ID fields"),
             initiator,
+            cs_asserted: false,
         }
     }
 
@@ -210,26 +214,46 @@ impl Pl022 {
         self.state.raw_interrupts |= ris::TX;
     }
 
-    fn update_irq(&mut self, ctx: &mut dyn Ctx) {
+    fn update_irq(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let asserted = self.state.raw_interrupts & self.state.imsc != 0;
         if asserted != self.state.irq_level {
+            set_optional_signal(ctx, self.params.combined_irq, asserted)?;
             self.state.irq_level = asserted;
-            let _ = ctx.set_signal(self.params.combined_irq, asserted);
         }
+        Ok(())
     }
 
     /// SSE の 0→1 で CS をアサート、1→0 で解放する（マスタモードのみ）。
-    fn apply_cr1(&mut self, ctx: &mut dyn Ctx, value: u32) {
-        let was_enabled = self.enabled();
+    fn apply_cr1(&mut self, ctx: &mut dyn Ctx, value: u32) -> Result<(), BusFault> {
         self.state.cr1 = value & 0xF;
-        let now_enabled = self.enabled();
-        if was_enabled == now_enabled || !self.master() {
-            return;
+        let desired = self.enabled() && self.master();
+        if desired == self.cs_asserted {
+            return Ok(());
         }
         if let Some(initiator) = self.initiator.as_mut() {
-            // 未配線や NoTarget は機能モデルでは無視する（CS 線の状態は
-            // バス側が権威を持つ）。
-            let _ = initiator.select(ctx, self.params.cs, now_enabled);
+            // NoTarget is an optional wiring choice. Other failures leave the
+            // last accepted level untouched so a later CR1 write retries it.
+            match initiator.select(ctx, self.params.cs, desired) {
+                Ok(()) => {
+                    self.cs_asserted = desired;
+                    Ok(())
+                }
+                Err(SpiError::NoTarget) => {
+                    // An absent target is an optional composition choice, but
+                    // it is not an acknowledged assertion. Keep the cached
+                    // level low so a later CR1 write can retry after wiring is
+                    // completed. Deassertion remains safe without a target.
+                    if !desired {
+                        self.cs_asserted = false;
+                    }
+                    Ok(())
+                }
+                Err(_) => Err(BusFault::Device),
+            }
+        } else {
+            // No injected port means SPI output is intentionally unconnected.
+            self.cs_asserted = desired;
+            Ok(())
         }
     }
 
@@ -298,9 +322,10 @@ impl Pl022 {
     }
 
     fn write_word(&mut self, ctx: &mut dyn Ctx, offset: u64, value: u32) -> Result<(), BusFault> {
+        let mut operation_result = Ok(());
         match offset {
             reg::CR0 => self.state.cr0 = value & 0xFFFF,
-            reg::CR1 => self.apply_cr1(ctx, value),
+            reg::CR1 => operation_result = self.apply_cr1(ctx, value),
             reg::DR => {
                 // 無効化中・スレーブモードの DR 書き込みは modeled しない。
                 if self.enabled() && self.master() {
@@ -324,8 +349,8 @@ impl Pl022 {
                 }
             }
         }
-        self.update_irq(ctx);
-        Ok(())
+        let irq_result = self.update_irq(ctx).map_err(|_| BusFault::Device);
+        operation_result.and(irq_result)
     }
 
     fn unmapped(&self, _offset: u64) -> Result<u32, BusFault> {
@@ -344,6 +369,11 @@ impl MmioTarget for Pl022 {
         size: AccessSize,
         _attr: &Attr,
     ) -> Result<u64, BusFault> {
+        if matches!(size, AccessSize::DoubleWord) {
+            // These PrimeCell register banks are 32-bit wide; reject before
+            // performing FIFO/interrupt side effects of the read.
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -352,7 +382,7 @@ impl MmioTarget for Pl022 {
         };
         let word = self.read_word(offset)?;
         // DR 読み出しは RX FIFO のレベルビットと割り込み線を変える。
-        self.update_irq(ctx);
+        self.update_irq(ctx).map_err(|_| BusFault::Device)?;
         Ok(u64::from(word & mask))
     }
 
@@ -396,6 +426,7 @@ mod tests {
         exchanges: Vec<(SpiCs, SpiMode, Vec<u8>)>,
         miso_fill: u8,
         fail: Option<SpiError>,
+        fail_select: Option<SpiError>,
     }
 
     struct FakeHandle(Arc<Mutex<Fake>>);
@@ -406,7 +437,11 @@ mod tests {
 
     impl SpiInitiator for FakeHandle {
         fn select(&mut self, _ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError> {
-            lock(&self.0).selects.push((cs, assert));
+            let mut fake = lock(&self.0);
+            if let Some(error) = fake.fail_select {
+                return Err(error);
+            }
+            fake.selects.push((cs, assert));
             Ok(())
         }
         fn exchange(
@@ -522,6 +557,37 @@ mod tests {
             lock(&fake).selects,
             vec![(SpiCs(0), true), (SpiCs(0), false)]
         );
+    }
+
+    #[test]
+    fn missing_chip_select_does_not_cache_an_unacknowledged_assertion() {
+        let (mut device, fake, mut ctx) = device();
+        lock(&fake).fail_select = Some(SpiError::NoTarget);
+
+        // An unconnected target is allowed, but the local cache must not claim
+        // CS was asserted when the interconnect did not accept the request.
+        write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+        assert!(lock(&fake).selects.is_empty());
+
+        lock(&fake).fail_select = None;
+        write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+        assert_eq!(lock(&fake).selects, vec![(SpiCs(0), true)]);
+    }
+
+    #[test]
+    fn rejected_chip_select_can_be_retried_without_an_extra_cr1_edge() {
+        let (mut device, fake, mut ctx) = device();
+        lock(&fake).fail_select = Some(SpiError::ModeFault);
+        assert_eq!(
+            device.write(&mut ctx, reg::CR1, AccessSize::Word, u64::from(cr1::SSE), &attr()),
+            Err(BusFault::Device)
+        );
+        assert!(lock(&fake).selects.is_empty());
+
+        lock(&fake).fail_select = None;
+        // CR1 has the same value, but CS was never successfully asserted.
+        write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
+        assert_eq!(lock(&fake).selects, vec![(SpiCs(0), true)]);
     }
 
     #[test]

@@ -33,8 +33,41 @@ pub trait Ctx: Send {
     /// Cancel only this node's pending event; false for stale or foreign IDs.
     fn cancel(&mut self, event: EventId) -> bool;
 
+    /// Replace a pending timer with a new deadline and token.
+    ///
+    /// The default implementation schedules first and then cancels the old
+    /// event, preserving the old timer if reservation fails. Runtime-backed
+    /// contexts override this with an atomic, capacity-neutral replacement.
+    fn reschedule(
+        &mut self,
+        event: EventId,
+        at: VTime,
+        token: u64,
+    ) -> Result<EventId, ContextError> {
+        let replacement = self.schedule(at, token)?;
+        let _ = self.cancel(event);
+        Ok(replacement)
+    }
+
     /// Queue an outgoing signal at now. Never invoke its sink synchronously.
     fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError>;
+}
+
+/// Drive an optional output signal while preserving runtime failures.
+///
+/// An absent output is a valid composition choice for many peripheral pins,
+/// so `UnknownSignal` is treated as an intentionally unwired port. Queue
+/// exhaustion and other errors are not swallowed: callers must not claim an
+/// interrupt or pin transition was delivered when it was never queued.
+pub fn set_optional_signal(
+    ctx: &mut dyn Ctx,
+    signal: SignalId,
+    high: bool,
+) -> Result<(), ContextError> {
+    match ctx.set_signal(signal, high) {
+        Err(ContextError::UnknownSignal) => Ok(()),
+        result => result,
+    }
 }
 
 /// Receives node-local timer events after the runtime pops them from the queue.
@@ -63,5 +96,58 @@ pub trait EventTarget: Send {
         _high: bool,
     ) -> Result<(), ContextError> {
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct SignalCtx(Result<(), ContextError>);
+
+    impl Ctx for SignalCtx {
+        fn now(&self) -> VTime {
+            VTime::ZERO
+        }
+
+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
+            Err(ContextError::ResourceExhausted)
+        }
+
+        fn cancel(&mut self, _event: EventId) -> bool {
+            false
+        }
+
+        fn set_signal(&mut self, _signal: SignalId, _high: bool) -> Result<(), ContextError> {
+            self.0
+        }
+    }
+
+    #[test]
+    fn optional_signal_ignores_only_unwired_outputs() {
+        assert_eq!(
+            set_optional_signal(
+                &mut SignalCtx(Err(ContextError::UnknownSignal)),
+                SignalId(1),
+                true,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            set_optional_signal(
+                &mut SignalCtx(Err(ContextError::ResourceExhausted)),
+                SignalId(1),
+                true,
+            ),
+            Err(ContextError::ResourceExhausted)
+        );
+        assert_eq!(
+            set_optional_signal(&mut SignalCtx(Err(ContextError::TimeOverflow)), SignalId(1), true),
+            Err(ContextError::TimeOverflow)
+        );
     }
 }

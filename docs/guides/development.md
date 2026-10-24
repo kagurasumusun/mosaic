@@ -36,7 +36,8 @@ SoC 等の Rust コードは `glue` ディレクトリに限ります。
 ```sh
 cargo xtask lint-layers
 cargo xtask lint-names
-cargo xtask check       # 上記を両方実行
+cargo xtask lint-catalog # CPU/IP/part/SoC/board manifest と正規化グラフを検証
+cargo xtask check       # 層・命名・catalog の全検査
 cargo xtask doctor      # 検査と現在の未決事項を表示
 ```
 
@@ -65,7 +66,8 @@ workspace 外の未分類 path 依存を拒否します。
 
 現時点で CI に入っていない規則を、実装済みとみなさないでください。
 
-- モデルの manifest スキーマ、ports と実装の整合、仕様 → テストの追跡表。
+- CPU/IP/part の manifest スキーマとプロパティ型、SoC/board の基本的不変条件、catalog ID／参照、I²C アドレス／SPI CS、`MachineGraph` の基本整合性は `lint-catalog` で検証します。
+  Graph edge の port/pin 名、index 範囲、part binding、広義の source/sink role は検査します。ただし、両端の contract 互換性と manifest の port 定義と Rust 実装の自動照合、catalog registry 解決、`MachineGraph -> assemble -> Machine` の自動構築は未実装です。仕様 → テストの追跡表も今後の作業です。
 - catalog のホスト API 直接利用禁止、SoC 名混入、ゲスト入力からの panic の検査。
 - glue の行数警告、`local/` モデルや外部 pack の分類規則。
 - workspace 自動同期、雛形生成、catalog-all と機能別ビューの生成。

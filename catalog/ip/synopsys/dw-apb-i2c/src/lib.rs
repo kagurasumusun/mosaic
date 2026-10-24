@@ -33,7 +33,7 @@ use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 use mosaic_contract_i2c::{I2cAddr, I2cError, I2cInitiator, I2cSpeed};
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 
 /// DW_apb_i2c レジスタオフセット（APB_DATA_WIDTH = 32 の構成）。
@@ -329,12 +329,13 @@ impl DwApbI2c {
         }
     }
 
-    fn update_intr(&mut self, ctx: &mut dyn Ctx) {
+    fn update_intr(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         let asserted = self.state.raw_intr & self.state.intr_mask != 0;
         if asserted != self.state.irq_level {
+            set_optional_signal(ctx, self.params.combined_irq, asserted)?;
             self.state.irq_level = asserted;
-            let _ = ctx.set_signal(self.params.combined_irq, asserted);
         }
+        Ok(())
     }
 
     fn push_command(&mut self, ctx: &mut dyn Ctx, value: u32) {
@@ -614,7 +615,7 @@ impl DwApbI2c {
             | reg::CLR_GEN_CALL => {}
             _ => return self.unmapped(offset).map(|_| ()),
         }
-        self.update_intr(ctx);
+        self.update_intr(ctx).map_err(|_| BusFault::Device)?;
         Ok(())
     }
 
@@ -634,6 +635,9 @@ impl MmioTarget for DwApbI2c {
         size: AccessSize,
         _attr: &Attr,
     ) -> Result<u64, BusFault> {
+        if matches!(size, AccessSize::DoubleWord) {
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -643,7 +647,7 @@ impl MmioTarget for DwApbI2c {
         let word = self.read_word(offset)?;
         // read-to-clear レジスタ（CLR_* / TX_ABRT_SOURCE）は読み出しが
         // 割り込みレベルを変えるので、ここでも線を更新する。
-        self.update_intr(ctx);
+        self.update_intr(ctx).map_err(|_| BusFault::Device)?;
         Ok(u64::from(word & mask))
     }
 

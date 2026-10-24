@@ -23,7 +23,7 @@
 #![forbid(unsafe_code)]
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
 
 /// CRL/CRH のリセット値: 全ピン「浮遊入力」(CNF=01, MODE=00)。
@@ -41,6 +41,9 @@ pub struct GpioF1Params;
 /// STM32F1 GPIO ポートの機能モデル。
 pub struct GpioF1 {
     state: GpioState,
+    /// ODR/configuration transitions whose notification could not yet be queued.
+    /// These bits are retried on subsequent MMIO writes.
+    pending_pins: u16,
     /// bind_clock で配線された RCC ゲート入力。
     clock_input: Option<(NodeId, SignalId)>,
 }
@@ -71,6 +74,7 @@ impl GpioF1 {
     pub fn new(_params: GpioF1Params) -> Self {
         Self {
             state: GpioState::default(),
+            pending_pins: 0,
             clock_input: None,
         }
     }
@@ -102,16 +106,39 @@ impl GpioF1 {
         config & 0b1100 == 0 && config & 0b0011 != 0
     }
 
-    /// ODR の変化を汎用出力ピンの信号へ配送する。
-    fn emit_pin_changes(&mut self, ctx: &mut dyn Ctx, old: u32) {
-        let changed = old ^ self.state.odr;
-        let mut mask = changed;
-        while mask != 0 {
-            let pin = mask.trailing_zeros();
-            mask &= !(1 << pin);
-            if self.is_gp_output(pin) {
-                let _ = ctx.set_signal(pin_signal(pin), self.state.odr & (1 << pin) != 0);
+    /// ODR/configuration changesを汎用出力ピンの信号へ配送する。
+    ///
+    /// A full runtime queue leaves the corresponding bit pending. A later
+    /// access retries it even when the ODR value itself is unchanged, avoiding
+    /// a lost output level after a rejected `set_signal`.
+    fn emit_pin_changes(
+        &mut self,
+        ctx: &mut dyn Ctx,
+        old: u32,
+    ) -> Result<(), ContextError> {
+        self.pending_pins |= (old ^ self.state.odr) as u16;
+        let mut pending = self.pending_pins;
+        let mut first_error = None;
+        while pending != 0 {
+            let pin = pending.trailing_zeros();
+            let bit = 1u16 << pin;
+            pending &= !bit;
+            if !self.is_gp_output(pin) {
+                // Keep the bit pending: a later CRL/CRH write may turn this pin
+                // into a GPIO output, at which point its current level is sent.
+                continue;
             }
+            let level = self.state.odr & u32::from(bit) != 0;
+            match set_optional_signal(ctx, pin_signal(pin), level) {
+                Ok(()) => self.pending_pins &= !bit,
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 
@@ -180,36 +207,30 @@ impl MmioTarget for GpioF1 {
             return Ok(());
         }
         let value = value as u32;
+        let old_odr = self.state.odr;
+        let mut config_changed = false;
         match offset {
             0x00 => {
-                if !self.locked() {
+                if !self.locked() && self.state.crl != value {
                     self.state.crl = value;
+                    config_changed = true;
                 }
             }
             0x04 => {
-                if !self.locked() {
+                if !self.locked() && self.state.crh != value {
                     self.state.crh = value;
+                    config_changed = true;
                 }
             }
-            0x0C => {
-                let old = self.state.odr;
-                self.state.odr = value & 0xFFFF;
-                self.emit_pin_changes(ctx, old);
-            }
+            0x0C => self.state.odr = value & 0xFFFF,
             0x10 => {
                 // BSRR: BSy セット + BRy リセット。セット優先。
-                let old = self.state.odr;
                 let sets = value & 0xFFFF;
                 let resets = (value >> 16) & 0xFFFF;
                 self.state.odr |= sets;
                 self.state.odr &= !(resets & !sets);
-                self.emit_pin_changes(ctx, old);
             }
-            0x14 => {
-                let old = self.state.odr;
-                self.state.odr &= !(value & 0xFFFF);
-                self.emit_pin_changes(ctx, old);
-            }
+            0x14 => self.state.odr &= !(value & 0xFFFF),
             0x18 => {
                 if !self.locked() {
                     // LCKK を含めて保持。LCKK=1 の書き込みでロック確定。
@@ -218,6 +239,13 @@ impl MmioTarget for GpioF1 {
             }
             _ => {}
         }
+        if config_changed {
+            // A pin that just became a GPIO output must emit its current ODR
+            // level even if the ODR register itself did not change.
+            self.pending_pins = u16::MAX;
+        }
+        self.emit_pin_changes(ctx, old_odr)
+            .map_err(|_| BusFault::Device)?;
         Ok(())
     }
 }
@@ -251,11 +279,22 @@ mod tests {
 
     struct TestCtx {
         edges: Vec<(SignalId, bool)>,
+        fail_next_signal: bool,
     }
 
     impl TestCtx {
         fn new() -> Self {
-            Self { edges: Vec::new() }
+            Self {
+                edges: Vec::new(),
+                fail_next_signal: false,
+            }
+        }
+
+        fn failing_once() -> Self {
+            Self {
+                edges: Vec::new(),
+                fail_next_signal: true,
+            }
         }
     }
 
@@ -274,6 +313,10 @@ mod tests {
             false
         }
         fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError> {
+            if self.fail_next_signal {
+                self.fail_next_signal = false;
+                return Err(ContextError::ResourceExhausted);
+            }
             self.edges.push((signal, high));
             Ok(())
         }
@@ -340,7 +383,10 @@ mod tests {
         write(&mut gpio, &mut ctx, 0x10, 1 << 5);
         assert_eq!(read(&mut gpio, &mut ctx, 0x0C), 1 << 5);
         assert_eq!(read(&mut gpio, &mut ctx, 0x08), 1 << 5); // IDR は ODR を反映。
-        assert_eq!(ctx.edges, vec![(pin_signal(5), true)]);
+        assert_eq!(
+            ctx.edges,
+            vec![(pin_signal(5), false), (pin_signal(5), true)]
+        );
         // BRR でリセット。
         write(&mut gpio, &mut ctx, 0x14, 1 << 5);
         assert_eq!(read(&mut gpio, &mut ctx, 0x0C), 0);
@@ -351,13 +397,36 @@ mod tests {
     }
 
     #[test]
+    fn failed_pin_notification_is_retried_on_a_later_access() {
+        let mut gpio = GpioF1::new(GpioF1Params);
+        let source = NodeId(3);
+        let signal = SignalId(0x32);
+        gpio.bind_clock(source, signal);
+        let mut ctx = TestCtx::failing_once();
+        gpio.on_signal(&mut ctx, source, signal, true).unwrap();
+        let crl = (CR_RESET & !(0xF << 20)) | (0x3 << 20);
+
+        assert_eq!(
+            gpio.write(&mut ctx, 0x00, AccessSize::Word, u64::from(crl), &attr()),
+            Err(BusFault::Device)
+        );
+        assert!(ctx.edges.is_empty());
+
+        // Rewriting the same configuration retries the pending low level even
+        // though neither CRL nor ODR changes on this access.
+        gpio.write(&mut ctx, 0x00, AccessSize::Word, u64::from(crl), &attr())
+            .unwrap();
+        assert_eq!(ctx.edges, vec![(pin_signal(5), false)]);
+    }
+
+    #[test]
     fn input_and_af_pins_do_not_emit() {
         let (mut gpio, mut ctx, _source, _signal) = clocked();
         // リセット状態 (全ピン浮遊入力) では ODR を書いても信号は出ない。
         write(&mut gpio, &mut ctx, 0x0C, 0xFFFF);
         assert!(ctx.edges.is_empty());
         assert_eq!(read(&mut gpio, &mut ctx, 0x08), 0); // 入力ピンの IDR は 0。
-                                                        // PA9 を AF 出力 (CNF=10, MODE=11 → 0xB) に設定。ODR 変化でも出ない。
+        // PA9 を AF 出力 (CNF=10, MODE=11 → 0xB) に設定。ODR 変化でも出ない。
         let crh = (CR_RESET & !(0xF << 4)) | (0xB << 4);
         write(&mut gpio, &mut ctx, 0x04, crh);
         write(&mut gpio, &mut ctx, 0x10, 1 << 9);

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, RunOutcome, StopReason};
 use mosaic_core_runtime::Machine;
-use mosaic_core_types::VTime;
+use mosaic_core_types::{VDelta, VTime};
 
 use crate::{DriverError, IrqMailbox, StepReport};
 
@@ -142,8 +142,11 @@ impl MulticoreDriver {
     ) -> Result<RoundReport, MulticoreError> {
         let mut reports = Vec::with_capacity(self.cores.len());
         for (index, core) in self.cores.iter_mut().enumerate() {
+            // Retry any prior failed interrupt edge before allowing this core
+            // to execute another guest instruction.
+            flush(core, index)?;
             // Shared pages: pull the authoritative bytes into the core's
-            // mirror before the slice, push them back afterwards.
+            // mirror before the slice.
             core.engine
                 .sync_shared_in()
                 .map_err(|error| MulticoreError::Core {
@@ -151,10 +154,24 @@ impl MulticoreDriver {
                     error: DriverError::Engine(error),
                 })?;
             let outcome = core.engine.run(quantum);
+            // Publish the completed/partially completed slice before any later
+            // error can abort the round and skip this core's shared writes.
+            core.engine
+                .sync_shared_out()
+                .map_err(|error| MulticoreError::Core {
+                    index,
+                    error: DriverError::Engine(error),
+                })?;
             if outcome.reason == StopReason::Fault {
                 return Err(MulticoreError::Core {
                     index,
                     error: fault_of(core.engine.as_mut(), outcome),
+                });
+            }
+            if outcome.reason == StopReason::CapabilityMissing {
+                return Err(MulticoreError::Core {
+                    index,
+                    error: DriverError::EngineStopped(outcome),
                 });
             }
             let (events_delivered, now) = {
@@ -170,12 +187,6 @@ impl MulticoreDriver {
                 (delivered, now)
             };
             flush(core, index)?;
-            core.engine
-                .sync_shared_out()
-                .map_err(|error| MulticoreError::Core {
-                    index,
-                    error: DriverError::Engine(error),
-                })?;
             reports.push(StepReport {
                 engine: outcome,
                 events_delivered,
@@ -205,6 +216,7 @@ impl MulticoreDriver {
     ) -> Result<RoundReport, MulticoreError> {
         let mut reports = Vec::with_capacity(self.cores.len());
         for (index, core) in self.cores.iter_mut().enumerate() {
+            flush(core, index)?;
             core.engine
                 .sync_shared_in()
                 .map_err(|error| MulticoreError::Core {
@@ -212,10 +224,22 @@ impl MulticoreDriver {
                     error: DriverError::Engine(error),
                 })?;
             let outcome = core.engine.run(quantum);
+            core.engine
+                .sync_shared_out()
+                .map_err(|error| MulticoreError::Core {
+                    index,
+                    error: DriverError::Engine(error),
+                })?;
             if outcome.reason == StopReason::Fault {
                 return Err(MulticoreError::Core {
                     index,
                     error: fault_of(core.engine.as_mut(), outcome),
+                });
+            }
+            if outcome.reason == StopReason::CapabilityMissing {
+                return Err(MulticoreError::Core {
+                    index,
+                    error: DriverError::EngineStopped(outcome),
                 });
             }
             let ps = core.ps_per_instruction.get();
@@ -230,28 +254,21 @@ impl MulticoreDriver {
                 let mut machine = self.machine.lock().map_err(|_| MulticoreError::Poisoned)?;
                 let deadline = machine
                     .now()
-                    .0
-                    .checked_add(delta)
+                    .checked_add(VDelta(delta))
                     .ok_or(MulticoreError::Core {
                         index,
                         error: DriverError::TimeOverflow,
                     })?;
                 let delivered =
                     machine
-                        .run_until(VTime(deadline), event_budget)
+                        .run_until(deadline, event_budget)
                         .map_err(|error| MulticoreError::Core {
                             index,
                             error: DriverError::Machine(error),
                         })?;
-                (delivered, VTime(deadline))
+                (delivered, deadline)
             };
             flush(core, index)?;
-            core.engine
-                .sync_shared_out()
-                .map_err(|error| MulticoreError::Core {
-                    index,
-                    error: DriverError::Engine(error),
-                })?;
             reports.push(StepReport {
                 engine: outcome,
                 events_delivered,

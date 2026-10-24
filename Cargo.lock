@@ -435,9 +435,6 @@ dependencies = [
 [[package]]
 name = "mosaic-describe"
 version = "0.1.0"
-dependencies = [
- "mosaic-core-types",
-]
 
 [[package]]
 name = "mosaic-engine-conformance"
@@ -685,6 +682,7 @@ version = "0.1.0"
 name = "mosaic-xtask"
 version = "0.1.0"
 dependencies = [
+ "mosaic-describe",
  "serde_json",
  "toml",
 ]

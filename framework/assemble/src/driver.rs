@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBusFault, EngineError, RunOutcome, StopReason};
 use mosaic_core_runtime::{Machine, MachineError};
-use mosaic_core_types::VTime;
+use mosaic_core_types::{VDelta, VTime};
 
 use crate::IrqMailbox;
 
@@ -26,6 +26,9 @@ pub enum DriverError {
     /// The engine stopped for a reason with no recorded bus fault, for example
     /// an instruction fetch from an unmapped page.
     EngineFault(RunOutcome),
+    /// The backend could not execute the requested quantum or stopped before
+    /// consuming it without a more precise stop reason.
+    EngineStopped(RunOutcome),
     /// Event delivery failed, e.g. an exhausted event budget.
     Machine(MachineError),
     /// The engine rejected a delivered interrupt line (ADR 0009).
@@ -101,12 +104,27 @@ impl<E: CpuEngine> MachineDriver<E> {
         quantum: NonZeroU64,
         event_budget: usize,
     ) -> Result<StepReport, DriverError> {
+        // Retry any previously rejected interrupt edge before executing more
+        // guest instructions. A failed flush must not let the guest run past
+        // an IRQ level that was never applied to the backend.
+        self.flush_irq()?;
+        self.engine
+            .sync_shared_in()
+            .map_err(DriverError::Engine)?;
         let outcome = self.engine.run(quantum);
+        // Publish stores from the completed/partially completed slice even if
+        // the backend later reports a fault or the event loop fails.
+        self.engine
+            .sync_shared_out()
+            .map_err(DriverError::Engine)?;
         if outcome.reason == StopReason::Fault {
             return match self.engine.take_bus_fault() {
                 Some(fault) => Err(DriverError::Bus(fault)),
                 None => Err(DriverError::EngineFault(outcome)),
             };
+        }
+        if outcome.reason == StopReason::CapabilityMissing {
+            return Err(DriverError::EngineStopped(outcome));
         }
         let mut machine = self.machine.lock().map_err(|_| DriverError::Poisoned)?;
         let now = machine.now();
@@ -136,12 +154,22 @@ impl<E: CpuEngine> MachineDriver<E> {
         ps_per_instruction: NonZeroU64,
         event_budget: usize,
     ) -> Result<StepReport, DriverError> {
+        self.flush_irq()?;
+        self.engine
+            .sync_shared_in()
+            .map_err(DriverError::Engine)?;
         let outcome = self.engine.run(quantum);
+        self.engine
+            .sync_shared_out()
+            .map_err(DriverError::Engine)?;
         if outcome.reason == StopReason::Fault {
             return match self.engine.take_bus_fault() {
                 Some(fault) => Err(DriverError::Bus(fault)),
                 None => Err(DriverError::EngineFault(outcome)),
             };
+        }
+        if outcome.reason == StopReason::CapabilityMissing {
+            return Err(DriverError::EngineStopped(outcome));
         }
         let delta = u128::from(outcome.instruction_hooks)
             .checked_mul(u128::from(ps_per_instruction.get()))
@@ -149,22 +177,25 @@ impl<E: CpuEngine> MachineDriver<E> {
             .ok_or(DriverError::TimeOverflow)?;
         let mut machine = self.machine.lock().map_err(|_| DriverError::Poisoned)?;
         let now = machine.now();
-        let deadline = now.0.checked_add(delta).ok_or(DriverError::TimeOverflow)?;
+        let deadline = now
+            .checked_add(VDelta(delta))
+            .ok_or(DriverError::TimeOverflow)?;
         let events_delivered = machine
-            .run_until(VTime(deadline), event_budget)
+            .run_until(deadline, event_budget)
             .map_err(DriverError::Machine)?;
         drop(machine);
         self.flush_irq()?;
         Ok(StepReport {
             engine: outcome,
             events_delivered,
-            now: VTime(deadline),
+            now: deadline,
         })
     }
 
     /// Advance virtual time to `deadline`, delivering due events. Used by
     /// boards whose timers are not yet driven by instruction-count time.
     pub fn advance(&mut self, deadline: VTime, event_budget: usize) -> Result<usize, DriverError> {
+        self.flush_irq()?;
         let mut machine = self.machine.lock().map_err(|_| DriverError::Poisoned)?;
         let delivered = machine
             .run_until(deadline, event_budget)

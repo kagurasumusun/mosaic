@@ -12,8 +12,8 @@
 use core::num::NonZeroU64;
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, SignalId, VTime};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
+use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, SignalId, VDelta, VTime};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
 /// Register offsets inside one timer block (DDI 0271 Table 3-2).
@@ -121,27 +121,42 @@ impl Timer {
         }
     }
 
+    /// Mask a register value to the currently selected counter width.
+    fn counter_mask(&self) -> u32 {
+        if self.state.control & ctrl::SIZE32 != 0 {
+            u32::MAX
+        } else {
+            u32::from(u16::MAX)
+        }
+    }
+
+    fn counter_value(&self, value: u32) -> u32 {
+        value & self.counter_mask()
+    }
+
     /// Value loaded when the counter reaches zero: free-running wraps at the
     /// programmed width, periodic/one-shot use BGLoad (when set) else Load.
     fn reload_value(&self) -> u32 {
         let c = self.state.control;
-        if c & ctrl::PERIODIC == 0 && c & ctrl::ONESHOT == 0 {
-            if c & ctrl::SIZE32 != 0 {
-                u32::MAX
-            } else {
-                0xFFFF
-            }
+        let value = if c & ctrl::PERIODIC == 0 && c & ctrl::ONESHOT == 0 {
+            self.counter_mask()
         } else if self.state.bg_load != 0 {
             self.state.bg_load
         } else {
             self.state.load
-        }
+        };
+        // LOAD/BGLOAD remain 32-bit guest-visible registers in 16-bit mode;
+        // only the running counter is truncated.
+        self.counter_value(value)
     }
 
     /// Picoseconds between enable and the next expiry. Counts reload..0, so
     /// the span is reload + 1 ticks.
-    fn delay_ps(&self, tick_ps: NonZeroU64) -> Option<u64> {
-        let ticks = u64::from(self.reload_value()).checked_add(1)?;
+    fn delay_for_count_ps(&self, count: u32, tick_ps: NonZeroU64) -> Option<u64> {
+        // The counter expires after count + 1 ticks, including one tick when
+        // the programmed count is zero. Widen before multiplication so a
+        // 32-bit reload cannot overflow an intermediate integer.
+        let ticks = u64::from(count).checked_add(1)?;
         let period = tick_ps
             .get()
             .checked_mul(Self::prescale_divider(self.state.control))?;
@@ -150,22 +165,43 @@ impl Timer {
             .and_then(|delay| u64::try_from(delay).ok())
     }
 
+    fn start_from(
+        &mut self,
+        ctx: &mut dyn Ctx,
+        token: u64,
+        tick_ps: NonZeroU64,
+        initial_count: u32,
+    ) -> Result<(), ContextError> {
+        let now = ctx.now();
+        let delay = self
+            .delay_for_count_ps(initial_count, tick_ps)
+            .ok_or(ContextError::TimeOverflow)?;
+        let at = now.checked_add(VDelta(delay)).ok_or(ContextError::TimeOverflow)?;
+        let event = match self.event {
+            Some(previous) => ctx.reschedule(previous, at, token)?,
+            None => ctx.schedule(at, token)?,
+        };
+        // Commit timer state only after its replacement event has been
+        // accepted. A full queue or ID exhaustion must not silently orphan
+        // the currently armed timer.
+        self.event = Some(event);
+        self.state.started_at = now;
+        self.state.remaining = initial_count;
+        self.state.enabled = true;
+        Ok(())
+    }
+
     fn start(
         &mut self,
         ctx: &mut dyn Ctx,
         token: u64,
         tick_ps: NonZeroU64,
     ) -> Result<(), ContextError> {
-        if let Some(event) = self.event.take() {
-            let _ = ctx.cancel(event);
-        }
-        let delay = self.delay_ps(tick_ps).ok_or(ContextError::TimeOverflow)?;
-        let event = ctx.schedule_after(VTime(delay), token)?;
-        self.event = Some(event);
-        self.state.started_at = ctx.now();
-        self.state.remaining = self.reload_value();
-        self.state.enabled = true;
-        Ok(())
+        self.start_from(ctx, token, tick_ps, self.reload_value())
+    }
+
+    fn delay_ps(&self, tick_ps: NonZeroU64) -> Option<u64> {
+        self.delay_for_count_ps(self.reload_value(), tick_ps)
     }
 
     /// Cancel the pending expiry and freeze the counter at `frozen`, the
@@ -188,11 +224,14 @@ impl Timer {
             .get()
             .saturating_mul(Self::prescale_divider(self.state.control));
         let elapsed_ticks = now.0.saturating_sub(self.state.started_at.0) / period;
-        let reload = self.reload_value();
-        // reload <= u32::MAX means the span always fits in u64.
-        let span = u64::from(reload).wrapping_add(1);
+        let start_count = self.state.remaining;
+        // The active reservation expires after start_count + 1 ticks. A
+        // control write can re-arm from a frozen live count, which may differ
+        // from LOAD/BGLOAD; deriving VALUE from reload_value would jump the
+        // counter backwards after such a write.
+        let span = u64::from(start_count) + 1;
         let into_span = elapsed_ticks % span;
-        reload.saturating_sub(u32::try_from(into_span).unwrap_or(0))
+        start_count.saturating_sub(u32::try_from(into_span).unwrap_or(0))
     }
 }
 
@@ -218,12 +257,17 @@ impl Sp804 {
 
     /// Re-evaluate one timer's interrupt line. An unwired pin is tolerated:
     /// the context reports it unknown and the timer keeps running.
-    fn drive_irq(ctx: &mut dyn Ctx, timer: &mut Timer, irq: SignalId) {
+    fn drive_irq(
+        ctx: &mut dyn Ctx,
+        timer: &mut Timer,
+        irq: SignalId,
+    ) -> Result<(), ContextError> {
         let asserted = timer.state.raw_irq && timer.state.control & ctrl::IE != 0;
         if asserted != timer.irq_asserted {
+            set_optional_signal(ctx, irq, asserted)?;
             timer.irq_asserted = asserted;
-            let _ = ctx.set_signal(irq, asserted);
         }
+        Ok(())
     }
 
     fn timer_index(offset: u64) -> (usize, u64) {
@@ -281,18 +325,21 @@ impl Sp804 {
         let timer = &mut self.timers[index];
         match local {
             reg::LOAD => {
+                let previous_load = timer.state.load;
                 timer.state.load = value;
                 if timer.state.enabled {
                     // Hardware restarts immediately when Load is written live.
-                    timer
-                        .start(ctx, token, tick_ps)
-                        .map_err(|_| BusFault::Device)?;
+                    if timer.start_from(ctx, token, tick_ps, timer.counter_value(value)).is_err() {
+                        timer.state.load = previous_load;
+                        return Err(BusFault::Device);
+                    }
                 } else {
-                    timer.state.remaining = value;
+                    timer.state.remaining = timer.counter_value(value);
                 }
             }
             reg::BG_LOAD => timer.state.bg_load = value,
             reg::CONTROL => {
+                let previous_control = timer.state.control;
                 let was_enabled = timer.state.enabled;
                 // Freeze the counter with the OLD configuration first: a
                 // control write must not reinterpret already elapsed time
@@ -301,9 +348,22 @@ impl Sp804 {
                 timer.state.control = value & ctrl::MASK;
                 let now_enabled = timer.state.control & ctrl::ENABLE != 0;
                 match (was_enabled, now_enabled) {
-                    (false, true) | (true, true) => timer
-                        .start(ctx, token, tick_ps)
-                        .map_err(|_| BusFault::Device)?,
+                    (false, true) => {
+                        if timer.start(ctx, token, tick_ps).is_err() {
+                            timer.state.control = previous_control;
+                            return Err(BusFault::Device);
+                        }
+                    }
+                    (true, true) => {
+                        // Preserve the count frozen with the old control
+                        // configuration. Re-arming with the reload value here
+                        // would reset the counter on every prescale/IE/mode
+                        // update, rather than merely applying the new timing.
+                        if timer.start_from(ctx, token, tick_ps, frozen).is_err() {
+                            timer.state.control = previous_control;
+                            return Err(BusFault::Device);
+                        }
+                    }
                     (true, false) => timer.stop(ctx, frozen),
                     (false, false) => {}
                 }
@@ -314,7 +374,7 @@ impl Sp804 {
             reg::VALUE | reg::RIS | reg::MIS => {}
             _ => return self.unmapped().map(|_| ()),
         }
-        Self::drive_irq(ctx, timer, irq);
+        Self::drive_irq(ctx, timer, irq).map_err(|_| BusFault::Device)?;
         Ok(())
     }
 
@@ -334,6 +394,10 @@ impl MmioTarget for Sp804 {
         size: AccessSize,
         _attr: &Attr,
     ) -> Result<u64, BusFault> {
+        if matches!(size, AccessSize::DoubleWord) {
+            // A 64-bit access is not a supported SP804 register transaction.
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -362,7 +426,14 @@ impl MmioTarget for Sp804 {
 
 impl EventTarget for Sp804 {
     fn on_timer(&mut self, ctx: &mut dyn Ctx, token: u64) -> Result<(), ContextError> {
-        let index = usize::min(token as usize, 1);
+        // Tokens are issued by this model's two start paths. A stale or
+        // corrupt token must not be clamped onto timer 2, which could assert
+        // an unrelated IRQ and mutate the wrong counter.
+        let index = match token {
+            TOKEN_TIMER1 => 0,
+            TOKEN_TIMER2 => 1,
+            _ => return Ok(()),
+        };
         let irq = self.params.irq[index];
         let tick_ps = self.params.tick_ps;
         let timer = &mut self.timers[index];
@@ -376,13 +447,20 @@ impl EventTarget for Sp804 {
             timer.state.control &= !ctrl::ENABLE;
             timer.state.enabled = false;
             timer.state.remaining = 0;
-            Self::drive_irq(ctx, timer, irq);
+            Self::drive_irq(ctx, timer, irq)?;
             return Ok(());
         }
         // Periodic and free-running timers re-arm from the reload value.
-        timer.start(ctx, token, tick_ps)?;
-        Self::drive_irq(ctx, timer, irq);
-        Ok(())
+        // If the queue cannot accept the next expiry, fail closed: clear the
+        // enable state, but still attempt to deliver the expiry interrupt.
+        let rearm = timer.start(ctx, token, tick_ps);
+        if rearm.is_err() {
+            timer.state.control &= !ctrl::ENABLE;
+            timer.state.enabled = false;
+            timer.event = None;
+        }
+        let irq_result = Self::drive_irq(ctx, timer, irq);
+        rearm.and(irq_result)
     }
 }
 
@@ -553,6 +631,47 @@ mod tests {
     }
 
     #[test]
+    fn sixteen_bit_mode_truncates_count_without_truncating_load_register() {
+        let mut sp804 = Sp804::new(params());
+        let mut ctx = TestCtx::new();
+        sp804.write_word(&mut ctx, reg::LOAD, 0x1_0005).unwrap();
+        sp804
+            .write_word(&mut ctx, reg::CONTROL, ctrl::ONESHOT | ctrl::ENABLE)
+            .unwrap();
+
+        // LOAD remains a 32-bit register, but the selected 16-bit timer counts
+        // from 5 and expires after six ticks rather than 0x10006 ticks.
+        assert_eq!(sp804.read_word(&mut ctx, reg::LOAD).unwrap(), 0x1_0005);
+        assert_eq!(sp804.read_word(&mut ctx, reg::VALUE).unwrap(), 5);
+        assert_eq!(sp804.timers[0].delay_ps(TICK), Some(6_000));
+    }
+
+    #[test]
+    fn live_control_update_preserves_the_frozen_counter_value() {
+        let mut sp804 = Sp804::new(params());
+        let mut ctx = TestCtx::new();
+        sp804.write_word(&mut ctx, reg::LOAD, 100).unwrap();
+        sp804
+            .write_word(&mut ctx, reg::CONTROL, ctrl::PERIODIC | ctrl::SIZE32 | ctrl::ENABLE)
+            .unwrap();
+
+        ctx.advance(10_000);
+        assert_eq!(sp804.read_word(&mut ctx, reg::VALUE).unwrap(), 90);
+
+        // Enabling IRQ while keeping the timer live must not reload LOAD=100.
+        sp804
+            .write_word(
+                &mut ctx,
+                reg::CONTROL,
+                ctrl::PERIODIC | ctrl::SIZE32 | ctrl::ENABLE | ctrl::IE,
+            )
+            .unwrap();
+        assert_eq!(sp804.read_word(&mut ctx, reg::VALUE).unwrap(), 90);
+        ctx.advance(5_000);
+        assert_eq!(sp804.read_word(&mut ctx, reg::VALUE).unwrap(), 85);
+    }
+
+    #[test]
     fn timer2_block_and_prescale_are_independent() {
         let mut sp804 = Sp804::new(params());
         let mut ctx = TestCtx::new();
@@ -577,6 +696,26 @@ mod tests {
     }
 
     #[test]
+    fn invalid_timer_token_does_not_alias_timer2() {
+        let mut sp804 = Sp804::new(params());
+        let mut ctx = TestCtx::new();
+        sp804.write_word(&mut ctx, reg::TIMER2_BASE + reg::LOAD, 1).unwrap();
+        sp804
+            .write_word(
+                &mut ctx,
+                reg::TIMER2_BASE + reg::CONTROL,
+                ctrl::ONESHOT | ctrl::IE | ctrl::ENABLE,
+            )
+            .unwrap();
+        let pending = sp804.timers[1].event;
+        let before = sp804.timers[1].state;
+        sp804.on_timer(&mut ctx, u64::MAX).unwrap();
+        assert_eq!(sp804.timers[1].event, pending);
+        assert_eq!(sp804.timers[1].state, before);
+        assert!(ctx.edges.is_empty());
+    }
+
+    #[test]
     fn primecell_window_and_guest_faults_are_safe() {
         let mut sp804 = Sp804::new(params());
         let mut ctx = TestCtx::new();
@@ -598,6 +737,10 @@ mod tests {
         assert_eq!(
             faulting.read(&mut ctx, 0x900, AccessSize::Word, &word_attr()),
             Err(BusFault::Device)
+        );
+        assert_eq!(
+            sp804.read(&mut ctx, reg::LOAD, AccessSize::DoubleWord, &word_attr()),
+            Err(BusFault::InvalidSize)
         );
         assert_eq!(
             sp804.write(&mut ctx, reg::LOAD, AccessSize::DoubleWord, 0, &word_attr()),

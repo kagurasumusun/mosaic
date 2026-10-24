@@ -29,7 +29,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use mosaic_contract_gpio::{GpioPort, PinConfig, PinDirection, PinLevel, Pull};
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
@@ -192,13 +192,14 @@ impl Pl061 {
         }
     }
 
-    fn update_irq(&mut self, ctx: &mut dyn Ctx) {
+    fn update_irq(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
         self.sample_interrupts();
         let asserted = self.state.ris & self.state.ie != 0;
         if asserted != self.state.irq_level {
+            set_optional_signal(ctx, self.params.combined_irq, asserted)?;
             self.state.irq_level = asserted;
-            let _ = ctx.set_signal(self.params.combined_irq, asserted);
         }
+        Ok(())
     }
 
     fn data_read(&self, mask: u8) -> u32 {
@@ -218,9 +219,15 @@ impl Pl061 {
         u32::from(value)
     }
 
-    fn data_write(&mut self, ctx: &mut dyn Ctx, mask: u8, value: u32) {
+    fn data_write(
+        &mut self,
+        ctx: &mut dyn Ctx,
+        mask: u8,
+        value: u32,
+    ) -> Result<(), BusFault> {
         let byte = (value & 0xFF) as u8;
         self.state.data_latch = (self.state.data_latch & !mask) | (byte & mask);
+        let mut failed = false;
         for pin in 0..PINS {
             let bit = 1u8 << pin;
             if mask & bit == 0 || self.state.afsel & bit != 0 {
@@ -230,7 +237,7 @@ impl Pl061 {
                 continue;
             };
             if self.state.dir & bit == 0 {
-                // 入力ピン: ラッチは更新されるが線は駆動しない。
+                // Input pin: update the data latch but do not drive the net.
                 continue;
             }
             let level = if self.state.data_latch & bit != 0 {
@@ -238,34 +245,54 @@ impl Pl061 {
             } else {
                 PinLevel::Low
             };
-            // 駆動失敗（Disconnected 等）は握りつぶさないが、レジスタ
-            // アクセス自体は成功させる（機能モデルの方針）。
-            let _ = port.drive(ctx, level);
+            // Try every selected output even if one port rejects the drive.
+            // The latch remains authoritative, so repeating the same guest
+            // write retries ports that failed on this access.
+            if port.drive(ctx, level).is_err() {
+                failed = true;
+            }
         }
+        if failed { Err(BusFault::Device) } else { Ok(()) }
     }
 
-    fn apply_dir(&mut self, value: u32) {
-        self.state.dir = (value & 0xFF) as u8;
+    fn sync_pin_configs(&mut self, ctx: &mut dyn Ctx) -> Result<(), BusFault> {
+        let mut failed = false;
         for pin in 0..PINS {
             let bit = 1u8 << pin;
-            if self.state.afsel & bit != 0 {
-                continue; // AF ピンは GPIO から切り離されている。
-            }
             let Some(port) = self.pins[pin].as_mut() else {
                 continue;
             };
-            self.configs[pin].direction = if self.state.dir & bit != 0 {
+            let direction = if self.state.dir & bit != 0 && self.state.afsel & bit == 0 {
                 PinDirection::Output
             } else {
                 PinDirection::Input
             };
+            self.configs[pin].direction = direction;
             self.configs[pin].initial = if self.state.data_latch & bit != 0 {
                 PinLevel::High
             } else {
                 PinLevel::Low
             };
-            let _ = port.configure(self.configs[pin]);
+            if port.configure(self.configs[pin]).is_err() {
+                failed = true;
+                continue;
+            }
+            if direction == PinDirection::Output {
+                if port.drive(ctx, self.configs[pin].initial).is_err() {
+                    failed = true;
+                }
+            } else if port.release(ctx).is_err() {
+                // A pin changed to input must relinquish any previous drive;
+                // re-writing DIR/AFSEL retries a rejected release.
+                failed = true;
+            }
         }
+        if failed { Err(BusFault::Device) } else { Ok(()) }
+    }
+
+    fn apply_dir(&mut self, ctx: &mut dyn Ctx, value: u32) -> Result<(), BusFault> {
+        self.state.dir = (value & 0xFF) as u8;
+        self.sync_pin_configs(ctx)
     }
 
     fn read_word(&mut self, offset: u64) -> Result<u32, BusFault> {
@@ -305,17 +332,22 @@ impl Pl061 {
     fn write_word(&mut self, ctx: &mut dyn Ctx, offset: u64, value: u32) -> Result<(), BusFault> {
         if offset < reg::DIR {
             let mask = ((offset >> 2) & 0xFF) as u8;
-            self.data_write(ctx, mask, value);
-            return self.finish_write(ctx);
+            let port_result = self.data_write(ctx, mask, value);
+            let irq_result = self.finish_write(ctx);
+            return port_result.and(irq_result);
         }
+        let mut port_result = Ok(());
         match offset {
-            reg::DIR => self.apply_dir(value),
+            reg::DIR => port_result = self.apply_dir(ctx, value),
             reg::IS => self.state.is = (value & 0xFF) as u8,
             reg::IBE => self.state.ibe = (value & 0xFF) as u8,
             reg::IEV => self.state.iev = (value & 0xFF) as u8,
             reg::IE => self.state.ie = (value & 0xFF) as u8,
             reg::IC => self.state.ris &= !((value & 0xFF) as u8),
-            reg::AFSEL => self.state.afsel = (value & 0xFF) as u8,
+            reg::AFSEL => {
+                self.state.afsel = (value & 0xFF) as u8;
+                port_result = self.sync_pin_configs(ctx);
+            }
             // 読み出し専用レジスタへの書き込みは無視。
             reg::RIS | reg::MIS => {}
             _ => {
@@ -326,12 +358,12 @@ impl Pl061 {
                 }
             }
         }
-        self.finish_write(ctx)
+        let irq_result = self.finish_write(ctx);
+        port_result.and(irq_result)
     }
 
     fn finish_write(&mut self, ctx: &mut dyn Ctx) -> Result<(), BusFault> {
-        self.update_irq(ctx);
-        Ok(())
+        self.update_irq(ctx).map_err(|_| BusFault::Device)
     }
 
     fn unmapped(&self, _offset: u64) -> Result<u32, BusFault> {
@@ -350,6 +382,11 @@ impl MmioTarget for Pl061 {
         size: AccessSize,
         _attr: &Attr,
     ) -> Result<u64, BusFault> {
+        if matches!(size, AccessSize::DoubleWord) {
+            // These PrimeCell register banks are 32-bit wide; reject before
+            // performing FIFO/interrupt side effects of the read.
+            return Err(BusFault::InvalidSize);
+        }
         let width = u32::from(size.bytes()) * 8;
         let mask = if width >= 32 {
             u32::MAX
@@ -358,7 +395,7 @@ impl MmioTarget for Pl061 {
         };
         let word = self.read_word(offset)?;
         // 遅延エッジ検出: 読み出しも RIS / 割り込み線を更新する。
-        self.update_irq(ctx);
+        self.update_irq(ctx).map_err(|_| BusFault::Device)?;
         Ok(u64::from(word & mask))
     }
 
@@ -372,6 +409,9 @@ impl MmioTarget for Pl061 {
     ) -> Result<(), BusFault> {
         if matches!(size, AccessSize::DoubleWord) {
             // PL061 レジスタは 32 ビット幅。8 バイト転送は収まらない。
+            return Err(BusFault::InvalidSize);
+        }
+        if value > u64::from(u32::MAX) {
             return Err(BusFault::InvalidSize);
         }
         self.write_word(ctx, offset, value as u32)
@@ -431,6 +471,10 @@ mod tests {
             let mut probe = lock(&self.0);
             probe.drives.push(level);
             probe.level = level;
+            Ok(())
+        }
+        fn release(&mut self, _ctx: &mut dyn Ctx) -> Result<(), GpioError> {
+            lock(&self.0).level = PinLevel::Low;
             Ok(())
         }
         fn configure(&mut self, config: PinConfig) -> Result<(), GpioError> {
@@ -545,12 +589,18 @@ mod tests {
         write(&mut bench.device, &mut bench.ctx, reg::DIR, 0xFF);
         // マスク bit0 だけの書き込み (offset 0x004): pin0 だけ駆動される。
         write(&mut bench.device, &mut bench.ctx, 0x004, 0x01);
-        assert_eq!(lock(&bench.probes[0]).drives, vec![PinLevel::High]);
-        assert!(lock(&bench.probes[1]).drives.is_empty());
+        assert_eq!(
+            lock(&bench.probes[0]).drives,
+            vec![PinLevel::Low, PinLevel::High]
+        );
+        assert_eq!(lock(&bench.probes[1]).drives, vec![PinLevel::Low]);
         // マスク bit1 (offset 0x008) に 0: pin1 だけ Low 駆動。
         write(&mut bench.device, &mut bench.ctx, 0x008, 0x00);
-        assert_eq!(lock(&bench.probes[1]).drives, vec![PinLevel::Low]);
-        assert_eq!(lock(&bench.probes[0]).drives.len(), 1);
+        assert_eq!(
+            lock(&bench.probes[1]).drives,
+            vec![PinLevel::Low, PinLevel::Low]
+        );
+        assert_eq!(lock(&bench.probes[0]).drives.len(), 2);
     }
 
     #[test]
@@ -558,8 +608,14 @@ mod tests {
         let mut bench = bench(2);
         write(&mut bench.device, &mut bench.ctx, reg::DIR, 0xFF);
         write(&mut bench.device, &mut bench.ctx, 0x3FC, 0x02);
-        assert_eq!(lock(&bench.probes[0]).drives, vec![PinLevel::Low]);
-        assert_eq!(lock(&bench.probes[1]).drives, vec![PinLevel::High]);
+        assert_eq!(
+            lock(&bench.probes[0]).drives,
+            vec![PinLevel::Low, PinLevel::Low]
+        );
+        assert_eq!(
+            lock(&bench.probes[1]).drives,
+            vec![PinLevel::Low, PinLevel::High]
+        );
         // FakePort は駆動値をレベルに反映するので読み出しは同じ値になる。
         assert_eq!(read(&mut bench.device, &mut bench.ctx, 0x3FC), 0x02);
         // マスク読み出し: bit0 だけ → pin0 の Low は 0。
@@ -585,7 +641,10 @@ mod tests {
         // 出力に切り替えた後の書き込みで初めて駆動される。
         write(&mut bench.device, &mut bench.ctx, reg::DIR, 0x01);
         write(&mut bench.device, &mut bench.ctx, 0x3FC, 0x00);
-        assert_eq!(lock(&bench.probes[0]).drives, vec![PinLevel::Low]);
+        assert_eq!(
+            lock(&bench.probes[0]).drives,
+            vec![PinLevel::High, PinLevel::Low]
+        );
     }
 
     #[test]
@@ -656,9 +715,10 @@ mod tests {
         let mut bench = bench(1);
         write(&mut bench.device, &mut bench.ctx, reg::DIR, 0x01);
         write(&mut bench.device, &mut bench.ctx, reg::AFSEL, 0x01);
-        // AF ピンへの DATA 書き込みは駆動されない。
+        assert_eq!(lock(&bench.probes[0]).drives, vec![PinLevel::Low]);
+        // AF ピンへの DATA 書き込みは駆動されず、方向切替時の履歴だけ残る。
         write(&mut bench.device, &mut bench.ctx, 0x3FC, 0x01);
-        assert!(lock(&bench.probes[0]).drives.is_empty());
+        assert_eq!(lock(&bench.probes[0]).drives, vec![PinLevel::Low]);
         // AF ピンの読み出しは 0。
         lock(&bench.probes[0]).level = PinLevel::High;
         assert_eq!(read(&mut bench.device, &mut bench.ctx, 0x3FC), 0x00);

@@ -28,7 +28,7 @@
 #![forbid(unsafe_code)]
 
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{ContextError, Ctx, EventTarget};
+use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 
 // クロック・イネーブルビット ↔ ゲート出力シグナル ID の対応表。
@@ -246,6 +246,12 @@ impl Default for RccState {
 pub struct RccF1 {
     params: RccF1Params,
     state: RccState,
+    // Last levels successfully queued for gate outputs. Keeping these separate
+    // from ENR registers lets a later access retry edges rejected by a full
+    // runtime event queue.
+    emitted_ahbenr: u32,
+    emitted_apb1enr: u32,
+    emitted_apb2enr: u32,
 }
 
 impl RccF1 {
@@ -253,6 +259,9 @@ impl RccF1 {
         Self {
             params,
             state: RccState::default(),
+            emitted_ahbenr: 0,
+            emitted_apb1enr: 0,
+            emitted_apb2enr: 0,
         }
     }
 
@@ -391,7 +400,7 @@ impl RccF1 {
     /// CIR フラグと割り込み出力を更新する。レディフラグは立ち上がり
     /// エッジでラッチされ、C ビットへの 1 書き込みでのみクリアされる
     /// (RM0008 §7.3.4)。クロック停止では再セットもクリアも起きない。
-    fn latch_ready_edges(&mut self, old_cr: u32, old_bdcr: u32, old_csr: u32, ctx: &mut dyn Ctx) {
+    fn latch_ready_edges(&mut self, old_cr: u32, old_bdcr: u32, old_csr: u32) {
         let rising = |old: bool, new: bool| old != new && new;
         if rising(old_cr & (1 << 0) != 0, self.hsi_on()) {
             self.state.cir_flags |= 1 << 2; // HSIRDYF
@@ -408,25 +417,81 @@ impl RccF1 {
         if rising(old_bdcr & 1 != 0, self.state.bdcr & 1 != 0) {
             self.state.cir_flags |= 1 << 1; // LSERDYF
         }
-        self.update_irq(ctx);
     }
 
-    /// 割り込み出力の再評価。
-    fn update_irq(&mut self, ctx: &mut dyn Ctx) {
-        let level = self.state.cir_flags & self.state.cir_enable != 0;
-        if level != self.state.irq_level {
-            self.state.irq_level = level;
-            let _ = ctx.set_signal(self.params.irq, level);
-        }
-    }
-
-    /// ENR の差分をゲートシグナルへ配送する。
-    fn deliver_gates(&mut self, ctx: &mut dyn Ctx, table: &[(u32, SignalId)], old: u32, new: u32) {
+    /// Queue every output transition whose last delivery did not succeed.
+    /// Continue after individual failures so one full-queue edge cannot starve
+    /// unrelated IRQ or clock-gate outputs.
+    fn deliver_gates(
+        ctx: &mut dyn Ctx,
+        table: &[(u32, SignalId)],
+        desired: u32,
+        emitted: &mut u32,
+    ) -> Option<ContextError> {
+        let mut first_error = None;
         for (bit, signal) in table {
             let mask = 1u32 << bit;
-            if old & mask != new & mask {
-                let _ = ctx.set_signal(*signal, new & mask != 0);
+            let high = desired & mask != 0;
+            let was_high = *emitted & mask != 0;
+            if high == was_high {
+                continue;
             }
+            match set_optional_signal(ctx, *signal, high) {
+                Ok(()) => {
+                    if high {
+                        *emitted |= mask;
+                    } else {
+                        *emitted &= !mask;
+                    }
+                }
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
+            }
+        }
+        first_error
+    }
+
+    /// Re-evaluate IRQ and every clock gate. This runs on every MMIO write,
+    /// not just writes that change ENR, so a previous queue-capacity failure
+    /// can be retried by a later access.
+    fn sync_outputs(&mut self, ctx: &mut dyn Ctx) -> Result<(), ContextError> {
+        let mut first_error = None;
+        let irq = self.state.cir_flags & self.state.cir_enable != 0;
+        if irq != self.state.irq_level {
+            match set_optional_signal(ctx, self.params.irq, irq) {
+                Ok(()) => self.state.irq_level = irq,
+                Err(error) => first_error = Some(error),
+            }
+        }
+
+        if let Some(error) = Self::deliver_gates(
+            ctx,
+            &AHBENR_GATES,
+            self.state.ahbenr,
+            &mut self.emitted_ahbenr,
+        ) {
+            first_error.get_or_insert(error);
+        }
+        if let Some(error) = Self::deliver_gates(
+            ctx,
+            &APB1ENR_GATES,
+            self.state.apb1enr,
+            &mut self.emitted_apb1enr,
+        ) {
+            first_error.get_or_insert(error);
+        }
+        if let Some(error) = Self::deliver_gates(
+            ctx,
+            &APB2ENR_GATES,
+            self.state.apb2enr,
+            &mut self.emitted_apb2enr,
+        ) {
+            first_error.get_or_insert(error);
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 
@@ -447,7 +512,7 @@ impl RccF1 {
         }
     }
 
-    fn write_word(&mut self, ctx: &mut dyn Ctx, offset: u64, value: u32) {
+    fn write_word(&mut self, offset: u64, value: u32) {
         match offset {
             0x00 => {
                 // 書き込み可能: HSITRIM[7:3] / HSEON / HSEBYP / CSSON / PLLON。
@@ -459,7 +524,7 @@ impl RccF1 {
                 self.state.cr_writable =
                     (self.state.cr_writable & !WRITABLE) | (value & WRITABLE) | 1;
                 self.update_sws();
-                self.latch_ready_edges(old, self.state.bdcr, self.state.csr, ctx);
+                self.latch_ready_edges(old, self.state.bdcr, self.state.csr);
             }
             0x04 => {
                 // SW/HPRE/PPRE/ADCPRE/PLL 系/USBPRE/MCO を保持。SW への反映は
@@ -473,34 +538,27 @@ impl RccF1 {
                 // イネーブルを立てる force ビット、[23:16] はフラグのクリア。
                 self.state.cir_enable = ((value >> 8) & 0xFF) | ((value >> 24) & 0xFF);
                 self.state.cir_flags &= !((value >> 16) & 0xFF);
-                self.update_irq(ctx);
             }
             0x0C => self.state.apb2rstr = value,
             0x10 => self.state.apb1rstr = value,
             0x14 => {
-                let old = self.state.ahbenr;
                 self.state.ahbenr = value;
-                self.deliver_gates(ctx, &AHBENR_GATES, old, value);
             }
             0x18 => {
-                let old = self.state.apb2enr;
                 self.state.apb2enr = value;
-                self.deliver_gates(ctx, &APB2ENR_GATES, old, value);
             }
             0x1C => {
-                let old = self.state.apb1enr;
                 self.state.apb1enr = value;
-                self.deliver_gates(ctx, &APB1ENR_GATES, old, value);
             }
             0x20 => {
                 let old = self.state.bdcr;
                 self.state.bdcr = value & 0x0001_8367;
-                self.latch_ready_edges(self.state.cr_writable, old, self.state.csr, ctx);
+                self.latch_ready_edges(self.state.cr_writable, old, self.state.csr);
             }
             0x24 => {
                 let old = self.state.csr;
                 self.state.csr = value & 0xFC01_0003;
-                self.latch_ready_edges(self.state.cr_writable, self.state.bdcr, old, ctx);
+                self.latch_ready_edges(self.state.cr_writable, self.state.bdcr, old);
             }
             _ => {}
         }
@@ -541,7 +599,8 @@ impl MmioTarget for RccF1 {
         if value > u64::from(u32::MAX) {
             return Err(BusFault::InvalidSize);
         }
-        self.write_word(ctx, offset, value as u32);
+        self.write_word(offset, value as u32);
+        self.sync_outputs(ctx).map_err(|_| BusFault::Device)?;
         Ok(())
     }
 }

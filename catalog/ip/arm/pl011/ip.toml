@@ -13,6 +13,7 @@ verified = 'spec-tested'
 mmio = { role = 'target', size = 0x1000 }
 irq = { role = 'source', pins = ['combined'] }
 stream = { contract = 'stream/byte', role = 'endpoint', optional = true }
+clk = { contract = 'model/signal', role = 'sink', names = ['uartclk', 'pclk'] }
 
 [params]
 fifo_depth = { type = 'u8', default = 16 }

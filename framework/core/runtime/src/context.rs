@@ -41,6 +41,16 @@ impl Ctx for ModelContext<'_> {
         self.queue.cancel(self.owner, event)
     }
 
+    fn reschedule(
+        &mut self,
+        event: EventId,
+        at: VTime,
+        token: u64,
+    ) -> Result<EventId, ContextError> {
+        self.queue
+            .reschedule(self.owner, event, at, EventKind::Timer { token })
+    }
+
     fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError> {
         if !self.signals.contains(&signal.0) {
             return Err(ContextError::UnknownSignal);

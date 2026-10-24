@@ -48,6 +48,46 @@ impl<T: MmioTarget + EventTarget + 'static> MachineDevice for T {
     }
 }
 
+/// Keeps a device registered even if a model callback unwinds.
+///
+/// MMIO callbacks temporarily take a device out of the arena to make reentrant
+/// access structurally impossible. The lease restores it in `Drop`, including
+/// during unwinding, so an accidental panic cannot permanently leave a valid
+/// node in the arena's unavailable state.
+struct DeviceLease<'a> {
+    arena: &'a mut DeviceArena,
+    node: NodeId,
+    device: Option<Box<dyn MachineDevice>>,
+}
+
+impl<'a> DeviceLease<'a> {
+    fn new(
+        arena: &'a mut DeviceArena,
+        node: NodeId,
+        device: Box<dyn MachineDevice>,
+    ) -> Self {
+        Self {
+            arena,
+            node,
+            device: Some(device),
+        }
+    }
+
+    fn device_mut(&mut self) -> &mut dyn MachineDevice {
+        self.device
+            .as_deref_mut()
+            .expect("device lease owns its device until Drop")
+    }
+}
+
+impl Drop for DeviceLease<'_> {
+    fn drop(&mut self) {
+        if let Some(device) = self.device.take() {
+            self.arena.restore(self.node, device);
+        }
+    }
+}
+
 const MACHINE_SNAPSHOT_SCHEMA: u32 = 1;
 
 /// Exact runtime topology captured alongside its stable, non-cryptographic
@@ -333,6 +373,8 @@ pub enum MachineError {
         available: u64,
     },
     MissingSink(NodeId),
+    /// One output port can drive only one sink in the current wiring model.
+    DuplicateConnection { source: NodeId, signal: SignalId },
     NoTimerHandler(NodeId),
     UnmappedTarget(NodeId),
     EventBudgetExceeded,
@@ -409,6 +451,9 @@ impl Machine {
         node: NodeId,
         device: Box<dyn MachineDevice>,
     ) -> Result<(), MachineError> {
+        if self.sinks.contains_key(&node.0) || self.backing.is_registered(node) {
+            return Err(MachineError::DuplicateNode(node));
+        }
         self.arena.insert(node, device)
     }
 
@@ -424,6 +469,9 @@ impl Machine {
         T: MachineDevice + Snapshot + 'static,
         T::State: 'static,
     {
+        if self.sinks.contains_key(&node.0) || self.backing.is_registered(node) {
+            return Err(MachineError::DuplicateNode(node));
+        }
         self.arena.insert(node, Box::new(device))?;
         self.snapshot_devices
             .insert(node.0, DeviceSnapshotOps::for_type::<T>());
@@ -435,7 +483,10 @@ impl Machine {
         node: NodeId,
         sink: Box<dyn SignalSink>,
     ) -> Result<(), MachineError> {
-        if self.sinks.contains_key(&node.0) {
+        if self.sinks.contains_key(&node.0)
+            || self.arena.is_registered(node)
+            || self.backing.is_registered(node)
+        {
             return Err(MachineError::DuplicateNode(node));
         }
         self.sinks.insert(node.0, sink);
@@ -443,6 +494,11 @@ impl Machine {
     }
 
     pub fn add_backing(&mut self, node: NodeId, size: u64) -> Result<(), MachineError> {
+        // NodeId is the machine-wide identity across RAM/ROM, devices and
+        // signal sinks; reusing it across registries makes topology ambiguous.
+        if self.arena.is_registered(node) || self.sinks.contains_key(&node.0) {
+            return Err(MachineError::DuplicateNode(node));
+        }
         self.backing.add_block(node, size)
     }
 
@@ -463,6 +519,9 @@ impl Machine {
         // wiring mistake that must fail at construction time.
         if !self.arena.is_registered(sink) && !self.sinks.contains_key(&sink.0) {
             return Err(MachineError::MissingSink(sink));
+        }
+        if self.wiring.contains_key(&(source.0, signal.0)) {
+            return Err(MachineError::DuplicateConnection { source, signal });
         }
         self.outputs.entry(source.0).or_default().insert(signal.0);
         self.wiring.insert((source.0, signal.0), sink.0);
@@ -568,17 +627,14 @@ impl Machine {
         attr: &Attr,
     ) -> Result<u64, BusFault> {
         let node = resolved.target;
-        let Some(mut device) = self.arena.take(node) else {
+        let Some(device) = self.arena.take(node) else {
             return Err(self.absent_fault(node));
         };
-        let result = {
-            let empty = BTreeSet::new();
-            let outputs = self.outputs.get(&node.0).unwrap_or(&empty);
-            let mut ctx = ModelContext::new(&mut self.queue, node, outputs);
-            device.read(&mut ctx, resolved.offset, size, attr)
-        };
-        self.arena.restore(node, device);
-        result
+        let mut lease = DeviceLease::new(&mut self.arena, node, device);
+        let empty = BTreeSet::new();
+        let outputs = self.outputs.get(&node.0).unwrap_or(&empty);
+        let mut ctx = ModelContext::new(&mut self.queue, node, outputs);
+        lease.device_mut().read(&mut ctx, resolved.offset, size, attr)
     }
 
     fn dispatch_mmio_write(
@@ -589,17 +645,14 @@ impl Machine {
         attr: &Attr,
     ) -> Result<(), BusFault> {
         let node = resolved.target;
-        let Some(mut device) = self.arena.take(node) else {
+        let Some(device) = self.arena.take(node) else {
             return Err(self.absent_fault(node));
         };
-        let result = {
-            let empty = BTreeSet::new();
-            let outputs = self.outputs.get(&node.0).unwrap_or(&empty);
-            let mut ctx = ModelContext::new(&mut self.queue, node, outputs);
-            device.write(&mut ctx, resolved.offset, size, value, attr)
-        };
-        self.arena.restore(node, device);
-        result
+        let mut lease = DeviceLease::new(&mut self.arena, node, device);
+        let empty = BTreeSet::new();
+        let outputs = self.outputs.get(&node.0).unwrap_or(&empty);
+        let mut ctx = ModelContext::new(&mut self.queue, node, outputs);
+        lease.device_mut().write(&mut ctx, resolved.offset, size, value, attr)
     }
 
     fn absent_fault(&self, node: NodeId) -> BusFault {
@@ -626,12 +679,20 @@ impl Machine {
     pub fn run_until(&mut self, deadline: VTime, budget: usize) -> Result<usize, MachineError> {
         let mut delivered = 0;
         loop {
+            // Check the budget before popping. Popping first would silently
+            // discard the next due event on the exact iteration that detects
+            // exhaustion, making the machine impossible to resume faithfully.
+            if delivered >= budget
+                && self
+                    .queue
+                    .next_time()
+                    .is_some_and(|event_time| event_time <= deadline)
+            {
+                return Err(MachineError::EventBudgetExceeded);
+            }
             let Some(event) = self.queue.pop_due(deadline)? else {
                 return Ok(delivered);
             };
-            if delivered >= budget {
-                return Err(MachineError::EventBudgetExceeded);
-            }
             self.dispatch_event(event)?;
             delivered += 1;
         }
@@ -777,6 +838,10 @@ impl Machine {
                 .arena
                 .get_mut(NodeId(node))
                 .ok_or(SnapshotError::InvalidState)?;
+            // Include the current participant before invoking load: even if a
+            // model violates the atomic-on-error contract and mutates before
+            // returning Err, its pre-load state is part of the rollback.
+            applied.push(node);
             if let Err(error) = (ops.load)(device, state) {
                 if !rollback_device_states(
                     &mut self.arena,
@@ -788,7 +853,6 @@ impl Machine {
                 }
                 return Err(error);
             }
-            applied.push(node);
         }
 
         // These commits are infallible after the side-effect-free validation
@@ -900,6 +964,8 @@ fn check_alignment(address: Addr, size: AccessSize) -> Result<(), BusFault> {
 
 #[cfg(test)]
 mod tests {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
     use super::*;
@@ -913,6 +979,42 @@ mod tests {
     const RAM: NodeId = NodeId(2);
     const DEVICE: NodeId = NodeId(3);
     const SINK: NodeId = NodeId(4);
+
+    struct PanicOnceDevice {
+        should_panic: Arc<AtomicBool>,
+    }
+
+    impl MmioTarget for PanicOnceDevice {
+        fn read(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            _offset: u64,
+            _size: AccessSize,
+            _attr: &Attr,
+        ) -> Result<u64, BusFault> {
+            if self.should_panic.swap(false, Ordering::SeqCst) {
+                panic!("intentional test panic in MMIO callback");
+            }
+            Ok(0x5A)
+        }
+
+        fn write(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            _offset: u64,
+            _size: AccessSize,
+            _value: u64,
+            _attr: &Attr,
+        ) -> Result<(), BusFault> {
+            Ok(())
+        }
+    }
+
+    impl EventTarget for PanicOnceDevice {
+        fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
+            Ok(())
+        }
+    }
 
     #[derive(Default)]
     struct PacingDevice {
@@ -1048,6 +1150,98 @@ mod tests {
             self.ticks = state.ticks;
             Ok(())
         }
+    }
+
+    /// Test participant that deliberately mutates before rejecting one state,
+    /// exercising the aggregate rollback path against a misbehaving model.
+    struct MutatingLoadDevice {
+        value: u64,
+    }
+
+    impl MmioTarget for MutatingLoadDevice {
+        fn read(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            _offset: u64,
+            _size: AccessSize,
+            _attr: &Attr,
+        ) -> Result<u64, BusFault> {
+            Ok(self.value)
+        }
+
+        fn write(
+            &mut self,
+            _ctx: &mut dyn Ctx,
+            _offset: u64,
+            _size: AccessSize,
+            value: u64,
+            _attr: &Attr,
+        ) -> Result<(), BusFault> {
+            self.value = value;
+            Ok(())
+        }
+    }
+
+    impl EventTarget for MutatingLoadDevice {
+        fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
+            Ok(())
+        }
+    }
+
+    impl Snapshot for MutatingLoadDevice {
+        type State = u64;
+        const SCHEMA_VERSION: u32 = 1;
+
+        fn save(&self) -> Self::State {
+            self.value
+        }
+
+        fn validate(&self, version: u32, _state: &Self::State) -> Result<(), SnapshotError> {
+            if version != Self::SCHEMA_VERSION {
+                return Err(SnapshotError::VersionMismatch);
+            }
+            Ok(())
+        }
+
+        fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+            self.validate(version, state)?;
+            self.value = *state;
+            if *state == 42 {
+                return Err(SnapshotError::InvalidState);
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn snapshot_rollback_restores_the_device_that_rejected_load() {
+        let view = FlatView::build(&[leaf(
+            0x2000,
+            16,
+            DEVICE,
+            MemoryKind::Mmio,
+            Permissions::RW,
+        )])
+        .unwrap();
+        let mut machine = Machine::new(view, 8);
+        machine
+            .register_snapshot_device(DEVICE, MutatingLoadDevice { value: 42 })
+            .unwrap();
+        let checkpoint = machine.save_snapshot().unwrap();
+
+        machine
+            .bus_write(Addr(0x2000), AccessSize::Word, 7, &bus_attr(NodeId(9)))
+            .unwrap();
+        assert_eq!(
+            machine.load_snapshot(&checkpoint),
+            Err(SnapshotError::InvalidState)
+        );
+        // The failing participant mutated itself to 42 before returning Err;
+        // the aggregate must restore the pre-load value of 7 as well.
+        assert_eq!(
+            machine.bus_read(Addr(0x2000), AccessSize::Word, &bus_attr(NodeId(9))),
+            Ok(7)
+        );
     }
 
     fn snapshot_probe_machine(ram_size: u64) -> Machine {
@@ -1210,6 +1404,37 @@ mod tests {
         assert_eq!(
             machine.bus_write(Addr(0x2010), AccessSize::Word, 1, &attr),
             Err(BusFault::Device)
+        );
+    }
+
+    #[test]
+    fn panicking_mmio_callback_does_not_remove_the_device_from_the_arena() {
+        let view = FlatView::build(&[leaf(
+            0x2000,
+            0x1000,
+            DEVICE,
+            MemoryKind::Mmio,
+            Permissions::RW,
+        )])
+        .unwrap();
+        let should_panic = Arc::new(AtomicBool::new(true));
+        let mut machine = Machine::new(view, 8);
+        machine
+            .register_device(
+                DEVICE,
+                Box::new(PanicOnceDevice {
+                    should_panic: Arc::clone(&should_panic),
+                }),
+            )
+            .unwrap();
+
+        let first = catch_unwind(AssertUnwindSafe(|| {
+            machine.bus_read(Addr(0x2000), AccessSize::Word, &bus_attr(NodeId(9)))
+        }));
+        assert!(first.is_err());
+        assert_eq!(
+            machine.bus_read(Addr(0x2000), AccessSize::Word, &bus_attr(NodeId(9))),
+            Ok(0x5A)
         );
     }
 
@@ -1439,12 +1664,36 @@ mod tests {
             Err(MachineError::DuplicateNode(DEVICE))
         );
         assert_eq!(
+            machine.register_sink(DEVICE, Box::new(LevelProbe::default())),
+            Err(MachineError::DuplicateNode(DEVICE))
+        );
+        assert_eq!(
+            machine.register_device(SINK, Box::new(PacingDevice::default())),
+            Err(MachineError::DuplicateNode(SINK))
+        );
+        assert_eq!(
+            machine.connect(DEVICE, SignalId(1), NodeId(99)),
+            Err(MachineError::MissingSink(NodeId(99)))
+        );
+        assert_eq!(
+            machine.connect(DEVICE, SignalId(1), SINK),
+            Err(MachineError::DuplicateConnection { source: DEVICE, signal: SignalId(1) })
+        );
+        assert_eq!(
             machine.connect(NodeId(99), SignalId(1), SINK),
             Err(MachineError::UnknownNode(NodeId(99)))
         );
         assert_eq!(
             machine.connect(DEVICE, SignalId(2), NodeId(99)),
             Err(MachineError::MissingSink(NodeId(99)))
+        );
+        assert_eq!(
+            machine.add_backing(DEVICE, 0x100),
+            Err(MachineError::DuplicateNode(DEVICE))
+        );
+        assert_eq!(
+            machine.add_backing(SINK, 0x100),
+            Err(MachineError::DuplicateNode(SINK))
         );
         assert_eq!(
             machine.add_backing(NodeId(7), 0),
@@ -1518,6 +1767,10 @@ mod tests {
             machine.run_until(VTime(100), 16),
             Err(MachineError::EventBudgetExceeded)
         );
+        // The event scheduled by the 16th callback remains pending. The
+        // budget-exhaustion path must not pop-and-drop the 17th event.
+        assert_eq!(machine.pending_events(), 1);
+        assert_eq!(machine.now(), VTime::ZERO);
     }
 
     #[test]
