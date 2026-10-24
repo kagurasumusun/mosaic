@@ -33,6 +33,7 @@ use mosaic_assemble::{bind_flat_view_paged, MachineDriver};
 use mosaic_contract_cpu_engine::CpuEngine;
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_contract_signal::SignalSink;
+use mosaic_contract_stream::ByteStream;
 use mosaic_core_runtime::{FlatView, Machine, Region};
 use mosaic_core_types::{Addr, EventId, Mapping, MemoryKind, NodeId, Permissions, SignalId, VTime};
 use mosaic_engine_unicorn::UnicornCortexM3;
@@ -405,7 +406,7 @@ mod tests {
         // Before the APB2 gates open, both ports read as zero and ignore
         // writes (unclocked peripheral on the APB bridge).
         assert_eq!(rd(&mut machine, GPIOA_BASE + 0x04), 0);
-        assert_eq!(rd(&mut machine, USART1_BASE + 0x00), 0);
+        assert_eq!(rd(&mut machine, USART1_BASE), 0);
         wr(&mut machine, USART1_BASE + 0x0C, 0x2008);
         assert_eq!(rd(&mut machine, USART1_BASE + 0x0C), 0);
 
@@ -415,11 +416,11 @@ mod tests {
         assert_eq!(rd(&mut machine, RCC_BASE + 0x18), 0x4004);
         // Now the ports answer with their reset values.
         assert_eq!(rd(&mut machine, GPIOA_BASE + 0x04), 0x4444_4444);
-        assert_eq!(rd(&mut machine, USART1_BASE + 0x00), 0x00C0);
+        assert_eq!(rd(&mut machine, USART1_BASE), 0x00C0);
 
         // GPIOA: PA5 as push-pull output, then BSRR set. The pin signal
         // reaches the harness probe after the drain.
-        wr(&mut machine, GPIOA_BASE + 0x00, 0x4443_4444);
+        wr(&mut machine, GPIOA_BASE, 0x4443_4444);
         wr(&mut machine, GPIOA_BASE + 0x10, 1 << PROBE_PIN);
         drain(&mut machine);
         assert_eq!(rd(&mut machine, GPIOA_BASE + 0x0C), 1 << PROBE_PIN);

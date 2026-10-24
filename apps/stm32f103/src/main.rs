@@ -34,7 +34,7 @@ fn main() -> std::process::ExitCode {
         }
     };
     let status = check(&first);
-    if status.is_failure() {
+    if status == std::process::ExitCode::FAILURE {
         return status;
     }
     // Determinism: a second run must reproduce the first report exactly.

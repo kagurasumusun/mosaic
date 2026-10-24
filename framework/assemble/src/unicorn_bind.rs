@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
 use mosaic_core_runtime::{FlatView, Machine};
 use mosaic_core_types::{Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions};
-use mosaic_engine_unicorn::{SharedRam, UnicornArm, PAGE_SIZE};
+use mosaic_engine_unicorn::{SharedRam, UnicornArm, UnicornCortexM3, PAGE_SIZE};
 
 #[cfg(feature = "unicorn-riscv")]
 use mosaic_engine_unicorn::UnicornRiscV32;
@@ -82,6 +82,28 @@ impl EngineMap for UnicornArm {
         ram: Arc<SharedRam>,
     ) -> Result<(), EngineError> {
         UnicornArm::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+impl EngineMap for UnicornCortexM3 {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        // Fully qualified inherent method: the trait method of the same name
+        // would otherwise recurse.
+        UnicornCortexM3::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornCortexM3::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornCortexM3::map_shared_memory(self, base, size, permissions, ram)
     }
 }
 
