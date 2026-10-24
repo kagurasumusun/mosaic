@@ -69,10 +69,7 @@ pub fn read_u64_be(bytes: &[u8]) -> Result<u64, PrimError> {
 }
 
 /// u16 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
-pub fn write_u16_le(
-    buf: &mut [u8],
-    value: u16,
-) -> Result<(), PrimError> {
+pub fn write_u16_le(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
     if buf.len() < 2 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -83,10 +80,7 @@ pub fn write_u16_le(
 }
 
 /// u16 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 2 バイト以上）。
-pub fn write_u16_be(
-    buf: &mut [u8],
-    value: u16,
-) -> Result<(), PrimError> {
+pub fn write_u16_be(buf: &mut [u8], value: u16) -> Result<(), PrimError> {
     if buf.len() < 2 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -97,10 +91,7 @@ pub fn write_u16_be(
 }
 
 /// u32 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
-pub fn write_u32_le(
-    buf: &mut [u8],
-    value: u32,
-) -> Result<(), PrimError> {
+pub fn write_u32_le(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
     if buf.len() < 4 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -113,10 +104,7 @@ pub fn write_u32_le(
 }
 
 /// u32 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 4 バイト以上）。
-pub fn write_u32_be(
-    buf: &mut [u8],
-    value: u32,
-) -> Result<(), PrimError> {
+pub fn write_u32_be(buf: &mut [u8], value: u32) -> Result<(), PrimError> {
     if buf.len() < 4 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -129,10 +117,7 @@ pub fn write_u32_be(
 }
 
 /// u64 をリトルエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
-pub fn write_u64_le(
-    buf: &mut [u8],
-    value: u64,
-) -> Result<(), PrimError> {
+pub fn write_u64_le(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
     if buf.len() < 8 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -149,10 +134,7 @@ pub fn write_u64_le(
 }
 
 /// u64 をビッグエンディアンで `buf` の先頭に書き込む（`buf` は 8 バイト以上）。
-pub fn write_u64_be(
-    buf: &mut [u8],
-    value: u64,
-) -> Result<(), PrimError> {
+pub fn write_u64_be(buf: &mut [u8], value: u64) -> Result<(), PrimError> {
     if buf.len() < 8 {
         return Err(PrimError::BufferTooSmall);
     }
@@ -176,7 +158,11 @@ pub fn field(value: u64, start: u8, len: u8) -> Result<u64, PrimError> {
     if width == 0 || shift + width > 64 {
         return Err(PrimError::FieldRange);
     }
-    let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+    let mask = if width == 64 {
+        u64::MAX
+    } else {
+        (1u64 << width) - 1
+    };
     Ok((value >> shift) & mask)
 }
 

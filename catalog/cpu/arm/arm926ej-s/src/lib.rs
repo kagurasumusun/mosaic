@@ -237,14 +237,8 @@ mod tests {
         let mut core = Arm926ejS::new(params());
         let mut ctx = CtxStub;
         let attr = attr();
-        core.write(
-            &mut ctx,
-            reg::CONTROL,
-            AccessSize::Word,
-            0xFFFF_FFFF,
-            &attr,
-        )
-        .unwrap();
+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0xFFFF_FFFF, &attr)
+            .unwrap();
         assert_eq!(
             core.read(&mut ctx, reg::CONTROL, AccessSize::Word, &attr),
             Ok(control::ENABLE as u64)
@@ -278,15 +272,12 @@ mod tests {
         let mut core = Arm926ejS::new(params());
         let mut ctx = CtxStub;
         let attr = attr();
-        core.write(
-            &mut ctx,
-            reg::CONTROL,
-            AccessSize::Word,
-            0x1234_5678,
-            &attr,
-        )
-        .unwrap();
-        assert_eq!(core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr), Ok(0x78));
+        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
+            .unwrap();
+        assert_eq!(
+            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
+            Ok(0x78)
+        );
         assert_eq!(
             core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
             Ok(0x5678)
@@ -321,7 +312,10 @@ mod tests {
         );
         let mut raz = Arm926ejS::new(params());
         assert_eq!(raz.read(&mut ctx, 0x1000, AccessSize::Word, &attr), Ok(0));
-        assert_eq!(raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr), Ok(()));
+        assert_eq!(
+            raz.write(&mut ctx, 0x1000, AccessSize::Word, 1, &attr),
+            Ok(())
+        );
     }
 
     #[test]

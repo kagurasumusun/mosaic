@@ -105,9 +105,12 @@ fn firmware() -> Vec<u8> {
         0xEA00_0000, // B    send (patched below)
         0xEAFF_FFFE, // spin: B .
     ];
-    // Branch offsets are relative to the instruction after the branch.
-    words[5] |= u32::try_from(8_usize - 6).unwrap();
-    words[7] |= u32::try_from((3_i32 - 8) & 0x00FF_FFFF).unwrap();
+    // A32 branch offsets are PC-relative and count from the branch's word
+    // index plus two (the prefetched PC): target_index = branch_index + 2 +
+    // offset. send is word 3, the BEQ is word 5, the B is word 7 and spin is
+    // word 8. Verified by disassembling the assembled words (capstone).
+    words[5] |= u32::try_from(8_i32 - (5 + 2)).unwrap();
+    words[7] |= ((3_i32 - (7 + 2)) & 0x00FF_FFFF) as u32;
 
     let mut bytes = Vec::with_capacity(words.len() * 4 + 8);
     for word in words {
