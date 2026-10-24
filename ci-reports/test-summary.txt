@@ -1,12 +1,5 @@
-67:test firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths ... FAILED
+68:test firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths ... FAILED
 70:failures:
 74:thread 'firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths' panicked at apps/sensorbus/tests/sensorbus.rs:13:5:
 97:failures:
 100:test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
-106:test stm32f103::tests::firmware_vector_table_and_entry ... FAILED
-107:test stm32f103::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq ... FAILED
-109:failures:
-113:thread 'stm32f103::tests::firmware_vector_table_and_entry' panicked at apps/stm32f103/src/stm32f103.rs:457:9:
-137:thread 'stm32f103::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq' panicked at apps/stm32f103/src/stm32f103.rs:427:9:
-160:failures:
-164:test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
