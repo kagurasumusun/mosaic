@@ -131,6 +131,10 @@ pub fn bind_flat_view(
 /// into the shared buffer and the buffer is mapped into the engine, so all
 /// cores binding the same [`SharedRegion`] observe one memory. The copy runs
 /// while no core has executed yet and is idempotent per core.
+///
+/// The copy happens only when the buffer is still empty, so a later core's
+/// binding never overwrites what an earlier core already stored into the
+/// shared page.
 pub fn bind_flat_view_shared(
     engine: &mut dyn EngineMap,
     view: &FlatView,
@@ -161,7 +165,11 @@ pub fn bind_flat_view_shared(
                         if mapping.size > region.ram.len() as u64 {
                             return Err(BindError::SharedTooSmall(mapping.base));
                         }
-                        region.ram.write(0, &bytes)?;
+                        // Initialise the shared buffer once: a later core must
+                        // not overwrite what an earlier core already wrote.
+                        if region.ram.mark_initialized() {
+                            region.ram.write(0, &bytes)?;
+                        }
                         engine.map_shared_memory(
                             mapping.base,
                             mapping.size,
@@ -365,7 +373,9 @@ mod tests {
         // source of truth and satisfies verify() for both viewpoints.
         machine.add_backing(DEVICE, 0x1000).unwrap();
         machine.add_view(CORE1, view.clone()).unwrap();
-        machine.loader_write(DEVICE, 4, &[0xEE]).unwrap();
+        // The shared leaf starts at the node's offset 0, so the loader image
+        // is copied from the node's first bytes into the host buffer.
+        machine.loader_write(DEVICE, 0, &[0xEE, 0x11]).unwrap();
         machine.verify().unwrap();
         let machine = Arc::new(Mutex::new(machine));
 
@@ -374,7 +384,7 @@ mod tests {
             node: DEVICE,
             ram: Arc::clone(&ram),
         }];
-        // Loader image is synced into the host buffer before any core runs.
+        // Before binding, the host buffer is untouched.
         let mut bytes = [0u8; 8];
         ram.read(0, &mut bytes).unwrap();
         assert_eq!(bytes, [0; 8]);
@@ -384,7 +394,8 @@ mod tests {
         bind_flat_view_shared(&mut first, &view, Arc::clone(&machine), CPU, &shared).unwrap();
         bind_flat_view_shared(&mut second, &view, Arc::clone(&machine), CORE1, &shared).unwrap();
         ram.read(0, &mut bytes).unwrap();
-        assert_eq!(bytes[4], 0xEE, "loader image must reach the shared buffer");
+        assert_eq!(bytes[0], 0xEE, "loader image must reach the shared buffer");
+        assert_eq!(bytes[1], 0x11);
 
         // Guest store through the first core is instantly visible to the
         // second core and to host-side readers (design §12.3 rule 1).
@@ -401,6 +412,41 @@ mod tests {
         assert_eq!(bytes[0], 0xAB);
         second.read_memory(Addr(0x10000), &mut bytes).unwrap();
         assert_eq!(bytes[0], 0xAB);
+    }
+
+    #[test]
+    fn a_later_core_does_not_overwrite_the_shared_page() {
+        // The shared buffer carries the loader image once; a second binding
+        // must not copy the (possibly stale) loader content over guest
+        // writes that already happened.
+        let view = FlatView::build(&[leaf(
+            0x10000,
+            0x1000,
+            DEVICE,
+            MemoryKind::Ram,
+            Permissions::RW,
+        )])
+        .unwrap();
+        let mut machine = Machine::new(view.clone(), 8);
+        machine.add_backing(DEVICE, 0x1000).unwrap();
+        machine.loader_write(DEVICE, 0, &[0xAA]).unwrap();
+        machine.verify().unwrap();
+        let machine = Arc::new(Mutex::new(machine));
+
+        let ram = SharedRam::new(0x1000).unwrap();
+        let shared = [SharedRegion {
+            node: DEVICE,
+            ram: Arc::clone(&ram),
+        }];
+        let mut first = UnicornArm::new().unwrap();
+        bind_flat_view_shared(&mut first, &view, Arc::clone(&machine), CPU, &shared).unwrap();
+        // A guest write into the shared page before the second core binds.
+        ram.write(0, &[0x55]).unwrap();
+        let mut second = UnicornArm::new().unwrap();
+        bind_flat_view_shared(&mut second, &view, Arc::clone(&machine), CPU, &shared).unwrap();
+        let mut bytes = [0u8; 1];
+        ram.read(0, &mut bytes).unwrap();
+        assert_eq!(bytes[0], 0x55, "the loader copy must not run twice");
     }
 
     #[test]

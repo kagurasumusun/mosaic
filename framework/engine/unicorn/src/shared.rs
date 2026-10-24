@@ -24,6 +24,9 @@ use crate::{EngineData, EngineError};
 /// guest access during `emu_start` never touches the host mutex).
 pub struct SharedRam {
     bytes: Mutex<Vec<u8>>,
+    /// Set once the loader image has been copied in. Later cores binding the
+    /// same buffer must not overwrite guest writes (design §12.3 rule 1).
+    initialized: std::sync::atomic::AtomicBool,
 }
 
 impl SharedRam {
@@ -37,12 +40,25 @@ impl SharedRam {
         }
         Ok(Arc::new(Self {
             bytes: Mutex::new(vec![0u8; size]),
+            initialized: std::sync::atomic::AtomicBool::new(false),
         }))
     }
 
     /// Buffer size in bytes.
     pub fn len(&self) -> usize {
         self.lock().len()
+    }
+
+    /// Whether the loader image has already been copied into the buffer.
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Mark the buffer as carrying the loader image. Returns false when
+    /// another core already initialized it, so the caller can skip the copy.
+    pub fn mark_initialized(&self) -> bool {
+        !self.initialized.swap(true, std::sync::atomic::Ordering::AcqRel)
     }
 
     pub fn is_empty(&self) -> bool {

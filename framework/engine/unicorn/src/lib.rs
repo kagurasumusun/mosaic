@@ -278,17 +278,12 @@ impl Common {
                 Ok(mapped as i32)
             }
             #[cfg(feature = "arch-riscv")]
-            Backend::RiscV32 => {
-                if reg.0 < 32 {
-                    // reg.0 < 32 keeps this index in bounds; guest or caller
-                    // input never panics.
-                    Ok(RISCV_GENERAL[reg.0 as usize] as i32)
-                } else if reg.0 == 32 {
-                    Ok(RegisterRISCV::PC as i32)
-                } else {
-                    Err(EngineError::InvalidRegister)
-                }
-            }
+            Backend::RiscV32 => match reg.0 {
+                // The arm covers X0..X31; the index is in bounds by the arm.
+                0..=31 => Ok(RISCV_GENERAL[reg.0 as usize] as i32),
+                32 => Ok(RegisterRISCV::PC as i32),
+                _ => Err(EngineError::InvalidRegister),
+            },
         }
     }
 

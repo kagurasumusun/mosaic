@@ -23,8 +23,9 @@ fn heterogeneous_configuration_reaches_the_golden_outcome() {
         assert_eq!(edges[index], *expected, "core {index} edge history");
     }
     assert_eq!(report.rounds, ROUNDS);
-    // No timers exist in the scenario; every event drain must stay empty.
-    assert_eq!(report.events, 0);
+    // The MHU raises and lowers four bank lines, each an event through the
+    // runtime queue (8 deliveries in total). No timers exist in the scenario.
+    assert_eq!(report.events, 8);
 }
 
 #[test]
