@@ -2,8 +2,8 @@
 
 Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤と P1 のイベント・アドレス・CPU 実行基盤**を構築しています。
-**SoC・ボードを組み立てたファームウェア起動はまだできません。**
+[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、**P0 の骨格・検査基盤、P1 のイベント・アドレス・CPU 実行基盤（ARM926EJ-S + Versatile-PB の垂直スライス）、P2 のバスとピン基盤（I2C / SPI / GPIO）**を構築済みです。
+`bringup` と `sensorbus` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
 
 ## 開発を始める
 
@@ -30,14 +30,15 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 ## 構造
 
 - `framework/`: 共通語彙、契約、ランタイム、実行エンジン、記述・組立の境界。
-- `catalog/`: 種別 → 出自で配置するモデルと宣言。現在、モデルは未登録です。
+- `catalog/`: 種別 → 出自で配置するモデルと宣言。ARM IP（pl011 / sp804 / pl022 / pl061 / dw-apb-i2c）、
+  Bosch / TI の部品、SoC・ボード宣言を登録済みです。
 - `apps/`: 実行アプリケーション。
 - `xtask/`: Cargo の依存宣言に基づく層・命名の検査。
 - `docs/adr/`: 初日の設計判断と未決事項。
 
 ### 実装済み
 
-- 16 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
+- 40 クレートの Cargo workspace、層メタデータ、unsafe 禁止。
 - `lint-layers`: framework の逆依存、L3 間依存、catalog 横依存、glue の依存を検査。
 - `lint-names`: 禁止語、kebab-case、クレート名、正規の出自を検査。
 - `check` / `doctor`、fast CI（fmt、構成 lint、Clippy、単体テスト）。
@@ -52,6 +53,20 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - L5 `mosaic-assemble`（`unicorn` feature）: FlatView から engine ページと MMIO region を導出する
   `bind_flat_view`、命令量子とイベント配送を交互に行う `MachineDriver`。
 - 同時刻順序・取り消し・境界・不正な復元・再実行一致のテストと、期待出力を比較する実行例。
+- P1 垂直スライス: catalog IP `pl011` / `sp804`、`arm926ej-s` SoC と `versatile-pb` ボードの宣言、
+  Unicorn 上で A32 ファームウェアを起動して UART 出力を検証する `mosaic-apps-bringup`。
+- P2 バスとピン: interconnect `i2c-bus`（GpioNet 上のビット単位デコーダと bit-bang 経路）、
+  IP `dw-apb-i2c` / `pl022` / `pl061`、部品 `bme280`（I2C・SPI 二束ね）と `tca9548a` マルチプレクサ、
+  `SpiBus` と CS 配線。
+- P2 終了条件の証明: `mosaic-apps-sensorbus` が 461 語の手書き ARM ファームウェアで同一の BME280 を
+  「I2C コントローラ経由」「GPIO ピン操作の bit-bang 経由」「SPI 経由」の 3 経路から読み、
+  bit-bang が書き込んだ `ctrl_meas=0x25` をコントローラ経路が同じ部品から読み返すことを
+  CI の golden test（`ci-reports/sensorbus.log`）で検証します。
+
+```sh
+cargo run --locked --package mosaic-apps-bringup --features unicorn
+cargo run --locked --package mosaic-apps-sensorbus --features unicorn
+```
 
 CPU やファームウェアを使わないイベント実行例:
 
@@ -73,12 +88,12 @@ CPU エンジンとの連携や実ファームウェアの起動はまだ含み�
 
 ### 次の実装
 
-engine の MMIO hook と runtime の AddressView は L5 で結合済みで、ゲストの STR/LDR が
-FlatView 経由で device callback に届きます。次は最初の MCU・ボードを決め、catalog 上の
-UART とタイマ IP、SoC / ボード宣言をイベント・アドレス・engine 基盤へ縦につなぎ、
-実ファームウェアが期待 UART 出力を出す machine テストまで通します。残る技術項は
-命令数と VTime を結ぶ clock tree、IRQ line 契約、真の DMI（host pointer）と共有 RAM です。
-現在の Unicorn memory は instance ごとの private page であり、全機械の共有メモリではありません。
+P2 の終了条件（同一センサ部品のコントローラ経由・bit-bang 経由の双方動作）は CI 上で
+証明済みです。次は P3（マルチコア・ヘテロジニアス）へ進みます: コアごとのビューと
+量子スケジューラ、2 コア SMP の起動、ヘテロジニアス AMP 向けの mailbox / IPC 契約、
+決定論的なヘテロ起動が目標です。残る技術項は命令数と VTime を結ぶ clock tree、
+IRQ line 契約、真の DMI（host pointer）と共有 RAM です。現在の Unicorn memory は
+instance ごとの private page であり、全機械の共有メモリではありません。
 
 詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 
