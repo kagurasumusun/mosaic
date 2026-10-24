@@ -149,8 +149,8 @@ impl Calibration {
         let var2 = var1 * var1 * i64::from(self.dig_p6)
             + ((var1 * i64::from(self.dig_p5)) << 17)
             + (i64::from(self.dig_p4) << 35);
-        let var1 = ((var1 * var1 * i64::from(self.dig_p3)) >> 8)
-            + ((var1 * i64::from(self.dig_p2)) << 12);
+        let var1 =
+            ((var1 * var1 * i64::from(self.dig_p3)) >> 8) + ((var1 * i64::from(self.dig_p2)) << 12);
         let var1 = ((1i64 << 47) + var1) * i64::from(self.dig_p1) >> 33;
         if var1 == 0 {
             return 0;
@@ -256,16 +256,8 @@ impl Bme280Core {
 
         bank[usize::from(reg::CHIP_ID)] = CHIP_ID_BME280;
         // status / ctrl_hum / ctrl_meas / config / reset は POR = 0x00。
-        Self::encode_20bit(
-            &mut bank,
-            reg::PRESS_MSB,
-            scene.adc_p & 0x000F_FFFF,
-        );
-        Self::encode_20bit(
-            &mut bank,
-            reg::TEMP_MSB,
-            scene.adc_t & 0x000F_FFFF,
-        );
+        Self::encode_20bit(&mut bank, reg::PRESS_MSB, scene.adc_p & 0x000F_FFFF);
+        Self::encode_20bit(&mut bank, reg::TEMP_MSB, scene.adc_t & 0x000F_FFFF);
         bank[usize::from(reg::HUM_MSB)] = (scene.adc_h >> 8) as u8;
         bank[usize::from(reg::HUM_MSB) + 1] = (scene.adc_h & 0xFF) as u8;
         Self { bank }
@@ -315,10 +307,8 @@ impl Bme280Core {
             read_u16_le(&self.bank[tp + index * 2..tp + index * 2 + 2]).unwrap_or(0)
         };
         let h_base = usize::from(reg::CALIB_H_START);
-        let h4 = (u16::from(self.bank[h_base + 3]) << 4)
-            | u16::from(self.bank[h_base + 4] & 0x0F);
-        let h5 = (u16::from(self.bank[h_base + 5]) << 4)
-            | u16::from(self.bank[h_base + 4] >> 4);
+        let h4 = (u16::from(self.bank[h_base + 3]) << 4) | u16::from(self.bank[h_base + 4] & 0x0F);
+        let h5 = (u16::from(self.bank[h_base + 5]) << 4) | u16::from(self.bank[h_base + 4] >> 4);
         Calibration {
             dig_t1: word(0),
             dig_t2: word(1) as i16,

@@ -29,7 +29,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use mosaic_contract_gpio::{GpioPort, PinConfig, PinDirection, PinLevel, Pull};
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
@@ -145,11 +145,7 @@ impl Pl061 {
 
     /// ピンにポートを接続する。接続時点のレベルをエッジ検出の基準に
     /// 採用する（リセット直後のスパurious エッジを防ぐ）。
-    pub fn attach_pin(
-        &mut self,
-        pin: u8,
-        port: Box<dyn GpioPort>,
-    ) -> Result<(), Pl061Error> {
+    pub fn attach_pin(&mut self, pin: u8, port: Box<dyn GpioPort>) -> Result<(), Pl061Error> {
         if usize::from(pin) >= PINS {
             return Err(Pl061Error::PinOutOfRange);
         }
@@ -445,11 +441,7 @@ mod tests {
         fn now(&self) -> VTime {
             VTime::ZERO
         }
-        fn schedule(
-            &mut self,
-            _at: VTime,
-            _token: u64,
-        ) -> Result<EventId, ContextError> {
+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
             Err(ContextError::ResourceExhausted)
         }
         fn cancel(&mut self, _event: EventId) -> bool {
@@ -489,15 +481,15 @@ mod tests {
         }
         Bench {
             device,
-            ctx: TestCtx { signals: Vec::new() },
+            ctx: TestCtx {
+                signals: Vec::new(),
+            },
             probes,
         }
     }
 
     fn read(device: &mut Pl061, ctx: &mut TestCtx, offset: u64) -> u32 {
-        device
-            .read(ctx, offset, AccessSize::Word, &attr())
-            .unwrap() as u32
+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
     }
 
     fn write(device: &mut Pl061, ctx: &mut TestCtx, offset: u64, value: u32) {
@@ -678,19 +670,17 @@ mod tests {
         assert_eq!(read(&mut bench.device, &mut bench.ctx, 0x500), 0);
         write(&mut bench.device, &mut bench.ctx, 0x500, 1);
         assert_eq!(
-            bench.device.write(
-                &mut bench.ctx,
-                reg::DIR,
-                AccessSize::DoubleWord,
-                0,
-                &attr()
-            ),
+            bench
+                .device
+                .write(&mut bench.ctx, reg::DIR, AccessSize::DoubleWord, 0, &attr()),
             Err(BusFault::InvalidSize)
         );
         let mut params = Pl061Params::new(IRQ);
         params.unmapped = UnmappedPolicy::Fault;
         let mut strict = Pl061::new(params);
-        let mut ctx = TestCtx { signals: Vec::new() };
+        let mut ctx = TestCtx {
+            signals: Vec::new(),
+        };
         assert_eq!(
             strict.read(&mut ctx, 0x500, AccessSize::Word, &attr()),
             Err(BusFault::Device)

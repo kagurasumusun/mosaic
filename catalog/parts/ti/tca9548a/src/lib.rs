@@ -63,11 +63,7 @@ impl Tca9548a {
     }
 
     /// チャネルに部品を接続する。再アタッチは前の部品を置き換える。
-    pub fn attach(
-        &mut self,
-        channel: u8,
-        target: Box<dyn I2cTarget>,
-    ) -> Result<(), Tca9548aError> {
+    pub fn attach(&mut self, channel: u8, target: Box<dyn I2cTarget>) -> Result<(), Tca9548aError> {
         if channel >= CHANNELS {
             return Err(Tca9548aError::ChannelOutOfRange);
         }
@@ -102,14 +98,10 @@ impl Tca9548a {
 impl I2cTarget for Tca9548a {
     fn matches(&self, addr: &I2cAddr) -> bool {
         *addr == self.address
-            || self
-                .downstream
-                .iter()
-                .enumerate()
-                .any(|(channel, target)| {
-                    self.control & (1 << channel as u8) != 0
-                        && target.as_ref().is_some_and(|t| t.matches(addr))
-                })
+            || self.downstream.iter().enumerate().any(|(channel, target)| {
+                self.control & (1 << channel as u8) != 0
+                    && target.as_ref().is_some_and(|t| t.matches(addr))
+            })
     }
 
     fn target_write(
@@ -266,9 +258,7 @@ mod tests {
     fn downstream_parts_are_invisible_until_enabled() {
         let mut device = mux();
         let mut ctx = CtxStub;
-        device
-            .attach(3, Box::new(PointerPart::new(0x77)))
-            .unwrap();
+        device.attach(3, Box::new(PointerPart::new(0x77))).unwrap();
         let part_addr = I2cAddr::Seven(0x77);
         assert!(!device.matches(&part_addr));
         assert_eq!(
@@ -279,9 +269,7 @@ mod tests {
             .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 3])
             .unwrap();
         assert!(device.matches(&part_addr));
-        device
-            .target_write(&mut ctx, &part_addr, &[0x20])
-            .unwrap();
+        device.target_write(&mut ctx, &part_addr, &[0x20]).unwrap();
         let mut buf = [0u8; 1];
         device.target_read(&mut ctx, &part_addr, &mut buf).unwrap();
         assert_eq!(buf[0], 0x20);
@@ -291,12 +279,8 @@ mod tests {
     fn disabled_channels_do_not_leak_forwarded_frames() {
         let mut device = mux();
         let mut ctx = CtxStub;
-        device
-            .attach(0, Box::new(PointerPart::new(0x50)))
-            .unwrap();
-        device
-            .attach(1, Box::new(PointerPart::new(0x50)))
-            .unwrap();
+        device.attach(0, Box::new(PointerPart::new(0x50))).unwrap();
+        device.attach(1, Box::new(PointerPart::new(0x50))).unwrap();
         // 同じアドレスの部品が 2 チャネルにあっても、イネーブルされた
         // 側のインスタンスだけがフレームを受け取る。
         device

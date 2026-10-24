@@ -28,7 +28,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_contract_spi::{SpiCs, SpiError, SpiInitiator, SpiMode};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
@@ -250,13 +250,15 @@ impl Pl022 {
             self.push_rx(byte & mask);
             return;
         }
+        // 借用分割のため、モードと CS を initiator の可変借用より先に確定。
+        let mode = self.mode();
+        let cs = self.params.cs;
         let Some(initiator) = self.initiator.as_mut() else {
             return;
         };
-        let mode = self.mode();
         let mosi = [byte & mask];
         let mut miso = [0u8; 1];
-        match initiator.exchange(ctx, self.params.cs, mode, &mosi, &mut miso) {
+        match initiator.exchange(ctx, cs, mode, &mosi, &mut miso) {
             Ok(()) => self.push_rx(miso[0] & mask),
             // 交換失敗はゲスト可視のエラーステータスとして RORRIS を使う
             //（機能モデルの簡略化。実機の MODEFAULT 等は modeled しない）。
@@ -403,12 +405,7 @@ mod tests {
     }
 
     impl SpiInitiator for FakeHandle {
-        fn select(
-            &mut self,
-            _ctx: &mut dyn Ctx,
-            cs: SpiCs,
-            assert: bool,
-        ) -> Result<(), SpiError> {
+        fn select(&mut self, _ctx: &mut dyn Ctx, cs: SpiCs, assert: bool) -> Result<(), SpiError> {
             lock(&self.0).selects.push((cs, assert));
             Ok(())
         }
@@ -443,11 +440,7 @@ mod tests {
         fn now(&self) -> VTime {
             VTime::ZERO
         }
-        fn schedule(
-            &mut self,
-            _at: VTime,
-            _token: u64,
-        ) -> Result<EventId, ContextError> {
+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
             Err(ContextError::ResourceExhausted)
         }
         fn cancel(&mut self, _event: EventId) -> bool {
@@ -477,13 +470,17 @@ mod tests {
             Pl022Params::new(IRQ),
             Some(Box::new(FakeHandle(Arc::clone(&fake)))),
         );
-        (device, fake, TestCtx { signals: Vec::new() })
+        (
+            device,
+            fake,
+            TestCtx {
+                signals: Vec::new(),
+            },
+        )
     }
 
     fn read(device: &mut Pl022, ctx: &mut TestCtx, offset: u64) -> u32 {
-        device
-            .read(ctx, offset, AccessSize::Word, &attr())
-            .unwrap() as u32
+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
     }
 
     fn write(device: &mut Pl022, ctx: &mut TestCtx, offset: u64, value: u32) {
@@ -520,7 +517,10 @@ mod tests {
         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
         assert_eq!(lock(&fake).selects.len(), 1);
         write(&mut device, &mut ctx, reg::CR1, 0);
-        assert_eq!(lock(&fake).selects, vec![(SpiCs(0), true), (SpiCs(0), false)]);
+        assert_eq!(
+            lock(&fake).selects,
+            vec![(SpiCs(0), true), (SpiCs(0), false)]
+        );
     }
 
     #[test]
@@ -542,7 +542,12 @@ mod tests {
     #[test]
     fn cr0_cpol_cpha_reach_the_exchange_mode() {
         let (mut device, fake, mut ctx) = device();
-        write(&mut device, &mut ctx, reg::CR0, 0x07 | cr0::CPOL | cr0::CPHA);
+        write(
+            &mut device,
+            &mut ctx,
+            reg::CR0,
+            0x07 | cr0::CPOL | cr0::CPHA,
+        );
         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
         write(&mut device, &mut ctx, reg::DR, 0x01);
         assert_eq!(
@@ -645,7 +650,9 @@ mod tests {
     #[test]
     fn unwired_port_tolerates_dr_writes() {
         let mut device = Pl022::new(Pl022Params::new(IRQ), None);
-        let mut ctx = TestCtx { signals: Vec::new() };
+        let mut ctx = TestCtx {
+            signals: Vec::new(),
+        };
         write(&mut device, &mut ctx, reg::CR1, cr1::SSE);
         write(&mut device, &mut ctx, reg::DR, 0x55);
         assert_eq!(read(&mut device, &mut ctx, reg::SR) & sr::RNE, 0);

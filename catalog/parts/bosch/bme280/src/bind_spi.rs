@@ -177,7 +177,9 @@ mod tests {
         // 再アサート後の 1 バイト目はコマンドとして解釈される（ダミー 0x00）。
         device.selected(&mut ctx, true);
         assert_eq!(
-            device.exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80).unwrap(),
+            device
+                .exchange_byte(&mut ctx, mode, reg::CHIP_ID | 0x80)
+                .unwrap(),
             0x00
         );
         assert_eq!(

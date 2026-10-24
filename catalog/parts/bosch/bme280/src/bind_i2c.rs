@@ -139,11 +139,9 @@ mod tests {
         assert_eq!(&buf[3..6], &[0x7E, 0xED, 0x00]);
         assert_eq!(&buf[6..8], &[0x80, 0x00]);
         assert_eq!(buf[8], 0x00); // 0xFF は未使用領域
-        // ポインタは 0xFF の次で 0x00 へ折り返す。
+                                  // ポインタは 0xFF の次で 0x00 へ折り返す。
         let mut wrapped = [0u8; 1];
-        device
-            .target_read(&mut ctx, &addr, &mut wrapped)
-            .unwrap();
+        device.target_read(&mut ctx, &addr, &mut wrapped).unwrap();
         assert_eq!(wrapped[0], 0x00);
     }
 
@@ -152,7 +150,9 @@ mod tests {
         let mut device = part();
         let mut ctx = CtxStub;
         let addr = I2cAddr::Seven(0x76);
-        device.target_write(&mut ctx, &addr, &[reg::CHIP_ID]).unwrap();
+        device
+            .target_write(&mut ctx, &addr, &[reg::CHIP_ID])
+            .unwrap();
         let mut id = [0u8; 1];
         device.target_read(&mut ctx, &addr, &mut id).unwrap();
         assert_eq!(id[0], CHIP_ID_BME280);
@@ -168,11 +168,15 @@ mod tests {
         device
             .target_write(&mut ctx, &addr, &[reg::CTRL_HUM, 0x01, 0x00, 0x25, 0xA0])
             .unwrap();
-        device.target_write(&mut ctx, &addr, &[reg::CTRL_MEAS]).unwrap();
+        device
+            .target_write(&mut ctx, &addr, &[reg::CTRL_MEAS])
+            .unwrap();
         let mut buf = [0u8; 2];
         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
         assert_eq!(buf, [0x25, 0xA0]); // ctrl_meas, config
-        device.target_write(&mut ctx, &addr, &[reg::CTRL_HUM]).unwrap();
+        device
+            .target_write(&mut ctx, &addr, &[reg::CTRL_HUM])
+            .unwrap();
         device.target_read(&mut ctx, &addr, &mut buf).unwrap();
         assert_eq!(buf, [0x01, 0x00]); // ctrl_hum、status は常に 0
     }

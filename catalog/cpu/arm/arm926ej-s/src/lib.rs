@@ -274,7 +274,10 @@ mod tests {
         let attr = attr();
         // CONTROL keeps only the ENABLE bit, so width masking is observed on
         // the full-width read-only MIDR (0x4105_9261).
-        assert_eq!(core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr), Ok(0x61));
+        assert_eq!(
+            core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr),
+            Ok(0x61)
+        );
         assert_eq!(
             core.read(&mut ctx, reg::MIDR, AccessSize::HalfWord, &attr),
             Ok(0x9261)

@@ -33,7 +33,7 @@ use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 use mosaic_contract_i2c::{I2cAddr, I2cError, I2cInitiator, I2cSpeed};
 use mosaic_contract_mmio::MmioTarget;
-use mosaic_contract_model::{Ctx, ContextError, EventTarget};
+use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
 
 /// DW_apb_i2c レジスタオフセット（APB_DATA_WIDTH = 32 の構成）。
@@ -116,8 +116,15 @@ mod intr {
 
     /// IC_CLR_INTR が落とすビット群（TX_ABRT/TX_EMPTY/RX_FULL は専用
     /// クリアかレベル条件なので含まれない）。
-    pub const CLR_INTR_MASK: u32 =
-        RX_UNDER | RX_OVER | TX_OVER | RD_REQ | RX_DONE | ACTIVITY | STOP_DET | START_DET | GEN_CALL;
+    pub const CLR_INTR_MASK: u32 = RX_UNDER
+        | RX_OVER
+        | TX_OVER
+        | RD_REQ
+        | RX_DONE
+        | ACTIVITY
+        | STOP_DET
+        | START_DET
+        | GEN_CALL;
 }
 
 /// IC_TX_ABRT_SOURCE の主要ビット。
@@ -739,7 +746,8 @@ mod tests {
             input: &mut [u8],
         ) -> Result<(), I2cError> {
             let mut fake = lock(&self.0);
-            fake.ops.push(Op::WriteRead(addr, out.to_vec(), input.len()));
+            fake.ops
+                .push(Op::WriteRead(addr, out.to_vec(), input.len()));
             if let Some(error) = fake.fail {
                 return Err(error);
             }
@@ -761,11 +769,7 @@ mod tests {
         fn now(&self) -> VTime {
             VTime::ZERO
         }
-        fn schedule(
-            &mut self,
-            _at: VTime,
-            _token: u64,
-        ) -> Result<EventId, ContextError> {
+        fn schedule(&mut self, _at: VTime, _token: u64) -> Result<EventId, ContextError> {
             Err(ContextError::ResourceExhausted)
         }
         fn cancel(&mut self, _event: EventId) -> bool {
@@ -795,13 +799,17 @@ mod tests {
             DwApbI2cParams::new(IRQ),
             Box::new(FakeHandle(Arc::clone(&fake))),
         );
-        (device, fake, TestCtx { signals: Vec::new() })
+        (
+            device,
+            fake,
+            TestCtx {
+                signals: Vec::new(),
+            },
+        )
     }
 
     fn read(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64) -> u32 {
-        device
-            .read(ctx, offset, AccessSize::Word, &attr())
-            .unwrap() as u32
+        device.read(ctx, offset, AccessSize::Word, &attr()).unwrap() as u32
     }
 
     fn write(device: &mut DwApbI2c, ctx: &mut TestCtx, offset: u64, value: u32) {
@@ -831,7 +839,10 @@ mod tests {
     fn data_cmd_is_ignored_while_disabled() {
         let (mut device, fake, mut ctx) = device();
         write(&mut device, &mut ctx, reg::DATA_CMD, 0xD0 | data_cmd::STOP);
-        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
+        assert_eq!(
+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
+            0
+        );
         assert!(lock(&fake).ops.is_empty());
     }
 
@@ -843,7 +854,10 @@ mod tests {
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
         // STOP 前はキューに積まれるだけ。
         assert_eq!(lock(&fake).ops.len(), 0);
-        assert_ne!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
+        assert_ne!(
+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
+            0
+        );
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x01 | data_cmd::STOP);
         assert_eq!(
             lock(&fake).ops,
@@ -909,10 +923,7 @@ mod tests {
         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 2);
         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x00);
         assert_eq!(read(&mut device, &mut ctx, reg::DATA_CMD), 0x01);
-        assert_eq!(
-            read(&mut device, &mut ctx, reg::STATUS) & status::RFNE,
-            0
-        );
+        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::RFNE, 0);
     }
 
     #[test]
@@ -922,7 +933,12 @@ mod tests {
         write(&mut device, &mut ctx, reg::TAR, 0x76);
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
         write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ);
-        write(&mut device, &mut ctx, reg::DATA_CMD, data_cmd::CMD_READ | data_cmd::STOP);
+        write(
+            &mut device,
+            &mut ctx,
+            reg::DATA_CMD,
+            data_cmd::CMD_READ | data_cmd::STOP,
+        );
         assert_eq!(
             lock(&fake).ops,
             vec![
@@ -989,7 +1005,12 @@ mod tests {
         write(&mut device, &mut ctx, reg::ENABLE, 1);
         write(&mut device, &mut ctx, reg::TAR, 0x76);
         // MASTER_MODE ビットを落とした CON へ書き換える。
-        write(&mut device, &mut ctx, reg::CON, con::SPEED_FAST | con::RESTART_EN);
+        write(
+            &mut device,
+            &mut ctx,
+            reg::CON,
+            con::SPEED_FAST | con::RESTART_EN,
+        );
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20 | data_cmd::STOP);
         assert!(lock(&fake).ops.is_empty());
         assert_eq!(read(&mut device, &mut ctx, reg::TX_ABRT_SOURCE), 1 << 11);
@@ -1047,7 +1068,10 @@ mod tests {
         write(&mut device, &mut ctx, reg::DATA_CMD, 0x20);
         write(&mut device, &mut ctx, reg::ENABLE, 0);
         assert!(lock(&fake).ops.is_empty());
-        assert_eq!(read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY, 0);
+        assert_eq!(
+            read(&mut device, &mut ctx, reg::STATUS) & status::ACTIVITY,
+            0
+        );
         assert_eq!(read(&mut device, &mut ctx, reg::RXFLR), 0);
         assert_eq!(
             read(&mut device, &mut ctx, reg::RAW_INTR_STAT) & intr::TX_EMPTY,
@@ -1110,19 +1134,15 @@ mod tests {
         assert_eq!(read(&mut device, &mut ctx, 0x0A0), 0);
         write(&mut device, &mut ctx, 0x0A0, 1);
         assert_eq!(
-            device.write(
-                &mut ctx,
-                reg::DATA_CMD,
-                AccessSize::DoubleWord,
-                0,
-                &attr()
-            ),
+            device.write(&mut ctx, reg::DATA_CMD, AccessSize::DoubleWord, 0, &attr()),
             Err(BusFault::InvalidSize)
         );
         let mut strict = DwApbI2cParams::new(IRQ);
         strict.unmapped = UnmappedPolicy::Fault;
-        let mut strict_device =
-            DwApbI2c::new(strict, Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))));
+        let mut strict_device = DwApbI2c::new(
+            strict,
+            Box::new(FakeHandle(Arc::new(Mutex::new(Fake::default())))),
+        );
         assert_eq!(
             strict_device.read(&mut ctx, 0x0A0, AccessSize::Word, &attr()),
             Err(BusFault::Device)
