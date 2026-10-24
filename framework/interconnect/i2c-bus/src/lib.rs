@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use mosaic_contract_gpio::{GpioSink, PinLevel};
+use mosaic_contract_gpio::{GpioError, GpioPort, GpioSink, PinConfig, PinLevel};
 use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cInitiator, I2cPhase, I2cSpeed, I2cTarget};
 use mosaic_contract_model::Ctx;
 
@@ -178,6 +178,44 @@ impl GpioSink for BitBangLine {
     }
 }
 
+/// Master-side [`GpioPort`] adapter for one bit-bang line.
+///
+/// Drives and configuration are delegated to the inner port (normally a
+/// net-backed open-drain port built by the composition root). `current_level`
+/// additionally models the target end of the wire: while the decoder is in a
+/// slot the addressed target drives (write-frame ACK or read-frame data bits),
+/// the SDA port reports the decoder's simulated target level instead of the
+/// master's own net level, exactly like a real open-drain bus. This lets a
+/// register-level GPIO model bit-bang I2C through the contract vocabulary
+/// alone, without ever seeing the decoder type (ADR 0008 port injection).
+pub struct BitBangPort {
+    decoder: Arc<Mutex<I2cBitBang>>,
+    line: Line,
+    inner: Box<dyn GpioPort>,
+}
+
+impl GpioPort for BitBangPort {
+    fn drive(&mut self, ctx: &mut dyn Ctx, level: PinLevel) -> Result<(), GpioError> {
+        // The net notification reaches the BitBangLine sinks, so the decoder
+        // observes this edge without being called here a second time.
+        self.inner.drive(ctx, level)
+    }
+
+    fn configure(&mut self, config: PinConfig) -> Result<(), GpioError> {
+        self.inner.configure(config)
+    }
+
+    fn current_level(&self) -> PinLevel {
+        if self.line == Line::Sda {
+            let decoder = lock(&self.decoder);
+            if decoder.target_driven_slot() {
+                return decoder.sda_readback();
+            }
+        }
+        self.inner.current_level()
+    }
+}
+
 /// Pin-level I2C decoder. It reconstructs frames from SDA/SCL edges and runs
 /// them through the same [`I2cBus`] as transaction-level initiators.
 pub struct I2cBitBang {
@@ -188,6 +226,9 @@ pub struct I2cBitBang {
     addr: Option<I2cAddr>,
     read: bool,
     target_present: bool,
+    /// Set while the address byte's ACK slot is on the wire: the slot is
+    /// target-driven and completes on the ninth SCL pulse.
+    addr_ack_pending: bool,
     bit: u8,
     shift: u8,
     write_bytes: Vec<u8>,
@@ -208,6 +249,7 @@ impl I2cBitBang {
             addr: None,
             read: false,
             target_present: false,
+            addr_ack_pending: false,
             bit: 0,
             shift: 0,
             write_bytes: Vec::new(),
@@ -231,8 +273,42 @@ impl I2cBitBang {
         (sda, scl)
     }
 
+    /// Master-side SDA port over an inner (normally net-backed) port. While the
+    /// addressed target drives SDA, `current_level` reports the decoder's
+    /// simulated target level; otherwise the inner net level shows through.
+    pub fn sda_port(decoder: Arc<Mutex<Self>>, inner: Box<dyn GpioPort>) -> BitBangPort {
+        BitBangPort {
+            decoder,
+            line: Line::Sda,
+            inner,
+        }
+    }
+
+    /// Master-side SCL port; SCL is master-driven only, so reads pass through.
+    pub fn scl_port(decoder: Arc<Mutex<Self>>, inner: Box<dyn GpioPort>) -> BitBangPort {
+        BitBangPort {
+            decoder,
+            line: Line::Scl,
+            inner,
+        }
+    }
+
     pub fn phases(&self) -> &[I2cPhase] {
         &self.phases
+    }
+
+    /// True while the addressed target drives SDA: any ACK slot of the
+    /// address byte, the ACK slot of a write-frame data byte, or any data bit
+    /// of a read frame. During a read frame's data-byte ACK slots the master
+    /// drives, so this is false there.
+    pub fn target_driven_slot(&self) -> bool {
+        if !self.in_frame || self.addr.is_none() {
+            return false;
+        }
+        if self.bit == 8 {
+            return self.addr_ack_pending || !self.read;
+        }
+        self.read
     }
 
     /// Simulated SDA level for masters that sample read data and ACK slots.
@@ -290,6 +366,7 @@ impl I2cBitBang {
         self.addr = None;
         self.read = false;
         self.target_present = false;
+        self.addr_ack_pending = false;
         self.bit = 0;
         self.shift = 0;
         self.write_bytes.clear();
@@ -309,6 +386,12 @@ impl I2cBitBang {
                 self.shift <<= 1;
             }
             self.bit += 1;
+            if self.bit == 8 && self.addr.is_none() {
+                // Decode the address as soon as its eight bits are clocked in
+                // so the master can sample the target-driven ACK during the
+                // ninth pulse (target_driven_slot / sda_readback).
+                self.decode_address();
+            }
             return;
         }
         self.complete_slot(ctx);
@@ -316,24 +399,33 @@ impl I2cBitBang {
         self.shift = 0;
     }
 
-    /// Handle the ninth SCL pulse: address decode, ACK and read prefetch.
+    /// Resolve the clocked-in address byte and record its ACK phase.
+    fn decode_address(&mut self) {
+        match I2cAddr::seven(self.shift >> 1) {
+            Ok(addr) => {
+                self.read = self.shift & 1 == 1;
+                self.target_present = lock(&self.bus).target_index(&addr).is_some();
+                self.addr = Some(addr);
+                self.addr_ack_pending = true;
+                self.phases.push(I2cPhase::Address {
+                    addr,
+                    read: self.read,
+                });
+                self.phases.push(I2cPhase::Acknowledge(self.ack_level()));
+            }
+            Err(error) => {
+                self.last_result = Err(error);
+            }
+        }
+    }
+
+    /// Handle the ninth SCL pulse: address ACK completion, data ACK and the
+    /// read prefetch for the next target byte.
     fn complete_slot(&mut self, ctx: &mut dyn Ctx) {
-        if self.addr.is_none() {
-            let addr = match I2cAddr::seven(self.shift >> 1) {
-                Ok(addr) => addr,
-                Err(error) => {
-                    self.last_result = Err(error);
-                    return;
-                }
-            };
-            self.read = self.shift & 1 == 1;
-            self.target_present = lock(&self.bus).target_index(&addr).is_some();
-            self.addr = Some(addr);
-            self.phases.push(I2cPhase::Address {
-                addr,
-                read: self.read,
-            });
-            self.phases.push(I2cPhase::Acknowledge(self.ack_level()));
+        if self.addr_ack_pending {
+            // The Address/Acknowledge phases were recorded at decode time; a
+            // read transfer prefetches its first target byte on this pulse.
+            self.addr_ack_pending = false;
             if self.read && self.target_present {
                 self.prefetch_read(ctx);
             }
@@ -502,35 +594,105 @@ mod tests {
         }
     }
 
-    /// Drive one byte (MSB first) plus an ACK slot using raw pin edges.
-    fn pulse_byte(sda: &mut BitBangLine, scl: &mut BitBangLine, ctx: &mut dyn Ctx, byte: u8) {
+    /// Mock net-backed pin: records the resolved level like a pull-up net and
+    /// forwards every drive to the decoder sink, mirroring how a real net
+    /// entity notifies attached [`BitBangLine`]s on level changes.
+    struct TestLinePort {
+        line: BitBangLine,
+        level: PinLevel,
+    }
+
+    impl TestLinePort {
+        fn new(line: BitBangLine) -> Self {
+            Self {
+                line,
+                level: PinLevel::High,
+            }
+        }
+    }
+
+    impl GpioPort for TestLinePort {
+        fn drive(&mut self, ctx: &mut dyn Ctx, level: PinLevel) -> Result<(), GpioError> {
+            self.level = level;
+            self.line.level_changed(ctx, level);
+            Ok(())
+        }
+        fn configure(&mut self, _config: PinConfig) -> Result<(), GpioError> {
+            Ok(())
+        }
+        fn current_level(&self) -> PinLevel {
+            self.level
+        }
+    }
+
+    /// Build the SDA/SCL master ports over one decoder, as a composition root
+    /// would: net-facing sinks feed the decoder, master ports wrap them.
+    fn master_ports(decoder: &Arc<Mutex<I2cBitBang>>) -> (BitBangPort, BitBangPort) {
+        let (sda_line, scl_line) = I2cBitBang::lines(Arc::clone(decoder));
+        let sda = I2cBitBang::sda_port(
+            Arc::clone(decoder),
+            Box::new(TestLinePort::new(sda_line)),
+        );
+        let scl = I2cBitBang::scl_port(
+            Arc::clone(decoder),
+            Box::new(TestLinePort::new(scl_line)),
+        );
+        (sda, scl)
+    }
+
+    /// START (or repeated START) from released lines; ends with SCL low so
+    /// data bits can be driven legally.
+    fn start(sda: &mut BitBangPort, scl: &mut BitBangPort, ctx: &mut dyn Ctx) {
+        sda.drive(ctx, PinLevel::High).unwrap();
+        scl.drive(ctx, PinLevel::High).unwrap();
+        sda.drive(ctx, PinLevel::Low).unwrap();
+        scl.drive(ctx, PinLevel::Low).unwrap();
+    }
+
+    /// STOP: SDA rises while SCL is high.
+    fn stop(sda: &mut BitBangPort, scl: &mut BitBangPort, ctx: &mut dyn Ctx) {
+        sda.drive(ctx, PinLevel::Low).unwrap();
+        scl.drive(ctx, PinLevel::High).unwrap();
+        sda.drive(ctx, PinLevel::High).unwrap();
+    }
+
+    /// Clock one byte out, MSB first, without the ninth (ACK) pulse.
+    fn pulse_byte(sda: &mut BitBangPort, scl: &mut BitBangPort, ctx: &mut dyn Ctx, byte: u8) {
         for bit in (0..8).rev() {
             let level = if byte & (1 << bit) != 0 {
                 PinLevel::High
             } else {
                 PinLevel::Low
             };
-            sda.level_changed(ctx, level);
-            scl.level_changed(ctx, PinLevel::Low);
-            scl.level_changed(ctx, PinLevel::High);
+            sda.drive(ctx, level).unwrap();
+            scl.drive(ctx, PinLevel::High).unwrap();
+            scl.drive(ctx, PinLevel::Low).unwrap();
         }
-        // ACK slot: master releases SDA, one more clock pulse.
-        sda.level_changed(ctx, PinLevel::High);
-        scl.level_changed(ctx, PinLevel::Low);
-        scl.level_changed(ctx, PinLevel::High);
     }
 
-    fn start(sda: &mut BitBangLine, scl: &mut BitBangLine, ctx: &mut dyn Ctx) {
-        sda.level_changed(ctx, PinLevel::High);
-        scl.level_changed(ctx, PinLevel::High);
-        sda.level_changed(ctx, PinLevel::Low);
+    /// Run the ninth pulse. `drive` is the master's SDA level for the slot, or
+    /// `None` to release the line. Returns the level observed before the pulse.
+    fn ack_pulse(
+        sda: &mut BitBangPort,
+        scl: &mut BitBangPort,
+        ctx: &mut dyn Ctx,
+        drive: Option<PinLevel>,
+    ) -> PinLevel {
+        sda.drive(ctx, drive.unwrap_or(PinLevel::High))
+            .unwrap();
+        let observed = sda.current_level();
+        scl.drive(ctx, PinLevel::High).unwrap();
+        scl.drive(ctx, PinLevel::Low).unwrap();
+        observed
     }
 
-    fn stop(sda: &mut BitBangLine, scl: &mut BitBangLine, ctx: &mut dyn Ctx) {
-        sda.level_changed(ctx, PinLevel::Low);
-        scl.level_changed(ctx, PinLevel::Low);
-        scl.level_changed(ctx, PinLevel::High);
-        sda.level_changed(ctx, PinLevel::High);
+    /// Sample one target-driven read bit: release SDA, observe, then clock.
+    fn read_bit(sda: &mut BitBangPort, scl: &mut BitBangPort, ctx: &mut dyn Ctx) -> PinLevel {
+        sda.drive(ctx, PinLevel::High).unwrap();
+        let bit = sda.current_level();
+        scl.drive(ctx, PinLevel::High).unwrap();
+        scl.drive(ctx, PinLevel::Low).unwrap();
+        bit
     }
 
     #[test]
@@ -547,7 +709,8 @@ mod tests {
         let mut data = [0u8; 2];
         bus.read(&mut ctx, I2cAddr::seven(0x40).unwrap(), &mut data)
             .unwrap();
-        assert_eq!(data, [0x2E, 0x2F]);
+        // Pointer 0x0D selects the deterministic pattern 0x0D + 0x20, 0x0E + 0x20.
+        assert_eq!(data, [0x2D, 0x2E]);
         assert_eq!(
             bus.write(&mut ctx, I2cAddr::seven(0x41).unwrap(), &[1]),
             Err(I2cError::Nack)
@@ -567,53 +730,125 @@ mod tests {
             bus.shared()
         };
         let decoder = Arc::new(Mutex::new(I2cBitBang::new(Arc::clone(&bus))));
-        let (mut sda, mut scl) = I2cBitBang::lines(Arc::clone(&decoder));
+        let (mut sda, mut scl) = master_ports(&decoder);
         let mut ctx = DummyCtx;
 
         // START + address write 0x40 (0x80) + register pointer 0x0D + STOP.
         start(&mut sda, &mut scl, &mut ctx);
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x80);
+        // The address is decoded on the eighth pulse, so the target-driven ACK
+        // is observable during the ninth slot.
+        assert_eq!(
+            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+            PinLevel::Low
+        );
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x0D);
+        assert_eq!(
+            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+            PinLevel::Low
+        );
         stop(&mut sda, &mut scl, &mut ctx);
         assert!(lock(&decoder).last_result.is_ok());
 
-        // START + address read 0x40 (0x81), sample two bytes, NACK, STOP.
+        // START + address read 0x40 (0x81), two sampled bytes, NACK, STOP.
         start(&mut sda, &mut scl, &mut ctx);
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x81);
+        assert_eq!(
+            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+            PinLevel::Low
+        );
         let mut read = [0u8; 2];
-        for byte in read.iter_mut() {
+        for (index, byte) in read.iter_mut().enumerate() {
             for _ in 0..8 {
-                // Sample the target-driven bit while SCL is low, then clock.
-                scl.level_changed(&mut ctx, PinLevel::Low);
-                let bit = lock(&decoder).sda_readback();
-                scl.level_changed(&mut ctx, PinLevel::High);
                 *byte <<= 1;
-                if bit == PinLevel::High {
+                if read_bit(&mut sda, &mut scl, &mut ctx) == PinLevel::High {
                     *byte |= 1;
                 }
             }
-            // ACK (low) then clock pulse.
-            sda.level_changed(&mut ctx, PinLevel::Low);
-            scl.level_changed(&mut ctx, PinLevel::Low);
-            scl.level_changed(&mut ctx, PinLevel::High);
+            // The master drives the ACK slot of a read frame: low continues,
+            // high NACKs the final byte. The port shows the master's own level.
+            let final_byte = index + 1 == read.len();
+            let drive = if final_byte {
+                PinLevel::High
+            } else {
+                PinLevel::Low
+            };
+            assert_eq!(
+                ack_pulse(&mut sda, &mut scl, &mut ctx, Some(drive)),
+                drive
+            );
         }
-        sda.level_changed(&mut ctx, PinLevel::High);
         stop(&mut sda, &mut scl, &mut ctx);
-        assert_eq!(read, [0x2E, 0x2F]);
+        assert_eq!(read, [0x2D, 0x2E]);
         assert!(lock(&decoder).last_result.is_ok());
+    }
+
+    #[test]
+    fn both_paths_observe_and_mutate_one_target_state() {
+        let bus = I2cBus::new();
+        let bus = {
+            let mut bus = bus;
+            bus.add_target(Box::new(PointerTarget {
+                addr: I2cAddr::seven(0x40).unwrap(),
+                pointer: 0,
+                writes: Vec::new(),
+            }));
+            bus.shared()
+        };
+        let decoder = Arc::new(Mutex::new(I2cBitBang::new(Arc::clone(&bus))));
+        let (mut sda, mut scl) = master_ports(&decoder);
+        let mut ctx = DummyCtx;
+
+        // Bit-bang write moves the register pointer; the transaction-level
+        // read then sees exactly what the pin-level frame committed.
+        start(&mut sda, &mut scl, &mut ctx);
+        pulse_byte(&mut sda, &mut scl, &mut ctx, 0x80);
+        ack_pulse(&mut sda, &mut scl, &mut ctx, None);
+        pulse_byte(&mut sda, &mut scl, &mut ctx, 0x20);
+        ack_pulse(&mut sda, &mut scl, &mut ctx, None);
+        stop(&mut sda, &mut scl, &mut ctx);
+        assert!(lock(&decoder).last_result.is_ok());
+        let mut data = [0u8; 1];
+        lock(&bus)
+            .read(&mut ctx, I2cAddr::seven(0x40).unwrap(), &mut data)
+            .unwrap();
+        assert_eq!(data, [0x40]);
+
+        // And the other direction: a transaction-level write is visible to a
+        // bit-bang read of the same part.
+        lock(&bus)
+            .write(&mut ctx, I2cAddr::seven(0x40).unwrap(), &[0x10])
+            .unwrap();
+        start(&mut sda, &mut scl, &mut ctx);
+        pulse_byte(&mut sda, &mut scl, &mut ctx, 0x81);
+        ack_pulse(&mut sda, &mut scl, &mut ctx, None);
+        let mut byte = 0u8;
+        for _ in 0..8 {
+            byte <<= 1;
+            if read_bit(&mut sda, &mut scl, &mut ctx) == PinLevel::High {
+                byte |= 1;
+            }
+        }
+        ack_pulse(&mut sda, &mut scl, &mut ctx, Some(PinLevel::High));
+        stop(&mut sda, &mut scl, &mut ctx);
+        assert_eq!(byte, 0x30);
     }
 
     #[test]
     fn bit_bang_nacks_unknown_addresses() {
         let bus = I2cBus::new().shared();
-        let decoder = Arc::new(Mutex::new(I2cBitBang::new(bus)));
-        let (mut sda, mut scl) = I2cBitBang::lines(decoder);
+        let decoder = Arc::new(Mutex::new(I2cBitBang::new(Arc::clone(&bus))));
+        let (mut sda, mut scl) = master_ports(&decoder);
         let mut ctx = DummyCtx;
         start(&mut sda, &mut scl, &mut ctx);
         pulse_byte(&mut sda, &mut scl, &mut ctx, 0x82); // 0x41, absent
+        // With no target present the ACK slot stays released (NACK).
+        assert_eq!(
+            ack_pulse(&mut sda, &mut scl, &mut ctx, None),
+            PinLevel::High
+        );
         stop(&mut sda, &mut scl, &mut ctx);
-        // The missing target leaves a NACK in the reconstructed frame.
-        let decoder = lock(&sda.decoder);
+        let decoder = lock(&decoder);
         assert!(decoder.phases.contains(&I2cPhase::Acknowledge(Ack::Nack)));
     }
 }

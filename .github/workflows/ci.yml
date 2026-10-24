@@ -86,12 +86,14 @@ jobs:
           RUST_BACKTRACE: 1
         run: |
           set +e
-          cargo test --locked --workspace --all-features > ci-reports/test.log 2>&1
+          # --no-fail-fast: 1 つのクレートの失敗で他クレートのテストが
+          # 未実行のまま隠れるのを防ぐ（1 run で全体像を把握する）。
+          cargo test --locked --workspace --all-features --no-fail-fast > ci-reports/test.log 2>&1
           code=$?
           echo "test: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           # 失敗したテスト名と panic メッセージを先頭に抜き出しておく。
-          grep -n -E "^failures:$|panicked at|^test .* FAILED|^error(\[|:)" ci-reports/test.log \
-            | head -80 > ci-reports/test-summary.txt || true
+          grep -n -E "^failures:$|panicked at|^test .* FAILED|test result: FAILED|^error(\[|:)" ci-reports/test.log \
+            | head -120 > ci-reports/test-summary.txt || true
           exit 0
 
       - name: Runtime trace and snapshot replay smoke test
