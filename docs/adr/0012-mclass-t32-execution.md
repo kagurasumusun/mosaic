@@ -36,8 +36,11 @@ Unicorn 2.1.5（タグ 2.1.4 のソースで確認）の ARM 実装において�
 
 - アダプタに `Backend::ArmMClass` を追加し、`Mode::MCLASS |
   Mode::LITTLE_ENDIAN` で Cortex-M33 を選択する。
-- 構築直後に CPSR の T ビットを書く（読み出した CPSR に 0x20 を OR）。
-  M-profile リセットの T=0 を確実に上書きする唯一確実な公式経路。
+- 構築直後に R15 書込み経路で T ビットを立てる（PC に奇数の初期値を書く）。
+  `unicorn_arm.c` の R15 ケースは `env->thumb = v & 1` だけを適用し、
+  モードバンクに触らない。CPSR 書込みは使えない: リセットは M-profile
+  でも `uncached_cpsr = SVC` を残すため、フルマスクの `cpsr_write` が
+  不正なモード切替を起こしてfaultする（CI で観測）。
 - `run()` の begin は `pc | 1` を渡す。`emu_start` が begin を R15 経路で
   書き戻すたびに `env->thumb` が再 asserting され、整列済み PC 書込みが
   一時的に T を消しても構築時の状態が保たれる。

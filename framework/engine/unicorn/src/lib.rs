@@ -141,13 +141,13 @@ impl Common {
             // (unmapped at construction time), so the core wakes executing
             // A32 and faults on every T32 opcode. UC_MODE_THUMB cannot help:
             // unicorn 2.1.x sets uc->thumb there but never reads it back.
-            // The sanctioned path is a CPSR write - unicorn_arm.c routes it
-            // to cpsr_write with mask ~0, which applies the T bit to
-            // env->thumb and rebuilds the translation flags.
-            let cpsr = uc
-                .reg_read(RegisterARM::CPSR)
-                .map_err(|_| EngineError::Backend)?;
-            uc.reg_write(RegisterARM::CPSR as i32, cpsr | (1 << 5))
+            // A CPSR write is unusable here: reset leaves uncached_cpsr in
+            // SVC mode even on M-profile, and cpsr_write with the full mask
+            // then performs an invalid bank switch. The R15 write path is
+            // the one that only touches pc/regs[15]/thumb, so an odd dummy
+            // value asserts T32 without disturbing anything else; run()
+            // keeps it sticky through begin = pc | 1.
+            uc.reg_write(RegisterARM::PC as i32, 1)
                 .map_err(|_| EngineError::Backend)?;
         }
         Ok(Self {

@@ -69,8 +69,9 @@ engine は runtime の型を知りません。MMIO は次の経路で一意に�
 `UnicornCortexM3` は `UC_MODE_MCLASS`（CPU モデルは Cortex-M33）で構成した
 ARMv7-M 用アダプタです。Unicorn 2.1.x では `UC_MODE_THUMB` がデッドコード
 で、M-profile のリセットは未マップのベクタテーブルから T ビット 0 で起動
-するため、アダプタは構築直後に CPSR.T を書き、`run()` の begin に
-`pc | 1` を渡して T32 を維持します（ADR 0012）。
+するため、アダプタは構築直後に R15 経路（モードバンクに触らない唯一の
+経路）で T ビットを立て、`run()` の begin に `pc | 1` を渡して T32 を
+維持します（ADR 0012）。
 
 - PC 書込みは半語整列（偶数）。A32 側は 4 バイト整列を維持し、奇数値を
   `InvalidValue` で拒否します（黙って A32 実行するのを防ぐ）。
