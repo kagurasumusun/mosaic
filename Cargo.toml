@@ -30,6 +30,7 @@ members = [
     "framework/interconnect/uart-pair",
     "framework/interconnect/can-bus",
     "catalog/cpu/arm/arm926ej-s",
+    "catalog/cpu/arm/cortex-m3",
     "catalog/cpu/sifive/e31",
     "catalog/ip/arm/primecell-id",
     "catalog/ip/arm/pl011",

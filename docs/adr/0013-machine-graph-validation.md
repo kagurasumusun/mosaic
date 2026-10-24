@@ -19,8 +19,8 @@ SoC/board の TOML と実行アプリの手書き配線が並存していると�
   `MachineGraph` の node/edge/region 整合性も検査する。
 - `MachineGraph` は runtime `NodeId`、trait object、host handle を保持しない。
   これにより構成検証と runtime instantiation を独立にテストできる。
-- 現段階では registry 解決と `MachineGraph -> mosaic-assemble -> Machine` の自動構築は
-  未実装であり、既存アプリの手書き composition を自動的に置き換えたとはみなさない。
+- registry 解決と `MachineGraph -> Machine` の実体化は ADR 0016 が始める。
+  factory を持たないアプリの手書き composition は、その ADR が置き換えたとはみなさない。
 
 ## 受け入れ基準
 

@@ -72,6 +72,9 @@ impl EngineCaps {
 pub enum EngineArch {
     /// ARM A32 (ARMv4/v5 little-endian, ARM926EJ-S class cores).
     ArmA32Le,
+    /// ARM Thumb-2 / ARMv7-M little-endian (Cortex-M3 class cores).
+    /// The M-class engine configuration is ADR 0012; this variant only names it.
+    ArmV7mLe,
     /// RISC-V RV32 base integer ISA, little-endian.
     RiscV32Le,
 }

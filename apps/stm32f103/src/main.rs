@@ -15,9 +15,10 @@ fn check(report: &Stm32F103Report) -> std::process::ExitCode {
         eprintln!("golden mismatch: got {:?}", report.output);
         return std::process::ExitCode::FAILURE;
     }
-    // The GPIO pin signal must have reached the harness sink (ADR 0008
-    // wiring): PA5 rising exactly once is the composition-level proof.
-    if report.pin_edges != [true] {
+    // The GPIO pin signal must have reached the harness sink (ADR 0008).
+    // Output enable drives ODR low, then BSRR raises PA5.
+    // Output enable drives the current ODR (low) before BSRR raises PA5.
+    if report.pin_edges != [false, true] {
         eprintln!("pin edge mismatch: got {:?}", report.pin_edges);
         return std::process::ExitCode::FAILURE;
     }

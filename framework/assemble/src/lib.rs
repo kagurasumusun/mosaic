@@ -10,10 +10,15 @@
 mod bus;
 mod clockbind;
 mod irq;
+mod materialize;
 
 pub use bus::MachineBus;
 pub use clockbind::instruction_period;
 pub use irq::{EngineIrqSink, IrqMailbox, IrqMailboxState};
+pub use materialize::{
+    materialize, AssembledMachine, CpuLine, DeferredEdge, DeviceFactory, DeviceRegistry,
+    IncomingWire, InstantiateCtx, MaterializeError,
+};
 
 #[cfg(feature = "unicorn")]
 mod driver;

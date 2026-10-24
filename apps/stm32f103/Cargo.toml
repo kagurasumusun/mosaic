@@ -23,6 +23,7 @@ unicorn = [
 
 [dependencies]
 mosaic-assemble = { path = "../../framework/assemble" }
+mosaic-describe = { path = "../../framework/describe" }
 mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
 mosaic-contract-model = { path = "../../framework/contract/model" }
 mosaic-contract-signal = { path = "../../framework/contract/signal" }
@@ -36,3 +37,4 @@ mosaic-ip-st-gpio-f1 = { path = "../../catalog/ip/st/gpio-f1" }
 mosaic-ip-st-rcc-f1 = { path = "../../catalog/ip/st/rcc-f1" }
 mosaic-ip-st-usart-f1 = { path = "../../catalog/ip/st/usart-f1" }
 mosaic-isa-arm = { path = "../../framework/isa/arm" }
+toml = "0.8"

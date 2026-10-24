@@ -264,6 +264,7 @@ dependencies = [
  "mosaic-contract-stream",
  "mosaic-core-runtime",
  "mosaic-core-types",
+ "mosaic-describe",
  "mosaic-engine-unicorn",
  "mosaic-interconnect-uart-pair",
  "mosaic-ip-arm-scs",
@@ -271,6 +272,7 @@ dependencies = [
  "mosaic-ip-st-rcc-f1",
  "mosaic-ip-st-usart-f1",
  "mosaic-isa-arm",
+ "toml",
 ]
 
 [[package]]
@@ -422,6 +424,14 @@ dependencies = [
  "mosaic-contract-mmio",
  "mosaic-contract-model",
  "mosaic-core-types",
+ "mosaic-isa-arm",
+]
+
+[[package]]
+name = "mosaic-cpu-arm-cortex-m3"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-cpu-engine",
  "mosaic-isa-arm",
 ]
 

@@ -28,8 +28,10 @@ PC=0x1010、メモリ 0x2000=43 を確認します。期待出力は tests/unico
   runtime の `Machine` へ転送する。`MachineDriver` が命令量子とイベント配送を協調させる。
 - `apps/cli`: assemble の結合を使う harness。L3 相互依存は作らない。
 
-CPU catalog モデル、SoC、ボード、ファームウェアの起動は未実装です。
-A32 スモークの成功は ARM ISA 全体や実在 MCU への適合性を意味しません。
+CPU catalog は実行しない宣言である。Cortex-M3 は `cpu:arm/cortex-m3`（偽の MMIO 窓は持たない）。
+STM32F103 のメモリマップは `catalog/soc/st/stm32f103/soc.toml` で、`mosaic-assemble` の
+`materialize` が Registry 経由で Machine にする（ADR 0016）。例外ベクタの自動取り込みは
+未実装のままである。A32 スモークの成功は ARM ISA 全体への適合性を意味しない。
 
 ## MMIO の結合
 

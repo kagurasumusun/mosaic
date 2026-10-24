@@ -1,6 +1,6 @@
 [identity]
 id = 'ip:st/usart-f1'
-summary = 'STM32F1 USART (SR/DR/BRR/CR1/CR2/CR3/GTPR) functional register model'
+summary = 'STM32F1 USART (SR/DR/BRR/CR1/CR2/CR3/GTPR) with RDR, shift register and overrun'
 spec = ['ST RM0008']
 variants = ['STM32F103 medium density']
 

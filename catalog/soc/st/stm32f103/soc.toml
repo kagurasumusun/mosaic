@@ -1,0 +1,86 @@
+# STM32F103 medium-density class (CB), RM0008 memory map.
+# BOOT0=0 aliases the main flash at 0x00000000. This is a physical map of the
+# blocks this tree models, not a synthetic fixture and not a full 128 KB-device
+# peripheral list. Unmodeled APB/AHB blocks are absent on purpose.
+[soc]
+id = 'soc:st/stm32f103'
+summary = 'STM32F103 medium-density system map: Cortex-M3, flash alias, SRAM, RCC, GPIOA, USART1, SCS'
+
+[[cpu]]
+name = 'core0'
+use = 'cpu:arm/cortex-m3'
+view = 'sysbus'
+
+# RM0008 vector table: USART1 is IRQ 37. The NVIC lives in the SCS block.
+[[block]]
+name = 'scs'
+use = 'ip:arm/scs'
+at = { space = 'sysbus', base = 0xE000E000 }
+
+[[block]]
+name = 'rcc'
+use = 'ip:st/rcc-f1'
+at = { space = 'sysbus', base = 0x40021000 }
+
+[[block]]
+name = 'gpioa'
+use = 'ip:st/gpio-f1'
+at = { space = 'sysbus', base = 0x40010800 }
+
+[[block]]
+name = 'usart1'
+use = 'ip:st/usart-f1'
+at = { space = 'sysbus', base = 0x40013800 }
+irq = { pin = 'combined', to = ['scs.inputs:37'] }
+
+[[view]]
+name = 'sysbus'
+
+[[view.region]]
+name = 'flash-alias'
+target = 'flash'
+base = 0x00000000
+size = 0x00020000
+kind = 'rom'
+
+[[view.region]]
+name = 'flash'
+target = 'flash'
+base = 0x08000000
+size = 0x00020000
+kind = 'rom'
+
+[[view.region]]
+name = 'sram'
+target = 'sram'
+base = 0x20000000
+size = 0x00005000
+kind = 'ram'
+
+[[view.region]]
+name = 'gpioa-mmio'
+target = 'gpioa'
+base = 0x40010800
+size = 0x1C
+kind = 'mmio'
+
+[[view.region]]
+name = 'usart1-mmio'
+target = 'usart1'
+base = 0x40013800
+size = 0x1C
+kind = 'mmio'
+
+[[view.region]]
+name = 'rcc-mmio'
+target = 'rcc'
+base = 0x40021000
+size = 0x28
+kind = 'mmio'
+
+[[view.region]]
+name = 'scs-mmio'
+target = 'scs'
+base = 0xE000E000
+size = 0x1000
+kind = 'mmio'

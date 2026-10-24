@@ -1,0 +1,24 @@
+[identity]
+id = 'cpu:arm/cortex-m3'
+summary = 'ARM Cortex-M3 core declaration (ARMv7-M, Thumb-2)'
+spec = ['ARM DDI 0337', 'ARM DDI 0403E']
+variants = ['r1p1', 'r2p0', 'r2p1']
+
+[tags]
+function = ['cpu-core']
+fidelity = 'functional'
+verified = 'experimental'
+
+[engine]
+arch = 'armv7m-le'
+model = 'cortex-m3'
+
+[ports]
+# External exception input of the core itself. The NVIC, SysTick and SCB live
+# in ip:arm/scs; this model does not invent an MMIO window for CP15 or SCS.
+irq = { role = 'sink', pins = ['irq'] }
+reset = { role = 'sink' }
+
+# No tunable parameters. The table is required so a missing section cannot be
+# confused with a parser skip.
+[params]
