@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::*;
 use crate::endpoint::parse_endpoint;
@@ -36,16 +36,14 @@ fn valid_soc(regions: Vec<RegionDescriptor>) -> SocManifest {
     }
 }
 
-fn region(
-    name: &str,
-    base: u64,
-    size: u64,
-    kind: &str,
-    priority: Option<i32>,
-) -> RegionDescriptor {
+fn region(name: &str, base: u64, size: u64, kind: &str, priority: Option<i32>) -> RegionDescriptor {
     RegionDescriptor {
         name: name.into(),
-        target: if kind == "mmio" { "device".into() } else { name.into() },
+        target: if kind == "mmio" {
+            "device".into()
+        } else {
+            name.into()
+        },
         base,
         size,
         kind: match kind {
@@ -69,10 +67,18 @@ fn value_map(entries: &[(&str, ConfigValue)]) -> BTreeMap<String, ConfigValue> {
 fn rejects_malformed_catalog_ids_before_graph_construction() {
     let mut manifest = valid_soc(vec![region("ram", 0, 4096, "ram", None)]);
     manifest.cpu[0].use_id = "ip:arm/pl011".into();
-    assert!(manifest.validate().unwrap_err().message.contains("namespace"));
+    assert!(manifest
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("namespace"));
 
     manifest.cpu[0].use_id = "cpu:arm//core".into();
-    assert!(manifest.validate().unwrap_err().message.contains("invalid path suffix"));
+    assert!(manifest
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("invalid path suffix"));
 }
 
 #[test]
@@ -81,7 +87,11 @@ fn rejects_equal_priority_overlaps_but_allows_explicit_overlays() {
         region("ram", 0, 8192, "ram", None),
         region("device", 4096, 4096, "mmio", None),
     ]);
-    assert!(overlapping.validate().unwrap_err().message.contains("overlap"));
+    assert!(overlapping
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("overlap"));
 
     let overlaid = valid_soc(vec![
         region("ram", 0, 8192, "ram", None),
@@ -140,11 +150,19 @@ fn rejects_duplicate_cpu_block_names_and_unknown_view_references() {
         irq: Vec::new(),
         clk: BTreeMap::new(),
     });
-    assert!(manifest.validate().unwrap_err().message.contains("duplicate name"));
+    assert!(manifest
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("duplicate name"));
 
     let mut manifest = valid_soc(vec![region("ram", 0, 4096, "ram", None)]);
     manifest.cpu[0].view = "missing".into();
-    assert!(manifest.validate().unwrap_err().message.contains("unknown view"));
+    assert!(manifest
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("unknown view"));
 }
 
 #[test]
@@ -279,7 +297,11 @@ fn rejects_unknown_part_binding_kinds() {
             conn: value_map(&[("bus", ConfigValue::String("i2c0".into()))]),
         }],
     };
-    assert!(board.validate().unwrap_err().message.contains("unsupported binding kind"));
+    assert!(board
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("unsupported binding kind"));
 }
 
 #[test]
@@ -298,15 +320,27 @@ fn validates_bus_address_and_chip_select_uniqueness() {
         },
         conn: Vec::new(),
         part: vec![
-            part("sensor0", "i2c", value_map(&[
-                ("bus", ConfigValue::String("i2c0".into())),
-                ("addr", ConfigValue::Integer(0x48)),
-            ])),
-            part("sensor1", "i2c", value_map(&[
-                ("bus", ConfigValue::String("i2c0".into())),
-                ("addr", ConfigValue::Integer(0x48)),
-            ])),
+            part(
+                "sensor0",
+                "i2c",
+                value_map(&[
+                    ("bus", ConfigValue::String("i2c0".into())),
+                    ("addr", ConfigValue::Integer(0x48)),
+                ]),
+            ),
+            part(
+                "sensor1",
+                "i2c",
+                value_map(&[
+                    ("bus", ConfigValue::String("i2c0".into())),
+                    ("addr", ConfigValue::Integer(0x48)),
+                ]),
+            ),
         ],
     };
-    assert!(board.validate().unwrap_err().message.contains("duplicate I2C address"));
+    assert!(board
+        .validate()
+        .unwrap_err()
+        .message
+        .contains("duplicate I2C address"));
 }

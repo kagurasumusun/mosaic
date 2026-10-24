@@ -20,6 +20,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cTarget};
 use mosaic_contract_model::Ctx;
+use mosaic_core_types::{Fnv64, Snapshot, SnapshotError};
 
 /// チャネル数（SD0..SD7）。
 pub const CHANNELS: u8 = 8;
@@ -149,6 +150,45 @@ impl I2cTarget for Tca9548a {
             }
             None => Err(I2cError::Nack),
         }
+    }
+}
+
+/// Switch checkpoint. Downstream targets are host attachments.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Tca9548aCheckpoint {
+    pub schema: u32,
+    pub control: u8,
+}
+
+impl Snapshot for Tca9548a {
+    type State = Tca9548aCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Tca9548aCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            control: self.control,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.control = state.control;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.byte(state.control);
+        hash.finish()
     }
 }
 

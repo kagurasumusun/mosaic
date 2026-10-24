@@ -16,6 +16,4 @@ workspace = true
 [dependencies]
 mosaic-contract-i2c = { path = "../../../../framework/contract/i2c" }
 mosaic-contract-model = { path = "../../../../framework/contract/model" }
-
-[dev-dependencies]
 mosaic-core-types = { path = "../../../../framework/core/types" }

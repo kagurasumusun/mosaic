@@ -213,8 +213,8 @@ impl GpioNet {
 impl DigitalNet for GpioNet {
     fn attach(&mut self, pull: NetPull) -> NetNode {
         let mut inner = lock(&self.inner);
-        let raw_node = u32::try_from(inner.next)
-            .expect("GpioNet exhausted its u32 NetNode identifier space");
+        let raw_node =
+            u32::try_from(inner.next).expect("GpioNet exhausted its u32 NetNode identifier space");
         let node = NetNode(raw_node);
         inner.next += 1;
         inner.nodes.insert(

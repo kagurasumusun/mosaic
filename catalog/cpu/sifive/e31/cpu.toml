@@ -16,3 +16,7 @@ model = 'sifive-e31'
 [ports]
 irq = { role = 'sink', pins = ['mext'] }
 reset = { role = 'sink' }
+
+# The declaration has no tunable parameters yet. The table is required by the
+# catalog schema so a missing section cannot be confused with a parser skip.
+[params]

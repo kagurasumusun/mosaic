@@ -9,6 +9,7 @@
 mod address;
 mod arena;
 mod backing;
+mod clocktree;
 mod context;
 mod events;
 mod machine;
@@ -16,6 +17,9 @@ mod machine;
 pub use address::{Access, AddressError, FlatView, Region, Resolved};
 pub use arena::DeviceArena;
 pub use backing::{BackingBlockState, BackingState, BackingStore};
+pub use clocktree::{
+    ClockError, ClockId, ClockNodeState, ClockStructureNode, ClockTree, ClockTreeState,
+};
 pub use context::ModelContext;
 pub use events::{Event, EventKind, EventQueue, QueueState};
 pub use machine::{bus_attr, Machine, MachineDevice, MachineError, MachineSnapshot};

@@ -27,7 +27,10 @@
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessKind, AccessSize, Attr, BusFault, EventId, NodeId, SignalId, VTime};
+use mosaic_core_types::{
+    AccessKind, AccessSize, Attr, BusFault, EventId, Fnv64, NodeId, SignalId, Snapshot,
+    SnapshotError, VTime,
+};
 
 /// SysTick ラップのイベントトークン。
 const SYSTICK_TOKEN: u64 = 1;
@@ -628,6 +631,129 @@ impl EventTarget for Scs {
     }
 }
 
+/// SCS checkpoint. IRQ routing is host wiring and is not included.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScsCheckpoint {
+    pub schema: u32,
+    pub systick_ctrl: u32,
+    pub systick_reload: u32,
+    pub systick_frozen_cvr: u32,
+    pub systick_base: VTime,
+    pub systick_countflag: bool,
+    pub systick_pending: bool,
+    pub systick_event: Option<EventId>,
+    pub enable: [u32; 8],
+    pub pending: [u32; 8],
+    pub ipr: [u8; 64],
+    pub icsr_latched: u32,
+    pub vtor: u32,
+    pub prigroup: u32,
+    pub scr: u32,
+    pub ccr: u32,
+    pub shpr: [u8; SHPR_LEN],
+    pub shcsr: u32,
+    pub cfsr: u32,
+    pub hfsr: u32,
+    pub mmfar: u32,
+    pub bfar: u32,
+}
+
+impl Snapshot for Scs {
+    type State = ScsCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        ScsCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            systick_ctrl: self.systick.ctrl,
+            systick_reload: self.systick.reload,
+            systick_frozen_cvr: self.systick.frozen_cvr,
+            systick_base: self.systick.base,
+            systick_countflag: self.systick.countflag,
+            systick_pending: self.systick.pending,
+            systick_event: self.systick.event,
+            enable: self.enable,
+            pending: self.pending,
+            ipr: self.ipr,
+            icsr_latched: self.scb.icsr_latched,
+            vtor: self.scb.vtor,
+            prigroup: self.scb.prigroup,
+            scr: self.scb.scr,
+            ccr: self.scb.ccr,
+            shpr: self.scb.shpr,
+            shcsr: self.scb.shcsr,
+            cfsr: self.scb.cfsr,
+            hfsr: self.scb.hfsr,
+            mmfar: self.scb.mmfar,
+            bfar: self.scb.bfar,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.systick.ctrl = state.systick_ctrl;
+        self.systick.reload = state.systick_reload;
+        self.systick.frozen_cvr = state.systick_frozen_cvr;
+        self.systick.base = state.systick_base;
+        self.systick.countflag = state.systick_countflag;
+        self.systick.pending = state.systick_pending;
+        self.systick.event = state.systick_event;
+        self.enable = state.enable;
+        self.pending = state.pending;
+        self.ipr = state.ipr;
+        self.scb.icsr_latched = state.icsr_latched;
+        self.scb.vtor = state.vtor;
+        self.scb.prigroup = state.prigroup;
+        self.scb.scr = state.scr;
+        self.scb.ccr = state.ccr;
+        self.scb.shpr = state.shpr;
+        self.scb.shcsr = state.shcsr;
+        self.scb.cfsr = state.cfsr;
+        self.scb.hfsr = state.hfsr;
+        self.scb.mmfar = state.mmfar;
+        self.scb.bfar = state.bfar;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.systick_ctrl);
+        hash.u32(state.systick_reload);
+        hash.u32(state.systick_frozen_cvr);
+        hash.u64(state.systick_base.0);
+        hash.bool(state.systick_countflag);
+        hash.bool(state.systick_pending);
+        hash.option_u64(state.systick_event.map(|id| id.0));
+        for word in state.enable {
+            hash.u32(word);
+        }
+        for word in state.pending {
+            hash.u32(word);
+        }
+        hash.bytes(&state.ipr);
+        hash.u32(state.icsr_latched);
+        hash.u32(state.vtor);
+        hash.u32(state.prigroup);
+        hash.u32(state.scr);
+        hash.u32(state.ccr);
+        hash.bytes(&state.shpr);
+        hash.u32(state.shcsr);
+        hash.u32(state.cfsr);
+        hash.u32(state.hfsr);
+        hash.u32(state.mmfar);
+        hash.u32(state.bfar);
+        hash.finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -853,5 +979,32 @@ mod tests {
         assert_eq!(read(&mut scs, &mut ctx, 0x2FF), 0);
         write(&mut scs, &mut ctx, 0x0, 0xFFFF_FFFF);
         assert_eq!(read(&mut scs, &mut ctx, 0x0), 0);
+    }
+}
+
+#[cfg(test)]
+mod snapshot_roundtrip {
+    use mosaic_core_types::{EventId, Snapshot, VTime};
+
+    use super::*;
+
+    #[test]
+    fn systick_reservation_and_nvic_masks_restore() {
+        let mut scs = Scs::new(ScsParams::default());
+        scs.systick.reload = 0x00FF;
+        scs.systick.event = Some(EventId(4));
+        scs.systick.base = VTime(1_000);
+        scs.enable[0] = 0x8;
+        scs.scb.vtor = 0x0800_0000;
+        let saved = scs.save();
+        scs.systick.event = None;
+        scs.enable[0] = 0;
+        scs.scb.vtor = 0;
+        scs.load(Scs::SCHEMA_VERSION, &saved).unwrap();
+        assert_eq!(scs.systick.reload, 0x00FF);
+        assert_eq!(scs.systick.event, Some(EventId(4)));
+        assert_eq!(scs.systick.base, VTime(1_000));
+        assert_eq!(scs.enable[0], 0x8);
+        assert_eq!(scs.scb.vtor, 0x0800_0000);
     }
 }

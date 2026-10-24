@@ -35,7 +35,7 @@
 
 use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cTarget};
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::SignalId;
+use mosaic_core_types::{Fnv64, SignalId, Snapshot, SnapshotError};
 
 /// ポインタレジスタの値。
 mod pointer {
@@ -314,6 +314,70 @@ impl I2cTarget for Lm75a {
 impl EventTarget for Lm75a {
     fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
         Ok(())
+    }
+}
+
+/// LM75A checkpoint. The temperature scene is a construction parameter, not a
+/// register; the OS latch that the scene produced is emulated state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Lm75aCheckpoint {
+    pub schema: u32,
+    pub pointer: u8,
+    pub conf: u8,
+    pub thyst_x500: i16,
+    pub tos_x500: i16,
+    pub os_asserted: bool,
+    pub os_pin_level: Option<bool>,
+}
+
+impl Snapshot for Lm75a {
+    type State = Lm75aCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Lm75aCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            pointer: self.pointer,
+            conf: self.conf,
+            thyst_x500: self.thyst_x500,
+            tos_x500: self.tos_x500,
+            os_asserted: self.os_asserted,
+            os_pin_level: self.os_pin_level,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.pointer = state.pointer;
+        self.conf = state.conf;
+        self.thyst_x500 = state.thyst_x500;
+        self.tos_x500 = state.tos_x500;
+        self.os_asserted = state.os_asserted;
+        self.os_pin_level = state.os_pin_level;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.byte(state.pointer);
+        hash.byte(state.conf);
+        hash.i16(state.thyst_x500);
+        hash.i16(state.tos_x500);
+        hash.bool(state.os_asserted);
+        match state.os_pin_level {
+            None => hash.byte(0),
+            Some(false) => hash.byte(1),
+            Some(true) => hash.byte(2),
+        }
+        hash.finish()
     }
 }
 

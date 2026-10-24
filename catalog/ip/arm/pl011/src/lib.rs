@@ -15,7 +15,9 @@ use alloc::boxed::Box;
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_stream::ByteStream;
-use mosaic_core_types::{AccessKind, AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{
+    AccessKind, AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError,
+};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 use mosaic_modelkit_fifo::ByteFifo;
 
@@ -370,6 +372,89 @@ impl EventTarget for Pl011 {
     }
 }
 
+/// Emulated PL011 checkpoint. The byte-stream peer is a host port and stays
+/// attached across restore (設計書 §13.5).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Pl011Checkpoint {
+    pub schema: u32,
+    pub registers: Pl011State,
+    pub tx: [u8; 16],
+    pub tx_len: u8,
+    pub rx: [u8; 16],
+    pub rx_len: u8,
+    pub irq_asserted: bool,
+}
+
+impl Snapshot for Pl011 {
+    type State = Pl011Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        let mut tx = [0u8; 16];
+        let mut rx = [0u8; 16];
+        let tx_len = self.tx.copy_out(&mut tx);
+        let rx_len = self.rx.copy_out(&mut rx);
+        Pl011Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            registers: self.state,
+            tx,
+            tx_len: u8::try_from(tx_len).unwrap_or(u8::MAX),
+            rx,
+            rx_len: u8::try_from(rx_len).unwrap_or(u8::MAX),
+            irq_asserted: self.irq_asserted,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION
+            || state.schema != Self::SCHEMA_VERSION
+            || state.registers.schema != 1
+        {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if usize::from(state.tx_len) > 16 || usize::from(state.rx_len) > 16 {
+            return Err(SnapshotError::InvalidState);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        let mut tx = self.tx.clone();
+        let mut rx = self.rx.clone();
+        tx.replace_with(&state.tx[..usize::from(state.tx_len)])
+            .map_err(|_| SnapshotError::InvalidState)?;
+        rx.replace_with(&state.rx[..usize::from(state.rx_len)])
+            .map_err(|_| SnapshotError::InvalidState)?;
+        self.tx = tx;
+        self.rx = rx;
+        self.state = state.registers;
+        self.irq_asserted = state.irq_asserted;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.schema);
+        hash.u32(state.registers.rsr_ecr);
+        hash.u32(state.registers.ilpr);
+        hash.u32(state.registers.ibrd);
+        hash.u32(state.registers.fbrd);
+        hash.u32(state.registers.lcr_h);
+        hash.u32(state.registers.cr);
+        hash.u32(state.registers.imsc);
+        hash.u32(state.registers.raw_interrupts);
+        hash.u32(state.registers.dmacr);
+        hash.byte(state.tx_len);
+        hash.bytes(&state.tx[..usize::from(state.tx_len)]);
+        hash.byte(state.rx_len);
+        hash.bytes(&state.rx[..usize::from(state.rx_len)]);
+        hash.bool(state.irq_asserted);
+        hash.finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -588,5 +673,39 @@ mod tests {
             self.levels.lock().unwrap().push(high);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod snapshot_roundtrip {
+    use super::*;
+    use mosaic_core_types::{SignalId, Snapshot};
+
+    #[test]
+    fn fifo_and_registers_restore_without_touching_the_host_stream() {
+        let mut uart = Pl011::new(Pl011Params::new(SignalId(1)), None);
+        uart.state.ibrd = 0x24;
+        uart.irq_asserted = true;
+        uart.tx.push(0x41).unwrap();
+        uart.rx.push(0x42).unwrap();
+        let saved = uart.save();
+        uart.state.ibrd = 0;
+        uart.irq_asserted = false;
+        uart.tx.clear();
+        uart.rx.clear();
+        uart.load(Pl011::SCHEMA_VERSION, &saved).unwrap();
+        assert_eq!(uart.state.ibrd, 0x24);
+        assert!(uart.irq_asserted);
+        assert_eq!(uart.tx.pop(), Some(0x41));
+        assert_eq!(uart.rx.pop(), Some(0x42));
+        assert!(uart.stream.is_none());
+        let mut bad = saved;
+        bad.schema = 9;
+        let before = uart.save();
+        assert_eq!(
+            uart.load(Pl011::SCHEMA_VERSION, &bad),
+            Err(SnapshotError::VersionMismatch)
+        );
+        assert_eq!(uart.save(), before);
     }
 }

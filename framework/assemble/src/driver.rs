@@ -108,15 +108,11 @@ impl<E: CpuEngine> MachineDriver<E> {
         // guest instructions. A failed flush must not let the guest run past
         // an IRQ level that was never applied to the backend.
         self.flush_irq()?;
-        self.engine
-            .sync_shared_in()
-            .map_err(DriverError::Engine)?;
+        self.engine.sync_shared_in().map_err(DriverError::Engine)?;
         let outcome = self.engine.run(quantum);
         // Publish stores from the completed/partially completed slice even if
         // the backend later reports a fault or the event loop fails.
-        self.engine
-            .sync_shared_out()
-            .map_err(DriverError::Engine)?;
+        self.engine.sync_shared_out().map_err(DriverError::Engine)?;
         if outcome.reason == StopReason::Fault {
             return match self.engine.take_bus_fault() {
                 Some(fault) => Err(DriverError::Bus(fault)),
@@ -155,13 +151,9 @@ impl<E: CpuEngine> MachineDriver<E> {
         event_budget: usize,
     ) -> Result<StepReport, DriverError> {
         self.flush_irq()?;
-        self.engine
-            .sync_shared_in()
-            .map_err(DriverError::Engine)?;
+        self.engine.sync_shared_in().map_err(DriverError::Engine)?;
         let outcome = self.engine.run(quantum);
-        self.engine
-            .sync_shared_out()
-            .map_err(DriverError::Engine)?;
+        self.engine.sync_shared_out().map_err(DriverError::Engine)?;
         if outcome.reason == StopReason::Fault {
             return match self.engine.take_bus_fault() {
                 Some(fault) => Err(DriverError::Bus(fault)),

@@ -318,7 +318,10 @@ pub(crate) fn validate_graph(
     let mut by_id = BTreeMap::new();
     for node in nodes {
         if node.id.trim().is_empty() {
-            return Err(DescriptorError::new("graph.node.id", "node ID must not be empty"));
+            return Err(DescriptorError::new(
+                "graph.node.id",
+                "node ID must not be empty",
+            ));
         }
         if by_id.insert(node.id.as_str(), node).is_some() {
             return Err(DescriptorError::new(
@@ -338,13 +341,19 @@ pub(crate) fn validate_graph(
         if !by_id.contains_key(edge.from_node.as_str()) {
             return Err(DescriptorError::new(
                 "graph.edge.from",
-                format!("edge {:?} references missing node {:?}", edge.id, edge.from_node),
+                format!(
+                    "edge {:?} references missing node {:?}",
+                    edge.id, edge.from_node
+                ),
             ));
         }
         if !by_id.contains_key(edge.to_node.as_str()) {
             return Err(DescriptorError::new(
                 "graph.edge.to",
-                format!("edge {:?} references missing node {:?}", edge.id, edge.to_node),
+                format!(
+                    "edge {:?} references missing node {:?}",
+                    edge.id, edge.to_node
+                ),
             ));
         }
     }
@@ -359,7 +368,10 @@ pub(crate) fn validate_graph(
         if !region_names.insert((region.view.as_str(), region.name.as_str())) {
             return Err(DescriptorError::new(
                 "graph.region.name",
-                format!("duplicate region {:?} in view {:?}", region.name, region.view),
+                format!(
+                    "duplicate region {:?} in view {:?}",
+                    region.name, region.view
+                ),
             ));
         }
         for previous in &regions[..index] {
@@ -371,16 +383,19 @@ pub(crate) fn validate_graph(
                 return Err(DescriptorError::new(
                     "graph.region.overlap",
                     format!(
-                    "regions {:?} and {:?} overlap at equal priority",
-                    previous.name, region.name
-                ),
+                        "regions {:?} and {:?} overlap at equal priority",
+                        previous.name, region.name
+                    ),
                 ));
             }
         }
         let view = by_id.get(region.view.as_str()).ok_or_else(|| {
             DescriptorError::new(
                 "graph.region.view",
-                format!("region {:?} references missing view {:?}", region.name, region.view),
+                format!(
+                    "region {:?} references missing view {:?}",
+                    region.name, region.view
+                ),
             )
         })?;
         if view.kind != GraphNodeKind::AddressSpaceView {
@@ -452,4 +467,3 @@ fn ensure_external_node(
     }
     Ok(())
 }
-

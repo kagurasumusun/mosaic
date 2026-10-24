@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use mosaic_contract_model::ContextError;
-use mosaic_core_types::{EventId, NodeId, SignalId, Snapshot, SnapshotError, VTime};
+use mosaic_core_types::{EventId, Fnv64, NodeId, SignalId, Snapshot, SnapshotError, VTime};
 
 /// A node-local timer or an outgoing logical signal. Wiring is resolved later.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -235,6 +235,31 @@ impl Snapshot for EventQueue {
         self.restore_validated(state);
         Ok(())
     }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u64(state.now.0);
+        hash.u64(state.next_id);
+        hash.usize(state.events.len());
+        for event in &state.events {
+            hash.u64(event.id.0);
+            hash.u64(event.at.0);
+            hash.u32(event.owner.0);
+            match event.kind {
+                EventKind::Timer { token } => {
+                    hash.byte(1);
+                    hash.u64(token);
+                }
+                EventKind::Signal { signal, high } => {
+                    hash.byte(2);
+                    hash.u32(signal.0);
+                    hash.bool(high);
+                }
+            }
+        }
+        hash.finish()
+    }
 }
 
 #[cfg(test)]
@@ -299,19 +324,26 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert_ne!(replacement, old);
         assert_eq!(queue.next_time(), Some(VTime(20)));
-        assert_eq!(queue.pop_next().unwrap().kind, EventKind::Timer { token: 2 });
+        assert_eq!(
+            queue.pop_next().unwrap().kind,
+            EventKind::Timer { token: 2 }
+        );
     }
 
     #[test]
     fn failed_reschedule_keeps_the_old_event_and_timeline() {
         let mut queue = EventQueue::new(1);
-        let old = timer(&mut queue, 3, 10, 1);
+        let old = timer(&mut queue, 3, 20, 1);
+        // Advance now without consuming the future event, then reject a
+        // replacement that would move it backwards.
+        assert_eq!(queue.pop_due(VTime(10)), Ok(None));
         let before = queue.save();
         assert_eq!(
             queue.reschedule(NodeId(3), old, VTime(9), EventKind::Timer { token: 2 }),
             Err(ContextError::TimeInPast)
         );
         assert_eq!(queue.save(), before);
+        assert_eq!(queue.next_time(), Some(VTime(20)));
     }
 
     #[test]

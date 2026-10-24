@@ -8,10 +8,12 @@
 //! runtime never see vendor types; the engine never sees runtime types.
 
 mod bus;
+mod clockbind;
 mod irq;
 
 pub use bus::MachineBus;
-pub use irq::{EngineIrqSink, IrqMailbox};
+pub use clockbind::instruction_period;
+pub use irq::{EngineIrqSink, IrqMailbox, IrqMailboxState};
 
 #[cfg(feature = "unicorn")]
 mod driver;

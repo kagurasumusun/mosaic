@@ -171,7 +171,10 @@ impl SocManifest {
                 let source = source.as_str().ok_or_else(|| {
                     DescriptorError::new(
                         "block.clk",
-                        format!("clock source for {:?}.{:?} must be a string", block.name, input),
+                        format!(
+                            "clock source for {:?}.{:?} must be a string",
+                            block.name, input
+                        ),
                     )
                 })?;
                 validate_local_name("block.clk.source", source)?;
@@ -183,7 +186,10 @@ impl SocManifest {
                 if irq.to.is_empty() {
                     return Err(DescriptorError::new(
                         "block.irq.to",
-                        format!("interrupt output {:?}.{:?} needs at least one target", block.name, irq.pin),
+                        format!(
+                            "interrupt output {:?}.{:?} needs at least one target",
+                            block.name, irq.pin
+                        ),
                     ));
                 }
                 for target in &irq.to {
@@ -238,12 +244,15 @@ impl SocManifest {
                 if u128::from(region.base) + u128::from(region.size) > (1u128 << 64) {
                     return Err(DescriptorError::new(
                         "view.region",
-                        format!("region {:?} overflows the 64-bit address space", region.name),
+                        format!(
+                            "region {:?} overflows the 64-bit address space",
+                            region.name
+                        ),
                     ));
                 }
                 for previous in &view.region[..region_index] {
-                    let same_priority = region.priority.unwrap_or(0)
-                        == previous.priority.unwrap_or(0);
+                    let same_priority =
+                        region.priority.unwrap_or(0) == previous.priority.unwrap_or(0);
                     let overlaps = u128::from(region.base)
                         < u128::from(previous.base) + u128::from(previous.size)
                         && u128::from(previous.base)
@@ -254,8 +263,7 @@ impl SocManifest {
                             format!(
                                 "regions {:?} and {:?} overlap at the same priority; \
                                  assign an explicit overlay priority",
-                                previous.name,
-                                region.name
+                                previous.name, region.name
                             ),
                         ));
                     }
@@ -288,7 +296,10 @@ impl SocManifest {
                 if !view_by_name.contains_key(at.space.as_str()) {
                     return Err(DescriptorError::new(
                         "block.at.space",
-                        format!("block {:?} references unknown view {:?}", block.name, at.space),
+                        format!(
+                            "block {:?} references unknown view {:?}",
+                            block.name, at.space
+                        ),
                     ));
                 }
             }
@@ -326,8 +337,7 @@ impl SocManifest {
                             "block.irq.to",
                             format!(
                                 "block {:?} references unknown endpoint {:?}",
-                                block.name,
-                                target
+                                block.name, target
                             ),
                         ));
                     }
@@ -549,6 +559,9 @@ fn unique_name(
     if names.insert(value.to_owned()) {
         Ok(())
     } else {
-        Err(DescriptorError::new(path, format!("duplicate name {value:?}")))
+        Err(DescriptorError::new(
+            path,
+            format!("duplicate name {value:?}"),
+        ))
     }
 }

@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use mosaic_core_types::{AccessSize, BusFault, Endian, NodeId, Snapshot, SnapshotError};
+use mosaic_core_types::{AccessSize, BusFault, Endian, Fnv64, NodeId, Snapshot, SnapshotError};
 
 use crate::machine::MachineError;
 
@@ -166,6 +166,18 @@ impl Snapshot for BackingStore {
         self.validate(version, state)?;
         self.restore_validated(state);
         Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.usize(state.blocks.len());
+        for block in &state.blocks {
+            hash.u32(block.node.0);
+            hash.usize(block.bytes.len());
+            hash.bytes(&block.bytes);
+        }
+        hash.finish()
     }
 }
 

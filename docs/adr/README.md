@@ -20,3 +20,4 @@
 | [0012](0012-mclass-t32-execution.md) | T32 実行のための M-class エンジン構成（Cortex-M3、半語整列 PC） | 暫定採用 |
 | [0013](0013-machine-graph-validation.md) | 型付き manifest、catalog validation、正規化 MachineGraph | 初期実装を採用、registry/assembly は未実装 |
 | [0014](0014-multicore-time-semantics.md) | マルチコア時間モデルの保証範囲 | 暫定採用、serial-slice と lockstep を区別 |
+| [0015](0015-checkpoint-identity.md) | checkpoint identity、clock dynamics、catalog State | 暫定採用、永続 codec と CPU context は未対応 |

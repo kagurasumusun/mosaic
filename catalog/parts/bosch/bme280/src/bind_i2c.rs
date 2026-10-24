@@ -7,6 +7,7 @@
 use crate::Bme280Core;
 use mosaic_contract_i2c::{Ack, I2cAddr, I2cError, I2cTarget};
 use mosaic_contract_model::Ctx;
+use mosaic_core_types::{Fnv64, Snapshot, SnapshotError};
 
 /// バインド構築パラメータ。
 #[derive(Clone, Copy, Debug)]
@@ -83,6 +84,48 @@ impl I2cTarget for Bme280I2c {
             self.pointer = self.pointer.wrapping_add(1);
         }
         Ok(Ack::Ack)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Bme280I2cCheckpoint {
+    pub schema: u32,
+    pub pointer: u8,
+    pub bank: [u8; 256],
+}
+
+impl Snapshot for Bme280I2c {
+    type State = Bme280I2cCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Bme280I2cCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            pointer: self.pointer,
+            bank: self.core.export_bank(),
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.pointer = state.pointer;
+        self.core.import_bank(state.bank);
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.byte(state.pointer);
+        hash.bytes(&state.bank);
+        hash.finish()
     }
 }
 
@@ -206,5 +249,27 @@ mod tests {
         assert_eq!(compensated.pressure, 25_650_205);
         assert_eq!(compensated.humidity, 82_623);
         assert_eq!(DEFAULT_SCENE.adc_t, 519_888);
+    }
+}
+
+#[cfg(test)]
+mod snapshot_roundtrip {
+    use mosaic_contract_i2c::I2cAddr;
+    use mosaic_core_types::Snapshot;
+
+    use super::*;
+
+    #[test]
+    fn pointer_and_register_bank_restore() {
+        let mut part = Bme280I2c::new(Bme280I2cParams::new(I2cAddr::Seven(0x76)));
+        part.pointer = 0xF4;
+        part.core.write_byte(0xF4, 0x25);
+        let saved = part.save();
+        part.pointer = 0;
+        part.core.write_byte(0xF4, 0);
+        part.load(Bme280I2c::SCHEMA_VERSION, &saved).unwrap();
+        assert_eq!(part.pointer, 0xF4);
+        assert_eq!(part.core.read_byte(0xF4), 0x25);
+        assert_ne!(Bme280I2c::fingerprint(Bme280I2c::SCHEMA_VERSION, &saved), 0);
     }
 }

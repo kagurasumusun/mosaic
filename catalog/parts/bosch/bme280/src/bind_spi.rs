@@ -12,6 +12,7 @@
 use crate::Bme280Core;
 use mosaic_contract_model::Ctx;
 use mosaic_contract_spi::{SpiError, SpiMode, SpiTarget};
+use mosaic_core_types::{Fnv64, Snapshot, SnapshotError};
 
 /// SPI 経由の BME280。ロジックは [`Bme280Core`] に集約する。
 #[derive(Default)]
@@ -67,6 +68,56 @@ impl SpiTarget for Bme280Spi {
         };
         self.pointer = self.pointer.wrapping_add(1);
         Ok(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Bme280SpiCheckpoint {
+    pub schema: u32,
+    pub pointer: u8,
+    pub read_mode: bool,
+    pub latched: bool,
+    pub bank: [u8; 256],
+}
+
+impl Snapshot for Bme280Spi {
+    type State = Bme280SpiCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Bme280SpiCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            pointer: self.pointer,
+            read_mode: self.read_mode,
+            latched: self.latched,
+            bank: self.core.export_bank(),
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.pointer = state.pointer;
+        self.read_mode = state.read_mode;
+        self.latched = state.latched;
+        self.core.import_bank(state.bank);
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.byte(state.pointer);
+        hash.bool(state.read_mode);
+        hash.bool(state.latched);
+        hash.bytes(&state.bank);
+        hash.finish()
     }
 }
 

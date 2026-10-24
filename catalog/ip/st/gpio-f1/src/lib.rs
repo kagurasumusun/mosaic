@@ -24,7 +24,9 @@
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
+use mosaic_core_types::{
+    AccessSize, Attr, BusFault, Fnv64, NodeId, SignalId, Snapshot, SnapshotError,
+};
 
 /// CRL/CRH のリセット値: 全ピン「浮遊入力」(CNF=01, MODE=00)。
 const CR_RESET: u32 = 0x4444_4444;
@@ -111,11 +113,7 @@ impl GpioF1 {
     /// A full runtime queue leaves the corresponding bit pending. A later
     /// access retries it even when the ODR value itself is unchanged, avoiding
     /// a lost output level after a rejected `set_signal`.
-    fn emit_pin_changes(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        old: u32,
-    ) -> Result<(), ContextError> {
+    fn emit_pin_changes(&mut self, ctx: &mut dyn Ctx, old: u32) -> Result<(), ContextError> {
         self.pending_pins |= (old ^ self.state.odr) as u16;
         let mut pending = self.pending_pins;
         let mut first_error = None;
@@ -266,6 +264,65 @@ impl EventTarget for GpioF1 {
             self.state.clock_on = high;
         }
         Ok(())
+    }
+}
+
+/// GPIO checkpoint. The clock-gate input binding is host wiring.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GpioF1Checkpoint {
+    pub schema: u32,
+    pub clock_on: bool,
+    pub crl: u32,
+    pub crh: u32,
+    pub odr: u32,
+    pub lckr: u32,
+    pub pending_pins: u16,
+}
+
+impl Snapshot for GpioF1 {
+    type State = GpioF1Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        GpioF1Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            clock_on: self.state.clock_on,
+            crl: self.state.crl,
+            crh: self.state.crh,
+            odr: self.state.odr,
+            lckr: self.state.lckr,
+            pending_pins: self.pending_pins,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state.clock_on = state.clock_on;
+        self.state.crl = state.crl;
+        self.state.crh = state.crh;
+        self.state.odr = state.odr;
+        self.state.lckr = state.lckr;
+        self.pending_pins = state.pending_pins;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.bool(state.clock_on);
+        hash.u32(state.crl);
+        hash.u32(state.crh);
+        hash.u32(state.odr);
+        hash.u32(state.lckr);
+        hash.u16(state.pending_pins);
+        hash.finish()
     }
 }
 
@@ -426,7 +483,7 @@ mod tests {
         write(&mut gpio, &mut ctx, 0x0C, 0xFFFF);
         assert!(ctx.edges.is_empty());
         assert_eq!(read(&mut gpio, &mut ctx, 0x08), 0); // 入力ピンの IDR は 0。
-        // PA9 を AF 出力 (CNF=10, MODE=11 → 0xB) に設定。ODR 変化でも出ない。
+                                                        // PA9 を AF 出力 (CNF=10, MODE=11 → 0xB) に設定。ODR 変化でも出ない。
         let crh = (CR_RESET & !(0xF << 4)) | (0xB << 4);
         write(&mut gpio, &mut ctx, 0x04, crh);
         write(&mut gpio, &mut ctx, 0x10, 1 << 9);

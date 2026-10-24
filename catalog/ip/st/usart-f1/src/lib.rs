@@ -25,7 +25,9 @@
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_stream::ByteStream;
-use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
+use mosaic_core_types::{
+    AccessSize, Attr, BusFault, Fnv64, NodeId, SignalId, Snapshot, SnapshotError,
+};
 
 /// SR のリセット値: TXE | TC。
 const SR_RESET: u32 = 0x00C0;
@@ -221,6 +223,75 @@ impl EventTarget for StUsartF1 {
             self.clock_on = high;
         }
         Ok(())
+    }
+}
+
+/// USART checkpoint. The byte stream and clock-gate binding are host ports.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StUsartF1Checkpoint {
+    pub schema: u32,
+    pub sr: u32,
+    pub dr: u32,
+    pub brr: u32,
+    pub cr1: u32,
+    pub cr2: u32,
+    pub cr3: u32,
+    pub gtpr: u32,
+    pub clock_on: bool,
+    pub irq_level: bool,
+}
+
+impl Snapshot for StUsartF1 {
+    type State = StUsartF1Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        StUsartF1Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            sr: self.sr,
+            dr: self.dr,
+            brr: self.brr,
+            cr1: self.cr1,
+            cr2: self.cr2,
+            cr3: self.cr3,
+            gtpr: self.gtpr,
+            clock_on: self.clock_on,
+            irq_level: self.irq_level,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.sr = state.sr;
+        self.dr = state.dr;
+        self.brr = state.brr;
+        self.cr1 = state.cr1;
+        self.cr2 = state.cr2;
+        self.cr3 = state.cr3;
+        self.gtpr = state.gtpr;
+        self.clock_on = state.clock_on;
+        self.irq_level = state.irq_level;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        for word in [
+            state.sr, state.dr, state.brr, state.cr1, state.cr2, state.cr3, state.gtpr,
+        ] {
+            hash.u32(word);
+        }
+        hash.bool(state.clock_on);
+        hash.bool(state.irq_level);
+        hash.finish()
     }
 }
 

@@ -19,7 +19,7 @@
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId, Snapshot, SnapshotError};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError};
 
 mod reg {
     pub const STAT: u64 = 0x000;
@@ -198,6 +198,17 @@ impl Snapshot for Mhu {
         self.validate(version, state)?;
         self.state = *state;
         Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.schema);
+        hash.usize(state.stat.len());
+        for word in state.stat {
+            hash.u32(word);
+        }
+        hash.finish()
     }
 }
 

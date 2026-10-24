@@ -12,7 +12,7 @@ use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_contract_signal::SignalSink;
 use mosaic_core_runtime::{bus_attr, EventKind, FlatView, Machine, Region};
 use mosaic_core_types::{
-    AccessSize, Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions, SignalId, VTime,
+    AccessSize, Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions, SignalId, VDelta,
 };
 
 const ROM: NodeId = NodeId(1);
@@ -48,7 +48,7 @@ impl MmioTarget for PacingDevice {
         if offset >= 16 {
             return Err(BusFault::Device);
         }
-        ctx.schedule_after(VTime(value.saturating_mul(100)), offset)
+        ctx.schedule_after(VDelta(value.saturating_mul(100)), offset)
             .map_err(|_| BusFault::Device)?;
         Ok(())
     }

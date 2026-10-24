@@ -397,6 +397,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-core-runtime"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-clock",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-contract-signal",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-core-types"
+version = "0.1.0"
+dependencies = [
+ "mosaic-prim-bits",
+]
+
+[[package]]
 name = "mosaic-cpu-arm-arm926ej-s"
 version = "0.1.0"
 dependencies = [
@@ -413,23 +431,6 @@ version = "0.1.0"
 dependencies = [
  "mosaic-contract-cpu-engine",
  "mosaic-isa-riscv",
-]
-
-[[package]]
-name = "mosaic-core-runtime"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-signal",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-core-types"
-version = "0.1.0"
-dependencies = [
- "mosaic-prim-bits",
 ]
 
 [[package]]

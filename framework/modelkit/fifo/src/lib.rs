@@ -77,6 +77,30 @@ impl<const N: usize> ByteFifo<N> {
         Some(byte)
     }
 
+    /// Copy queued bytes in dequeue order. Returns how many bytes were written.
+    pub fn copy_out(&self, out: &mut [u8]) -> usize {
+        let count = self.len.min(out.len());
+        for (index, slot) in out.iter_mut().enumerate().take(count) {
+            let source = (self.head + index) % N.max(1);
+            *slot = self.buffer[source];
+        }
+        count
+    }
+
+    /// Replace the queue with `bytes` in order. A longer slice is rejected and
+    /// leaves the previous contents unchanged.
+    pub fn replace_with(&mut self, bytes: &[u8]) -> Result<(), FifoError> {
+        if bytes.len() > N {
+            return Err(FifoError::Full);
+        }
+        self.clear();
+        for byte in bytes {
+            self.push(*byte)
+                .expect("length was checked against capacity");
+        }
+        Ok(())
+    }
+
     /// Inspect the oldest byte without removing it.
     pub fn peek(&self) -> Option<u8> {
         if self.is_empty() {

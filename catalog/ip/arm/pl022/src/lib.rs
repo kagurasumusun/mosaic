@@ -27,10 +27,11 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
 use mosaic_contract_spi::{SpiCs, SpiError, SpiInitiator, SpiMode};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
 /// PL022 レジスタオフセット（DDI 0194 Table 3-1）。
@@ -408,6 +409,65 @@ impl EventTarget for Pl022 {
     }
 }
 
+/// Emulated PL022 checkpoint. The SPI initiator peer is a host port.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Pl022Checkpoint {
+    pub schema: u32,
+    pub registers: Pl022State,
+    pub rx: Vec<u8>,
+    pub cs_asserted: bool,
+}
+
+impl Snapshot for Pl022 {
+    type State = Pl022Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Pl022Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            registers: self.state,
+            rx: self.rx.iter().copied().collect(),
+            cs_asserted: self.cs_asserted,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION
+            || state.schema != Self::SCHEMA_VERSION
+            || state.registers.schema != 1
+        {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state.rx.len() > FIFO_DEPTH {
+            return Err(SnapshotError::InvalidState);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state = state.registers;
+        self.rx = state.rx.iter().copied().collect();
+        self.cs_asserted = state.cs_asserted;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.registers.cr0);
+        hash.u32(state.registers.cr1);
+        hash.u32(state.registers.cpsr);
+        hash.u32(state.registers.imsc);
+        hash.u32(state.registers.raw_interrupts);
+        hash.u32(state.registers.dmacr);
+        hash.bool(state.registers.irq_level);
+        hash.bytes(&state.rx);
+        hash.bool(state.cs_asserted);
+        hash.finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -579,7 +639,13 @@ mod tests {
         let (mut device, fake, mut ctx) = device();
         lock(&fake).fail_select = Some(SpiError::ModeFault);
         assert_eq!(
-            device.write(&mut ctx, reg::CR1, AccessSize::Word, u64::from(cr1::SSE), &attr()),
+            device.write(
+                &mut ctx,
+                reg::CR1,
+                AccessSize::Word,
+                u64::from(cr1::SSE),
+                &attr()
+            ),
             Err(BusFault::Device)
         );
         assert!(lock(&fake).selects.is_empty());

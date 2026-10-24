@@ -2,7 +2,9 @@
 #![forbid(unsafe_code)]
 //! Shared VM vocabulary. No runtime or host services belong here.
 
+mod fnv;
 mod memory;
+pub use fnv::Fnv64;
 pub use memory::{Mapping, MemoryKind, Permissions};
 
 /// An address in the address space's declared address unit (initially 8 bits).
@@ -132,6 +134,12 @@ pub trait Snapshot: Send {
     fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError>;
     /// Validate before mutating; reject unsupported versions without changing self.
     fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError>;
+    /// Deterministic FNV-1a 64-bit digest of `state` at `version`.
+    ///
+    /// Not cryptographic, and not stable as a file format. Host handles, trait
+    /// objects and raw pointers must not affect the result. The same version
+    /// and state must always produce the same value in-process.
+    fn fingerprint(version: u32, state: &Self::State) -> u64;
 }
 
 #[cfg(test)]

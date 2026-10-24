@@ -252,20 +252,20 @@ impl MulticoreDriver {
                 })?;
             let (events_delivered, now) = {
                 let mut machine = self.machine.lock().map_err(|_| MulticoreError::Poisoned)?;
-                let deadline = machine
-                    .now()
-                    .checked_add(VDelta(delta))
-                    .ok_or(MulticoreError::Core {
-                        index,
-                        error: DriverError::TimeOverflow,
-                    })?;
-                let delivered =
+                let deadline =
                     machine
-                        .run_until(deadline, event_budget)
-                        .map_err(|error| MulticoreError::Core {
+                        .now()
+                        .checked_add(VDelta(delta))
+                        .ok_or(MulticoreError::Core {
                             index,
-                            error: DriverError::Machine(error),
+                            error: DriverError::TimeOverflow,
                         })?;
+                let delivered = machine.run_until(deadline, event_budget).map_err(|error| {
+                    MulticoreError::Core {
+                        index,
+                        error: DriverError::Machine(error),
+                    }
+                })?;
                 (delivered, deadline)
             };
             flush(core, index)?;

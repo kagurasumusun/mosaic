@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 //! Provisional synchronous model context. More services require an ADR.
 
-use mosaic_core_types::{EventId, NodeId, SignalId, VTime};
+use mosaic_core_types::{EventId, NodeId, SignalId, VDelta, VTime};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -21,8 +21,10 @@ pub trait Ctx: Send {
     /// Reserve a node-local callback at or after now, without dispatching it.
     fn schedule(&mut self, at: VTime, token: u64) -> Result<EventId, ContextError>;
 
-    /// Checked relative scheduling; zero delay is valid, overflow is an error.
-    fn schedule_after(&mut self, delay: VTime, token: u64) -> Result<EventId, ContextError> {
+    /// Checked relative scheduling. `delay` is a duration, never an absolute
+    /// timestamp (ADR 0003). Zero delay is valid; overflow is an error and
+    /// must not wrap or saturate.
+    fn schedule_after(&mut self, delay: VDelta, token: u64) -> Result<EventId, ContextError> {
         let at = self
             .now()
             .checked_add(delay)
@@ -99,7 +101,6 @@ pub trait EventTarget: Send {
     }
 }
 
-
 #[cfg(test)]
 extern crate std;
 
@@ -146,7 +147,11 @@ mod tests {
             Err(ContextError::ResourceExhausted)
         );
         assert_eq!(
-            set_optional_signal(&mut SignalCtx(Err(ContextError::TimeOverflow)), SignalId(1), true),
+            set_optional_signal(
+                &mut SignalCtx(Err(ContextError::TimeOverflow)),
+                SignalId(1),
+                true
+            ),
             Err(ContextError::TimeOverflow)
         );
     }

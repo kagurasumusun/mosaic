@@ -211,8 +211,8 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
     let catalog_root = root.join("catalog");
     let origins_text = fs::read_to_string(catalog_root.join("origins.toml"))
         .map_err(|error| format!("catalog/origins.toml: {error}"))?;
-    let origins_value: toml::Value = toml::from_str(&origins_text)
-        .map_err(|error| format!("catalog/origins.toml: {error}"))?;
+    let origins_value: toml::Value =
+        toml::from_str(&origins_text).map_err(|error| format!("catalog/origins.toml: {error}"))?;
     let origins_table = origins_value
         .get("origins")
         .and_then(toml::Value::as_table)
@@ -306,11 +306,9 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
                     Some("board.toml") => Some(Path::new("catalog/board")),
                     _ => None,
                 };
-                if let (Some(prefix), Some(parent), Some((_, id_suffix))) = (
-                    path_prefix,
-                    relative.parent(),
-                    id.split_once(':'),
-                ) {
+                if let (Some(prefix), Some(parent), Some((_, id_suffix))) =
+                    (path_prefix, relative.parent(), id.split_once(':'))
+                {
                     if let Ok(relative_id) = parent.strip_prefix(prefix) {
                         let canonical_suffix = relative_id.to_string_lossy().replace('\\', "/");
                         if canonical_suffix != id_suffix {
@@ -368,7 +366,10 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
                     );
                     soc_manifests.insert(
                         manifest.soc.id.clone(),
-                        Located { source: relative.clone(), value: manifest },
+                        Located {
+                            source: relative.clone(),
+                            value: manifest,
+                        },
                     );
                 }
                 Err(error) => errors.push(format!("{}: {error}", relative.display())),
@@ -384,7 +385,10 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
                     );
                     board_manifests.insert(
                         manifest.board.id.clone(),
-                        Located { source: relative.clone(), value: manifest },
+                        Located {
+                            source: relative.clone(),
+                            value: manifest,
+                        },
                     );
                 }
                 Err(error) => errors.push(format!("{}: {error}", relative.display())),
@@ -431,7 +435,8 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
             },
             None => errors.push(format!(
                 "{}: cannot build graph; referenced SoC {:?} has no valid manifest",
-                located.source.display(), located.value.board.soc
+                located.source.display(),
+                located.value.board.soc
             )),
         }
         if !ids.contains_key(id) {
@@ -563,6 +568,7 @@ mod tests {
     #[test]
     fn catalog_lint_rejects_duplicate_global_ids() {
         let fixture = Fixture::new();
+        fixture.write("catalog/origins.toml", "[origins]\narm = 'Arm'\n");
         fixture.write(
             "catalog/cpu/arm/core-a/cpu.toml",
             "[identity]\nid='cpu:test'\nsummary='first core'\n",
@@ -572,18 +578,23 @@ mod tests {
             "[identity]\nid='cpu:test'\nsummary='second core'\n",
         );
         let errors = lint_catalog(&fixture.0).unwrap();
-        assert!(errors.iter().any(|error| error.contains("already declared")));
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("already declared")));
     }
 
     #[test]
     fn catalog_id_suffix_must_match_canonical_path() {
         let fixture = Fixture::new();
+        fixture.write("catalog/origins.toml", "[origins]\narm = 'Arm'\n");
         fixture.write(
             "catalog/cpu/arm/core-a/cpu.toml",
             "[identity]\nid='cpu:other/core-a'\nsummary='test core'\n",
         );
         let errors = lint_catalog(&fixture.0).unwrap();
-        assert!(errors.iter().any(|error| error.contains("match canonical catalog path")));
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("match canonical catalog path")));
     }
 
     #[test]
@@ -592,5 +603,4 @@ mod tests {
         let errors = lint_catalog(&root).unwrap();
         assert!(errors.is_empty(), "catalog errors:\n{}", errors.join("\n"));
     }
-
 }

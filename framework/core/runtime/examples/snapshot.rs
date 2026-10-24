@@ -88,6 +88,15 @@ impl Snapshot for Counter {
         self.ticks = state.ticks;
         Ok(())
     }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = mosaic_core_types::Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.schema);
+        hash.u64(state.value);
+        hash.u64(state.ticks);
+        hash.finish()
+    }
 }
 
 fn main() {
@@ -136,12 +145,13 @@ fn main() {
         .expect("schedule timer");
     let checkpoint = machine.save_snapshot().expect("capture runtime state");
     println!(
-        "checkpoint schema={} graph={:016x} ram={} devices={} time={}",
+        "checkpoint schema={} graph={:016x} ram={} devices={} time={} state={:016x}",
         checkpoint.schema_version(),
         checkpoint.graph_fingerprint(),
         checkpoint.memory_bytes(),
         checkpoint.device_count(),
-        checkpoint.virtual_time().0
+        checkpoint.virtual_time().0,
+        checkpoint.state_hash()
     );
 
     // Advance and corrupt all three state domains before restoring them.
@@ -185,10 +195,12 @@ fn main() {
     let replayed_ticks = machine
         .bus_read(Addr(0x2004), AccessSize::Word, &attr)
         .expect("read replayed timer count");
+    let replay = machine.save_snapshot().expect("checkpoint after replay");
     println!(
-        "replay value={} ticks={} time={}",
+        "replay value={} ticks={} time={} state={:016x}",
         replayed_value,
         replayed_ticks,
-        machine.now().0
+        machine.now().0,
+        replay.state_hash()
     );
 }

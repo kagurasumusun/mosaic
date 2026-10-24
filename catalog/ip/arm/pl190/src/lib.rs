@@ -34,7 +34,9 @@ extern crate alloc;
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, NodeId, SignalId};
+use mosaic_core_types::{
+    AccessSize, Attr, BusFault, Fnv64, NodeId, SignalId, Snapshot, SnapshotError,
+};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
 /// レジスタオフセット（DDI 0181E 表 3-1）。
@@ -194,7 +196,11 @@ impl Pl190 {
         if self.routing[index].is_some() {
             return Err(Pl190Error::LineAlreadyBound);
         }
-        if self.routing.iter().any(|slot| *slot == Some((source, signal))) {
+        if self
+            .routing
+            .iter()
+            .any(|slot| *slot == Some((source, signal)))
+        {
             return Err(Pl190Error::DuplicateBinding);
         }
         self.routing[index] = Some((source, signal));
@@ -427,6 +433,56 @@ impl EventTarget for Pl190 {
             self.update_outputs(ctx)?;
         }
         Ok(())
+    }
+}
+
+impl Snapshot for Pl190 {
+    type State = Pl190State;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        self.state.clone()
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state
+            .stack
+            .iter()
+            .any(|slot| *slot < -1 || i32::from(*slot) >= 16)
+        {
+            return Err(SnapshotError::InvalidState);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        // Input routing is host wiring and is not part of the checkpoint.
+        self.state = state.clone();
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.hw_lines);
+        hash.u32(state.softint);
+        hash.u32(state.enable);
+        hash.u32(state.select);
+        hash.bool(state.protection);
+        hash.u16(state.swpriority_mask);
+        for word in state.vectaddr {
+            hash.u32(word);
+        }
+        hash.bytes(&state.vectcntl);
+        hash.u32(state.defvectaddr);
+        hash.bytes(&state.stack.map(|slot| slot as u8));
+        hash.bool(state.irq_level);
+        hash.bool(state.fiq_level);
+        hash.finish()
     }
 }
 

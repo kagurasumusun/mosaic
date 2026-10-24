@@ -13,7 +13,9 @@ use core::num::NonZeroU64;
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, SignalId, VDelta, VTime};
+use mosaic_core_types::{
+    AccessSize, Attr, BusFault, EventId, Fnv64, SignalId, Snapshot, SnapshotError, VDelta, VTime,
+};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
 /// Register offsets inside one timer block (DDI 0271 Table 3-2).
@@ -176,7 +178,9 @@ impl Timer {
         let delay = self
             .delay_for_count_ps(initial_count, tick_ps)
             .ok_or(ContextError::TimeOverflow)?;
-        let at = now.checked_add(VDelta(delay)).ok_or(ContextError::TimeOverflow)?;
+        let at = now
+            .checked_add(VDelta(delay))
+            .ok_or(ContextError::TimeOverflow)?;
         let event = match self.event {
             Some(previous) => ctx.reschedule(previous, at, token)?,
             None => ctx.schedule(at, token)?,
@@ -200,6 +204,7 @@ impl Timer {
         self.start_from(ctx, token, tick_ps, self.reload_value())
     }
 
+    #[cfg(test)]
     fn delay_ps(&self, tick_ps: NonZeroU64) -> Option<u64> {
         self.delay_for_count_ps(self.reload_value(), tick_ps)
     }
@@ -257,11 +262,7 @@ impl Sp804 {
 
     /// Re-evaluate one timer's interrupt line. An unwired pin is tolerated:
     /// the context reports it unknown and the timer keeps running.
-    fn drive_irq(
-        ctx: &mut dyn Ctx,
-        timer: &mut Timer,
-        irq: SignalId,
-    ) -> Result<(), ContextError> {
+    fn drive_irq(ctx: &mut dyn Ctx, timer: &mut Timer, irq: SignalId) -> Result<(), ContextError> {
         let asserted = timer.state.raw_irq && timer.state.control & ctrl::IE != 0;
         if asserted != timer.irq_asserted {
             set_optional_signal(ctx, irq, asserted)?;
@@ -329,7 +330,10 @@ impl Sp804 {
                 timer.state.load = value;
                 if timer.state.enabled {
                     // Hardware restarts immediately when Load is written live.
-                    if timer.start_from(ctx, token, tick_ps, timer.counter_value(value)).is_err() {
+                    if timer
+                        .start_from(ctx, token, tick_ps, timer.counter_value(value))
+                        .is_err()
+                    {
                         timer.state.load = previous_load;
                         return Err(BusFault::Device);
                     }
@@ -461,6 +465,73 @@ impl EventTarget for Sp804 {
         }
         let irq_result = Self::drive_irq(ctx, timer, irq);
         rearm.and(irq_result)
+    }
+}
+
+/// Both timer blocks, including the runtime event handle. The queue restores
+/// the same [`EventId`], so the timer must remember which reservation it owns.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Sp804Checkpoint {
+    pub schema: u32,
+    pub timers: [Sp804TimerState; 2],
+    pub irq_asserted: [bool; 2],
+    pub events: [Option<EventId>; 2],
+}
+
+impl Snapshot for Sp804 {
+    type State = Sp804Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        Sp804Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            timers: [self.timers[0].state, self.timers[1].state],
+            irq_asserted: [self.timers[0].irq_asserted, self.timers[1].irq_asserted],
+            events: [self.timers[0].event, self.timers[1].event],
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state.timers.iter().any(|timer| timer.schema != 1) {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        for (timer, index) in self.timers.iter_mut().zip(0..2) {
+            timer.state = state.timers[index];
+            timer.irq_asserted = state.irq_asserted[index];
+            timer.event = state.events[index];
+        }
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        for (timer, asserted, event) in state
+            .timers
+            .iter()
+            .zip(state.irq_asserted)
+            .zip(state.events)
+            .map(|((timer, asserted), event)| (timer, asserted, event))
+        {
+            hash.u32(timer.load);
+            hash.u32(timer.bg_load);
+            hash.u32(timer.control);
+            hash.bool(timer.raw_irq);
+            hash.bool(timer.enabled);
+            hash.u32(timer.remaining);
+            hash.u64(timer.started_at.0);
+            hash.bool(asserted);
+            hash.option_u64(event.map(|id| id.0));
+        }
+        hash.finish()
     }
 }
 
@@ -652,7 +723,11 @@ mod tests {
         let mut ctx = TestCtx::new();
         sp804.write_word(&mut ctx, reg::LOAD, 100).unwrap();
         sp804
-            .write_word(&mut ctx, reg::CONTROL, ctrl::PERIODIC | ctrl::SIZE32 | ctrl::ENABLE)
+            .write_word(
+                &mut ctx,
+                reg::CONTROL,
+                ctrl::PERIODIC | ctrl::SIZE32 | ctrl::ENABLE,
+            )
             .unwrap();
 
         ctx.advance(10_000);
@@ -699,7 +774,9 @@ mod tests {
     fn invalid_timer_token_does_not_alias_timer2() {
         let mut sp804 = Sp804::new(params());
         let mut ctx = TestCtx::new();
-        sp804.write_word(&mut ctx, reg::TIMER2_BASE + reg::LOAD, 1).unwrap();
+        sp804
+            .write_word(&mut ctx, reg::TIMER2_BASE + reg::LOAD, 1)
+            .unwrap();
         sp804
             .write_word(
                 &mut ctx,
@@ -746,5 +823,33 @@ mod tests {
             sp804.write(&mut ctx, reg::LOAD, AccessSize::DoubleWord, 0, &word_attr()),
             Err(BusFault::InvalidSize)
         );
+    }
+}
+
+#[cfg(test)]
+mod snapshot_roundtrip {
+    use core::num::NonZeroU64;
+
+    use mosaic_core_types::{EventId, SignalId, Snapshot};
+
+    use super::*;
+
+    #[test]
+    fn timer_event_ids_restore_with_the_block_state() {
+        let mut timer = Sp804::new(Sp804Params::new(
+            [SignalId(1), SignalId(2)],
+            NonZeroU64::new(1000).unwrap(),
+        ));
+        timer.timers[0].state.load = 0x100;
+        timer.timers[0].event = Some(EventId(7));
+        timer.timers[1].irq_asserted = true;
+        let saved = timer.save();
+        timer.timers[0].event = None;
+        timer.timers[0].state.load = 0;
+        timer.timers[1].irq_asserted = false;
+        timer.load(Sp804::SCHEMA_VERSION, &saved).unwrap();
+        assert_eq!(timer.timers[0].state.load, 0x100);
+        assert_eq!(timer.timers[0].event, Some(EventId(7)));
+        assert!(timer.timers[1].irq_asserted);
     }
 }

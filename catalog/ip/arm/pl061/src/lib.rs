@@ -30,7 +30,7 @@ use alloc::boxed::Box;
 use mosaic_contract_gpio::{GpioPort, PinConfig, PinDirection, PinLevel, Pull};
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError};
 use mosaic_ip_arm_primecell_id::PrimeCellId;
 
 /// レジスタオフセット（GPIODATA は 0x000..0x3FC のウィンドウ）。
@@ -219,12 +219,7 @@ impl Pl061 {
         u32::from(value)
     }
 
-    fn data_write(
-        &mut self,
-        ctx: &mut dyn Ctx,
-        mask: u8,
-        value: u32,
-    ) -> Result<(), BusFault> {
+    fn data_write(&mut self, ctx: &mut dyn Ctx, mask: u8, value: u32) -> Result<(), BusFault> {
         let byte = (value & 0xFF) as u8;
         self.state.data_latch = (self.state.data_latch & !mask) | (byte & mask);
         let mut failed = false;
@@ -252,7 +247,11 @@ impl Pl061 {
                 failed = true;
             }
         }
-        if failed { Err(BusFault::Device) } else { Ok(()) }
+        if failed {
+            Err(BusFault::Device)
+        } else {
+            Ok(())
+        }
     }
 
     fn sync_pin_configs(&mut self, ctx: &mut dyn Ctx) -> Result<(), BusFault> {
@@ -287,7 +286,11 @@ impl Pl061 {
                 failed = true;
             }
         }
-        if failed { Err(BusFault::Device) } else { Ok(()) }
+        if failed {
+            Err(BusFault::Device)
+        } else {
+            Ok(())
+        }
     }
 
     fn apply_dir(&mut self, ctx: &mut dyn Ctx, value: u32) -> Result<(), BusFault> {
@@ -421,6 +424,46 @@ impl MmioTarget for Pl061 {
 impl EventTarget for Pl061 {
     fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
         Ok(())
+    }
+}
+
+impl Snapshot for Pl061 {
+    type State = Pl061State;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        self.state
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        // Pin attachments are host wiring. last_levels is restored so the next
+        // edge is detected against the checkpointed sample, not re-driven here.
+        self.state = *state;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.byte(state.dir);
+        hash.byte(state.data_latch);
+        hash.byte(state.is);
+        hash.byte(state.ibe);
+        hash.byte(state.iev);
+        hash.byte(state.ie);
+        hash.byte(state.ris);
+        hash.byte(state.afsel);
+        hash.byte(state.last_levels);
+        hash.bool(state.irq_level);
+        hash.finish()
     }
 }
 

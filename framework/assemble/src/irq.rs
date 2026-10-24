@@ -11,6 +11,18 @@ use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineError, IrqLine};
 use mosaic_contract_signal::SignalSink;
+use mosaic_core_types::{Fnv64, SnapshotError};
+
+/// Pending IRQ edges, independent of which engine the mailbox is bound to.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IrqMailboxState {
+    pub schema: u32,
+    pub edges: Vec<(u32, bool)>,
+}
+
+impl IrqMailboxState {
+    pub const SCHEMA_VERSION: u32 = 1;
+}
 
 /// FIFO of `(line, high)` edges produced by runtime signal delivery.
 #[derive(Default)]
@@ -45,6 +57,61 @@ impl IrqMailbox {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .is_empty()
+    }
+
+    /// Edges waiting for the next engine flush, in delivery order.
+    ///
+    /// This is the IRQ half of a driver checkpoint (ADR 0011). It does not
+    /// include CPU register context. Call it between quanta: a concurrent
+    /// drain is serialized on the same consumer lock.
+    pub fn save_edges(&self) -> IrqMailboxState {
+        let _consumer = self
+            .drain_lock
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let edges = self
+            .edges
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        IrqMailboxState {
+            schema: IrqMailboxState::SCHEMA_VERSION,
+            edges: edges.iter().map(|(line, high)| (line.0, *high)).collect(),
+        }
+    }
+
+    /// Replace queued edges. The destination mailbox keeps its engine binding;
+    /// only the pending FIFO is restored. A schema mismatch leaves the queue
+    /// unchanged.
+    pub fn load_edges(&self, state: &IrqMailboxState) -> Result<(), SnapshotError> {
+        if state.schema != IrqMailboxState::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        let restored: VecDeque<_> = state
+            .edges
+            .iter()
+            .map(|(line, high)| (IrqLine(*line), *high))
+            .collect();
+        let _consumer = self
+            .drain_lock
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let mut edges = self
+            .edges
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        *edges = restored;
+        Ok(())
+    }
+
+    pub fn edge_fingerprint(state: &IrqMailboxState) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(state.schema);
+        hash.usize(state.edges.len());
+        for (line, high) in &state.edges {
+            hash.u32(*line);
+            hash.bool(*high);
+        }
+        hash.finish()
     }
 
     /// Forward queued edges to `engine` in FIFO order. On an engine error,
@@ -111,7 +178,7 @@ mod tests {
     use core::num::NonZeroU64;
 
     use mosaic_contract_cpu_engine::{EngineCaps, RegId, RunOutcome, StopReason};
-    use mosaic_core_types::{Addr, Permissions};
+    use mosaic_core_types::{Addr, Permissions, SnapshotError};
 
     use super::*;
 
@@ -202,5 +269,28 @@ mod tests {
         let error = mailbox.drain_into(&mut engine).unwrap_err();
         assert_eq!(error, EngineError::LineNotSupported);
         assert_eq!(mailbox.len(), 1);
+    }
+
+    #[test]
+    fn mailbox_edges_restore_without_replacing_the_engine_binding() {
+        let mailbox = Arc::new(IrqMailbox::new());
+        mailbox.push(IrqLine(3), true);
+        mailbox.push(IrqLine(4), false);
+        let saved = mailbox.save_edges();
+        assert_eq!(
+            IrqMailbox::edge_fingerprint(&saved),
+            IrqMailbox::edge_fingerprint(&mailbox.save_edges())
+        );
+        mailbox.push(IrqLine(1), true);
+        let other = IrqMailbox::new();
+        other.load_edges(&saved).unwrap();
+        assert_eq!(other.save_edges(), saved);
+        let mut rejected = saved.clone();
+        rejected.schema = 99;
+        assert_eq!(
+            other.load_edges(&rejected),
+            Err(SnapshotError::VersionMismatch)
+        );
+        assert_eq!(other.save_edges(), saved);
     }
 }

@@ -29,7 +29,7 @@
 
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError};
 
 // クロック・イネーブルビット ↔ ゲート出力シグナル ID の対応表。
 // (シグナル ID は RCC ノードのシグナル空間。AHB=0x00.., APB1=0x10.., APB2=0x30..)
@@ -608,6 +608,113 @@ impl MmioTarget for RccF1 {
 impl EventTarget for RccF1 {
     fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
         Ok(())
+    }
+}
+
+/// RCC checkpoint. `emitted_*` is the last gate level accepted by the runtime,
+/// kept separate from the ENR registers so a rejected edge can be retried.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RccF1Checkpoint {
+    pub schema: u32,
+    pub cr_writable: u32,
+    pub cfgr: u32,
+    pub cir_enable: u32,
+    pub cir_flags: u32,
+    pub sws: u32,
+    pub apb2rstr: u32,
+    pub apb1rstr: u32,
+    pub ahbenr: u32,
+    pub apb2enr: u32,
+    pub apb1enr: u32,
+    pub bdcr: u32,
+    pub csr: u32,
+    pub irq_level: bool,
+    pub emitted_ahbenr: u32,
+    pub emitted_apb1enr: u32,
+    pub emitted_apb2enr: u32,
+}
+
+impl Snapshot for RccF1 {
+    type State = RccF1Checkpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        RccF1Checkpoint {
+            schema: Self::SCHEMA_VERSION,
+            cr_writable: self.state.cr_writable,
+            cfgr: self.state.cfgr,
+            cir_enable: self.state.cir_enable,
+            cir_flags: self.state.cir_flags,
+            sws: self.state.sws,
+            apb2rstr: self.state.apb2rstr,
+            apb1rstr: self.state.apb1rstr,
+            ahbenr: self.state.ahbenr,
+            apb2enr: self.state.apb2enr,
+            apb1enr: self.state.apb1enr,
+            bdcr: self.state.bdcr,
+            csr: self.state.csr,
+            irq_level: self.state.irq_level,
+            emitted_ahbenr: self.emitted_ahbenr,
+            emitted_apb1enr: self.emitted_apb1enr,
+            emitted_apb2enr: self.emitted_apb2enr,
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state.sws > 2 {
+            return Err(SnapshotError::InvalidState);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state.cr_writable = state.cr_writable;
+        self.state.cfgr = state.cfgr;
+        self.state.cir_enable = state.cir_enable;
+        self.state.cir_flags = state.cir_flags;
+        self.state.sws = state.sws;
+        self.state.apb2rstr = state.apb2rstr;
+        self.state.apb1rstr = state.apb1rstr;
+        self.state.ahbenr = state.ahbenr;
+        self.state.apb2enr = state.apb2enr;
+        self.state.apb1enr = state.apb1enr;
+        self.state.bdcr = state.bdcr;
+        self.state.csr = state.csr;
+        self.state.irq_level = state.irq_level;
+        self.emitted_ahbenr = state.emitted_ahbenr;
+        self.emitted_apb1enr = state.emitted_apb1enr;
+        self.emitted_apb2enr = state.emitted_apb2enr;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        for word in [
+            state.cr_writable,
+            state.cfgr,
+            state.cir_enable,
+            state.cir_flags,
+            state.sws,
+            state.apb2rstr,
+            state.apb1rstr,
+            state.ahbenr,
+            state.apb2enr,
+            state.apb1enr,
+            state.bdcr,
+            state.csr,
+            state.emitted_ahbenr,
+            state.emitted_apb1enr,
+            state.emitted_apb2enr,
+        ] {
+            hash.u32(word);
+        }
+        hash.bool(state.irq_level);
+        hash.finish()
     }
 }
 

@@ -34,7 +34,7 @@ use alloc::vec::Vec;
 use mosaic_contract_i2c::{I2cAddr, I2cError, I2cInitiator, I2cSpeed};
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{set_optional_signal, ContextError, Ctx, EventTarget};
-use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, SignalId, Snapshot, SnapshotError};
 
 /// DW_apb_i2c レジスタオフセット（APB_DATA_WIDTH = 32 の構成）。
 mod reg {
@@ -255,7 +255,7 @@ impl Default for DwApbI2cState {
 }
 
 /// STOP までキューに積まれる 1 コマンド。
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct PendingCmd {
     data: u8,
     read: bool,
@@ -673,6 +673,120 @@ impl EventTarget for DwApbI2c {
     }
 }
 
+/// One command waiting in the TX FIFO. Host initiator identity is not saved.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DwApbI2cCommand {
+    pub data: u8,
+    pub read: bool,
+    pub stop: bool,
+    pub restart: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DwApbI2cCheckpoint {
+    pub schema: u32,
+    pub registers: DwApbI2cState,
+    pub rx: Vec<u8>,
+    pub pending: Vec<DwApbI2cCommand>,
+}
+
+impl Snapshot for DwApbI2c {
+    type State = DwApbI2cCheckpoint;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        DwApbI2cCheckpoint {
+            schema: Self::SCHEMA_VERSION,
+            registers: self.state,
+            rx: self.rx.iter().copied().collect(),
+            pending: self
+                .pending
+                .iter()
+                .map(|command| DwApbI2cCommand {
+                    data: command.data,
+                    read: command.read,
+                    stop: command.stop,
+                    restart: command.restart,
+                })
+                .collect(),
+        }
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION
+            || state.schema != Self::SCHEMA_VERSION
+            || state.registers.schema != 1
+        {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        if state.rx.len() > self.params.rx_depth || state.pending.len() > self.params.tx_depth {
+            return Err(SnapshotError::InvalidState);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state = state.registers;
+        self.rx = state.rx.iter().copied().collect();
+        self.pending = state
+            .pending
+            .iter()
+            .map(|command| PendingCmd {
+                data: command.data,
+                read: command.read,
+                stop: command.stop,
+                restart: command.restart,
+            })
+            .collect();
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        let registers = &state.registers;
+        for word in [
+            registers.schema,
+            registers.con,
+            registers.tar,
+            registers.sar,
+            registers.hs_maddr,
+            registers.ss_hcnt,
+            registers.ss_lcnt,
+            registers.fs_hcnt,
+            registers.fs_lcnt,
+            registers.hs_hcnt,
+            registers.hs_lcnt,
+            registers.intr_mask,
+            registers.rx_tl,
+            registers.tx_tl,
+            registers.enable,
+            registers.sda_hold,
+            registers.slv_data_nack_only,
+            registers.dma_cr,
+            registers.dma_tdlr,
+            registers.dma_rdlr,
+            registers.sda_setup,
+            registers.ack_general_call,
+            registers.raw_intr,
+            registers.tx_abrt_source,
+        ] {
+            hash.u32(word);
+        }
+        hash.bool(registers.irq_level);
+        hash.bytes(&state.rx);
+        hash.usize(state.pending.len());
+        for command in &state.pending {
+            hash.byte(command.data);
+            hash.bool(command.read);
+            hash.bool(command.stop);
+            hash.bool(command.restart);
+        }
+        hash.finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -681,7 +795,7 @@ mod tests {
     use std::vec;
 
     use super::*;
-    use mosaic_core_types::{AccessKind, Endian, EventId, NodeId, Security, VTime};
+    use mosaic_core_types::{AccessKind, Endian, EventId, NodeId, Security, SnapshotError, VTime};
 
     const IRQ: SignalId = SignalId(7);
 
@@ -1150,6 +1264,42 @@ mod tests {
         assert_eq!(
             strict_device.read(&mut ctx, 0x0A0, AccessSize::Word, &attr()),
             Err(BusFault::Device)
+        );
+    }
+
+    #[test]
+    fn command_queue_and_rx_restore_without_replacing_the_initiator() {
+        use mosaic_core_types::Snapshot;
+        let (mut device, _, _) = device();
+        device.state.tar = 0x55;
+        device.rx.push_back(0x11);
+        device.pending.push(PendingCmd {
+            data: 0x22,
+            read: true,
+            stop: true,
+            restart: false,
+        });
+        let saved = device.save();
+        device.state.tar = 0;
+        device.rx.clear();
+        device.pending.clear();
+        device.load(DwApbI2c::SCHEMA_VERSION, &saved).unwrap();
+        assert_eq!(device.state.tar, 0x55);
+        assert_eq!(device.rx.pop_front(), Some(0x11));
+        assert_eq!(
+            device.pending.first().copied(),
+            Some(PendingCmd {
+                data: 0x22,
+                read: true,
+                stop: true,
+                restart: false,
+            })
+        );
+        let mut too_deep = saved;
+        too_deep.rx = vec![0; device.params.rx_depth + 1];
+        assert_eq!(
+            device.load(DwApbI2c::SCHEMA_VERSION, &too_deep),
+            Err(SnapshotError::InvalidState)
         );
     }
 }

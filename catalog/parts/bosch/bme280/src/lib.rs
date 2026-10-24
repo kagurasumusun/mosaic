@@ -220,6 +220,15 @@ impl Bme280Core {
         Self::with(DEFAULT_CALIBRATION, DEFAULT_SCENE)
     }
 
+    /// Register bank for a versioned checkpoint. Host bindings stay outside.
+    pub fn export_bank(&self) -> [u8; 256] {
+        self.bank
+    }
+
+    pub fn import_bank(&mut self, bank: [u8; 256]) {
+        self.bank = bank;
+    }
+
     /// 指定キャリブレーション・シーンで構築する（テスト用フック）。
     pub fn with(calibration: Calibration, scene: Scene) -> Self {
         let mut bank = [0u8; 256];

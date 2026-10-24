@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use mosaic_contract_model::Ctx;
 use mosaic_core_runtime::{EventKind, EventQueue, ModelContext};
-use mosaic_core_types::{NodeId, SignalId, Snapshot, VTime};
+use mosaic_core_types::{NodeId, SignalId, Snapshot, VDelta, VTime};
 
 fn trace(queue: &mut EventQueue) -> Result<String, String> {
     let signals = BTreeSet::from([7]);
@@ -19,7 +19,7 @@ fn trace(queue: &mut EventQueue) -> Result<String, String> {
                 let mut ctx = ModelContext::new(queue, event.owner, &signals);
                 match token {
                     100 => {
-                        ctx.schedule_after(VTime(10), 101)
+                        ctx.schedule_after(VDelta(10), 101)
                             .map_err(|e| format!("{e:?}"))?;
                     }
                     200 => ctx

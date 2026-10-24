@@ -67,7 +67,7 @@ impl Ctx for ModelContext<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mosaic_core_types::Snapshot;
+    use mosaic_core_types::{Snapshot, VDelta};
 
     #[test]
     fn runtime_handles_preserve_the_send_contract() {
@@ -85,7 +85,7 @@ mod tests {
             let mut context = ModelContext::new(&mut queue, NodeId(3), &signals);
             let ctx: &mut dyn Ctx = &mut context; // Verify object safety.
             assert_eq!(ctx.now(), VTime(10));
-            ctx.schedule_after(VTime(5), 42).unwrap()
+            ctx.schedule_after(VDelta(5), 42).unwrap()
         };
         let event = queue.pop_next().unwrap();
         assert_eq!(event.id, id);
@@ -173,7 +173,7 @@ mod tests {
         let signals = BTreeSet::new();
         let mut context = ModelContext::new(&mut queue, NodeId(0), &signals);
         assert_eq!(
-            context.schedule_after(VTime(1), 0),
+            context.schedule_after(VDelta(1), 0),
             Err(ContextError::TimeOverflow)
         );
         assert_eq!(queue.save(), before);

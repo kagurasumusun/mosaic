@@ -12,7 +12,6 @@ use mosaic_describe::{
     RegionDescriptor, RegionKind, SocIdentity, SocManifest,
 };
 
-
 /// Check the normalized graph against catalog endpoint declarations. This is
 /// deliberately a tooling concern: `mosaic-describe` stays format-independent.
 pub(super) fn validate_graph_ports(
@@ -82,7 +81,8 @@ pub(super) fn validate_graph_ports(
         let Some(node) = nodes.get(region.target_node.as_str()) else {
             // `MachineGraph::build` validates graph node references first.
             errors.push(format!(
-                "region {:?}: unknown target node {:?}", region.name, region.target_node
+                "region {:?}: unknown target node {:?}",
+                region.name, region.target_node
             ));
             continue;
         };
@@ -95,7 +95,8 @@ pub(super) fn validate_graph_ports(
         };
         let Some(manifest) = catalog.get(catalog_id) else {
             errors.push(format!(
-                "region {:?}: no catalog manifest for {:?}", region.name, catalog_id
+                "region {:?}: no catalog manifest for {:?}",
+                region.name, catalog_id
             ));
             continue;
         };
@@ -162,15 +163,24 @@ fn validate_graph_endpoint(
             .ok_or_else(|| "part manifest has no bindings array".to_owned())?;
         match side {
             EndpointSide::Target => {
-                if bindings.iter().any(|binding| binding.as_str() == Some(label)) {
+                if bindings
+                    .iter()
+                    .any(|binding| binding.as_str() == Some(label))
+                {
                     return Ok(());
                 }
-                return Err(format!("part {:?} does not declare binding {label:?}", node.id));
+                return Err(format!(
+                    "part {:?} does not declare binding {label:?}",
+                    node.id
+                ));
             }
             EndpointSide::Source => {
                 if let Some(index) = label.strip_prefix("channel") {
                     let index = index.parse::<u64>().map_err(|_| {
-                        format!("part {:?} has malformed channel endpoint {label:?}", node.id)
+                        format!(
+                            "part {:?} has malformed channel endpoint {label:?}",
+                            node.id
+                        )
                     })?;
                     let channels = manifest
                         .get("i2c")
@@ -226,7 +236,9 @@ fn validate_graph_endpoint(
             .and_then(toml::Value::as_str)
             .ok_or_else(|| format!("port {base:?} has no role"))?;
         if !role_allowed(role) {
-            return Err(format!("port {base:?} role {role:?} cannot be used on this edge side"));
+            return Err(format!(
+                "port {base:?} role {role:?} cannot be used on this edge side"
+            ));
         }
         if let Some(suffix) = suffix {
             if let Ok(index) = suffix.parse::<u64>() {
@@ -241,14 +253,19 @@ fn validate_graph_endpoint(
                 return Ok(());
             }
             if !has_pin(port, suffix) {
-                return Err(format!("port {base:?} does not declare pin/name {suffix:?}"));
+                return Err(format!(
+                    "port {base:?} does not declare pin/name {suffix:?}"
+                ));
             }
         }
         return Ok(());
     }
 
     if suffix.is_some() {
-        return Err(format!("model {:?} does not declare port group {base:?}", node.id));
+        return Err(format!(
+            "model {:?} does not declare port group {base:?}",
+            node.id
+        ));
     }
     for port in ports.values() {
         let role = port.get("role").and_then(toml::Value::as_str).unwrap_or("");
@@ -256,7 +273,10 @@ fn validate_graph_endpoint(
             return Ok(());
         }
     }
-    Err(format!("model {:?} does not declare port/pin {label:?}", node.id))
+    Err(format!(
+        "model {:?} does not declare port/pin {label:?}",
+        node.id
+    ))
 }
 
 /// Validate the fixed portions of CPU/IP/part catalog manifests. Port and
@@ -304,11 +324,16 @@ pub(super) fn validate_leaf_catalog_manifest(
                     .ok_or_else(|| format!("{scope}: expected a table"))?;
                 reject_unknown(
                     port,
-                    &["role", "size", "pins", "contract", "optional", "count", "names"],
+                    &[
+                        "role", "size", "pins", "contract", "optional", "count", "names",
+                    ],
                     &scope,
                 )?;
                 let role = string(port, "role", &scope)?;
-                if !matches!(role.as_str(), "target" | "source" | "sink" | "endpoint" | "initiator") {
+                if !matches!(
+                    role.as_str(),
+                    "target" | "source" | "sink" | "endpoint" | "initiator"
+                ) {
                     return Err(format!("{scope}.role: unsupported role {role:?}"));
                 }
                 if let Some(size) = port.get("size") {
@@ -333,7 +358,9 @@ pub(super) fn validate_leaf_catalog_manifest(
                         .ok_or_else(|| format!("{scope}.contract: expected a string"))?;
                     let parts: Vec<_> = contract.split('/').collect();
                     if parts.len() != 2 || parts.iter().any(|part| !valid_manifest_name(part)) {
-                        return Err(format!("{scope}.contract: expected a non-empty namespace/name pair"));
+                        return Err(format!(
+                            "{scope}.contract: expected a non-empty namespace/name pair"
+                        ));
                     }
                 }
                 if let Some(optional) = port.get("optional") {
@@ -346,7 +373,10 @@ pub(super) fn validate_leaf_catalog_manifest(
                         let values = string_array(port, key, &scope, true)?;
                         if let Some(count) = count {
                             if values.len() != count {
-                                return Err(format!("{scope}.{key}: contains {} items but count is {count}", values.len()));
+                                return Err(format!(
+                                    "{scope}.{key}: contains {} items but count is {count}",
+                                    values.len()
+                                ));
                             }
                         }
                     }
@@ -443,7 +473,8 @@ pub(super) fn validate_leaf_catalog_manifest(
                     }
                 }
             }
-            if bindings.iter().any(|binding| binding.as_str() == "i2c") && !root.contains_key("i2c") {
+            if bindings.iter().any(|binding| binding.as_str() == "i2c") && !root.contains_key("i2c")
+            {
                 return Err("part.bindings: i2c binding has no [i2c] section".into());
             }
 
@@ -468,7 +499,8 @@ pub(super) fn validate_leaf_catalog_manifest(
                     non_negative_integer(value, "spi.dummy-bytes-on-read")?;
                 }
             }
-            if bindings.iter().any(|binding| binding.as_str() == "spi") && !root.contains_key("spi") {
+            if bindings.iter().any(|binding| binding.as_str() == "spi") && !root.contains_key("spi")
+            {
                 return Err("part.bindings: spi binding has no [spi] section".into());
             }
 
@@ -493,10 +525,14 @@ pub(super) fn validate_leaf_catalog_manifest(
                 )?;
                 let name = string(register, "name", &scope)?;
                 if name.trim().is_empty() || !register_names.insert(name.clone()) {
-                    return Err(format!("{scope}.name: empty or duplicate register name {name:?}"));
+                    return Err(format!(
+                        "{scope}.name: empty or duplicate register name {name:?}"
+                    ));
                 }
                 non_negative_integer(
-                    register.get("offset").ok_or_else(|| format!("{scope}.offset: missing field"))?,
+                    register
+                        .get("offset")
+                        .ok_or_else(|| format!("{scope}.offset: missing field"))?,
                     &format!("{scope}.offset"),
                 )?;
                 if let Some(size) = register.get("size") {
@@ -504,7 +540,9 @@ pub(super) fn validate_leaf_catalog_manifest(
                 }
                 let access = string(register, "access", &scope)?;
                 if !matches!(access.as_str(), "ro" | "rw" | "wo") {
-                    return Err(format!("{scope}.access: unsupported access mode {access:?}"));
+                    return Err(format!(
+                        "{scope}.access: unsupported access mode {access:?}"
+                    ));
                 }
                 if let Some(reset) = register.get("reset") {
                     non_negative_integer(reset, &format!("{scope}.reset"))?;
@@ -532,11 +570,13 @@ fn validate_parameter_type(
     scope: &str,
 ) -> Result<(), String> {
     let supported = [
-        "u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize",
-        "bool", "string", "policy",
+        "u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize", "bool", "string",
+        "policy",
     ];
     if !supported.contains(&type_name) {
-        return Err(format!("{scope}.type: unsupported parameter type {type_name:?}"));
+        return Err(format!(
+            "{scope}.type: unsupported parameter type {type_name:?}"
+        ));
     }
     let Some(value) = default else {
         return Ok(());
@@ -553,13 +593,19 @@ fn validate_parameter_type(
             match is_integer {
                 Some(value) if (0..=max).contains(&value) => Ok(()),
                 Some(_) => Err(format!("{scope}.default: value is outside {type_name}")),
-                None => Err(format!("{scope}.default: expected an integer for {type_name}")),
+                None => Err(format!(
+                    "{scope}.default: expected an integer for {type_name}"
+                )),
             }
         }
         "u64" | "usize" => match is_integer {
             Some(value) if value >= 0 => Ok(()),
-            Some(_) => Err(format!("{scope}.default: expected a non-negative {type_name}")),
-            None => Err(format!("{scope}.default: expected an integer for {type_name}")),
+            Some(_) => Err(format!(
+                "{scope}.default: expected a non-negative {type_name}"
+            )),
+            None => Err(format!(
+                "{scope}.default: expected an integer for {type_name}"
+            )),
         },
         "i8" | "i16" | "i32" => {
             let bits: u32 = match type_name {
@@ -572,14 +618,18 @@ fn validate_parameter_type(
             match is_integer {
                 Some(value) if (min..=max).contains(&value) => Ok(()),
                 Some(_) => Err(format!("{scope}.default: value is outside {type_name}")),
-                None => Err(format!("{scope}.default: expected an integer for {type_name}")),
+                None => Err(format!(
+                    "{scope}.default: expected an integer for {type_name}"
+                )),
             }
         }
         "i64" | "isize" => {
             if is_integer.is_some() {
                 Ok(())
             } else {
-                Err(format!("{scope}.default: expected an integer for {type_name}"))
+                Err(format!(
+                    "{scope}.default: expected an integer for {type_name}"
+                ))
             }
         }
         "bool" => {
@@ -593,10 +643,14 @@ fn validate_parameter_type(
             if value.as_str().is_some() {
                 Ok(())
             } else {
-                Err(format!("{scope}.default: expected a string for {type_name}"))
+                Err(format!(
+                    "{scope}.default: expected a string for {type_name}"
+                ))
             }
         }
-        _ => Err(format!("{scope}.type: unsupported parameter type {type_name:?}")),
+        _ => Err(format!(
+            "{scope}.type: unsupported parameter type {type_name:?}"
+        )),
     }
 }
 
@@ -663,7 +717,6 @@ fn string_array(
     }
     Ok(result)
 }
-
 
 pub(super) fn parse_soc(value: &toml::Value) -> Result<SocManifest, String> {
     let root = value
@@ -918,11 +971,7 @@ fn parse_region_kind(table: &toml::Table, scope: &str) -> Result<RegionKind, Str
     }
 }
 
-fn reject_unknown(
-    table: &toml::Table,
-    allowed: &[&str],
-    scope: &str,
-) -> Result<(), String> {
+fn reject_unknown(table: &toml::Table, allowed: &[&str], scope: &str) -> Result<(), String> {
     if let Some(key) = table.keys().find(|key| !allowed.contains(&key.as_str())) {
         Err(format!("{scope}: unknown field {key:?}"))
     } else {
@@ -971,11 +1020,7 @@ fn unsigned(table: &toml::Table, key: &str, scope: &str) -> Result<u64, String> 
     u64::try_from(value).map_err(|_| format!("{scope}.{key}: expected a non-negative integer"))
 }
 
-fn optional_integer(
-    table: &toml::Table,
-    key: &str,
-    scope: &str,
-) -> Result<Option<i64>, String> {
+fn optional_integer(table: &toml::Table, key: &str, scope: &str) -> Result<Option<i64>, String> {
     table
         .get(key)
         .map(|value| {
@@ -1007,9 +1052,7 @@ fn config_value(value: &toml::Value) -> ConfigValue {
         toml::Value::Float(value) => ConfigValue::Float(*value),
         toml::Value::Boolean(value) => ConfigValue::Boolean(*value),
         toml::Value::Datetime(value) => ConfigValue::Datetime(value.to_string()),
-        toml::Value::Array(values) => {
-            ConfigValue::Array(values.iter().map(config_value).collect())
-        }
+        toml::Value::Array(values) => ConfigValue::Array(values.iter().map(config_value).collect()),
         toml::Value::Table(values) => ConfigValue::Table(
             values
                 .iter()
@@ -1043,8 +1086,8 @@ siz=4096
 "#,
         )
         .unwrap();
-        let error = validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new())
-            .unwrap_err();
+        let error =
+            validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new()).unwrap_err();
         assert!(error.contains("unknown field"), "{error}");
     }
 
@@ -1091,8 +1134,8 @@ default=256
 "#,
         )
         .unwrap();
-        let error = validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new())
-            .unwrap_err();
+        let error =
+            validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new()).unwrap_err();
         assert!(error.contains("outside u8"), "{error}");
     }
 
@@ -1117,8 +1160,8 @@ pins=['irq0']
 "#,
         )
         .unwrap();
-        let error = validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new())
-            .unwrap_err();
+        let error =
+            validate_leaf_catalog_manifest("ip.toml", &value, &BTreeSet::new()).unwrap_err();
         assert!(error.contains("contains 1 items but count is 2"), "{error}");
     }
 
@@ -1189,10 +1232,9 @@ kind='mmo'
         ))
         .unwrap();
         let mut board = parse_board(&board).unwrap();
-        board.part[0].conn.insert(
-            "bus".into(),
-            ConfigValue::String("soc.not-a-device".into()),
-        );
+        board.part[0]
+            .conn
+            .insert("bus".into(), ConfigValue::String("soc.not-a-device".into()));
         let error = mosaic_describe::MachineGraph::build(&soc, Some(&board)).unwrap_err();
         assert!(error.message.contains("unknown bus node"));
     }
@@ -1207,7 +1249,7 @@ size = 4096
 "#,
         )
         .unwrap();
-        let catalog = [ ("ip:test/device".to_owned(), manifest) ]
+        let catalog = [("ip:test/device".to_owned(), manifest)]
             .into_iter()
             .collect::<BTreeMap<_, _>>();
         let graph = MachineGraph {
@@ -1239,7 +1281,10 @@ size = 4096
             edges: Vec::new(),
         };
         let errors = validate_graph_ports(&graph, &catalog);
-        assert!(errors.iter().any(|error| error.contains("exceeds")), "{errors:?}");
+        assert!(
+            errors.iter().any(|error| error.contains("exceeds")),
+            "{errors:?}"
+        );
     }
 
     #[test]

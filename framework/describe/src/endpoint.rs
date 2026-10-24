@@ -50,4 +50,3 @@ pub(crate) fn parse_endpoint(
         port,
     })
 }
-

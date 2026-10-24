@@ -12,7 +12,7 @@
 use mosaic_contract_cpu_engine::{CpuDescriptor, EngineArch};
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::Ctx;
-use mosaic_core_types::{AccessSize, Attr, BusFault};
+use mosaic_core_types::{AccessSize, Attr, BusFault, Fnv64, Snapshot, SnapshotError};
 
 /// 実行構成の宣言（設計書 §12.1: cpu = ISA + エンジン設定 + コア固有部分）。
 /// A32 リトルエンディアン。backend 既定の CPU モデルを使うため model は None。
@@ -172,6 +172,37 @@ impl MmioTarget for Arm926ejS {
             reg::MIDR | reg::STATUS => Ok(()),
             _ => self.unmapped_read().map(|_| ()),
         }
+    }
+}
+
+impl Snapshot for Arm926ejS {
+    type State = Arm926ejSState;
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn save(&self) -> Self::State {
+        self.state
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.state = *state;
+        Ok(())
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u32(state.control);
+        hash.bool(state.irq_level);
+        hash.bool(state.fiq_level);
+        hash.finish()
     }
 }
 

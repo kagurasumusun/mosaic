@@ -20,9 +20,7 @@ bind-spi = ["dep:mosaic-contract-spi", "dep:mosaic-contract-model"]
 
 [dependencies]
 mosaic-prim-bits = { path = "../../../../framework/prim/bits" }
+mosaic-core-types = { path = "../../../../framework/core/types" }
 mosaic-contract-i2c = { path = "../../../../framework/contract/i2c", optional = true }
 mosaic-contract-spi = { path = "../../../../framework/contract/spi", optional = true }
 mosaic-contract-model = { path = "../../../../framework/contract/model", optional = true }
-
-[dev-dependencies]
-mosaic-core-types = { path = "../../../../framework/core/types" }
