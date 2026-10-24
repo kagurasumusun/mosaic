@@ -592,6 +592,14 @@ macro_rules! unicorn_wrapper {
             fn line_edges(&self) -> &[(IrqLine, bool)] {
                 self.0.irq_edges()
             }
+
+            fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+                self.0.sync_shared_in()
+            }
+
+            fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+                self.0.sync_shared_out()
+            }
         }
     };
 }

@@ -36,27 +36,18 @@ pub enum MulticoreError {
     Poisoned,
 }
 
-/// One core's execution configuration: its engine instance, the mailbox that
-/// carries wired interrupt edges into it between slices, and its resolved
-/// clock period for instruction-count-to-VTime conversion.
+/// One core's execution configuration: its engine instance, the shared-page
+/// synchronisation that belongs to it, the mailbox that carries wired
+/// interrupt edges into it between slices, and its resolved clock period
+/// for instruction-count-to-VTime conversion.
+///
+/// The shared-page synchronisation lives in the engine contract
+/// (`CpuEngine::sync_shared_in` / `sync_shared_out`), so the driver needs
+/// no trait upcasting, which is still unstable in Rust 1.85 (ADR 0010).
 struct CoreSlot {
-    engine: Box<dyn CoreEngine>,
+    engine: Box<dyn CpuEngine>,
     irq: Option<Arc<IrqMailbox>>,
     ps_per_instruction: NonZeroU64,
-}
-
-/// A core's engine plus the shared-page synchronisation it supports. The
-/// synchronisation lives in the same object as the engine because the
-/// mirrors live in its address space (ADR 0010).
-pub trait CoreEngine: CpuEngine + SharedSync {}
-
-impl<T: CpuEngine + SharedSync> CoreEngine for T {}
-
-/// Copy shared pages between the authoritative buffers and an engine's
-/// mirrors. See [`crate::unicorn_bind::EngineMap`] for the backend contract.
-pub trait SharedSync {
-    fn sync_shared_in(&mut self) -> Result<(), EngineError>;
-    fn sync_shared_out(&mut self) -> Result<(), EngineError>;
 }
 
 /// Outcome of one round-robin pass over every core.
@@ -84,7 +75,7 @@ impl MulticoreDriver {
 
     /// Add a core; its index fixes its position in every round. Addition
     /// order is execution order and never changes afterwards.
-    pub fn add_core(&mut self, engine: Box<dyn CoreEngine>) -> usize {
+    pub fn add_core(&mut self, engine: Box<dyn CpuEngine>) -> usize {
         let index = self.cores.len();
         let ps = NonZeroU64::new(DEFAULT_PS_PER_INSTRUCTION)
             .expect("the default clock period is never zero");
@@ -135,7 +126,7 @@ impl MulticoreDriver {
     pub fn core(&self, index: usize) -> Option<&dyn CpuEngine> {
         self.cores
             .get(index)
-            .map(|slot| slot.engine.as_ref() as &dyn CpuEngine)
+            .map(|slot| slot.engine.as_ref())
     }
 
     pub fn machine(&self) -> Arc<Mutex<Machine>> {
@@ -310,7 +301,7 @@ fn flush(core: &mut CoreSlot, index: usize) -> Result<(), MulticoreError> {
 
 /// Classify a fault stop: a recorded bus fault wins, otherwise the raw
 /// engine outcome is preserved for the composition root.
-fn fault_of(engine: &mut dyn CoreEngine, outcome: RunOutcome) -> DriverError {
+fn fault_of(engine: &mut dyn CpuEngine, outcome: RunOutcome) -> DriverError {
     match engine.take_bus_fault() {
         Some(fault) => DriverError::Bus(fault),
         None => DriverError::EngineFault(outcome),
@@ -423,8 +414,8 @@ mod tests {
                 .unwrap();
         }
         let mut driver = MulticoreDriver::new(machine);
-        driver.add_core(Box::new(crate::SharedEngine::new(Box::new(first))));
-        driver.add_core(Box::new(crate::SharedEngine::new(Box::new(second))));
+        driver.add_core(Box::new(first));
+        driver.add_core(Box::new(second));
         (driver, ram)
     }
 
@@ -545,8 +536,8 @@ mod tests {
         riscv.reg_write(RvReg::Pc.into(), 0).unwrap();
 
         let mut driver = MulticoreDriver::new(machine);
-        driver.add_core(Box::new(crate::SharedEngine::new(Box::new(arm))));
-        driver.add_core(Box::new(crate::SharedEngine::new(Box::new(riscv))));
+        driver.add_core(Box::new(arm));
+        driver.add_core(Box::new(riscv));
         let round = driver.step(NonZeroU64::new(4).unwrap(), 8).unwrap();
         assert_eq!(round.cores.len(), 2);
         assert_eq!(round.cores[0].engine.instruction_hooks, 2 + 2);

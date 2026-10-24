@@ -167,4 +167,17 @@ pub trait CpuEngine: Send {
     fn line_edges(&self) -> &[(IrqLine, bool)] {
         &[]
     }
+    /// Copy the engine's shared-memory mirrors from the authoritative buffers
+    /// (before a core slice) and back into them (after a core slice).
+    ///
+    /// Backends that map one writable shared memory in every instance can
+    /// leave the default no-op. Backends whose host mapping is read-only
+    /// towards the guest (Unicorn 2.1.x `uc_mem_map_ptr`) implement the
+    /// copy at deterministic slice boundaries instead (ADR 0010).
+    fn sync_shared_in(&mut self) -> Result<(), EngineError> {
+        Ok(())
+    }
+    fn sync_shared_out(&mut self) -> Result<(), EngineError> {
+        Ok(())
+    }
 }
