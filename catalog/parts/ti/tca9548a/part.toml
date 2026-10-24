@@ -1,0 +1,22 @@
+# TI TCA9548A I2C スイッチの記述。値は TI TCA9548A データシート (SCDS147)
+# に基づく。現フェーズは宣言のみで、消費するパーサは後続フェーズで導入する。
+[part]
+id = 'part:ti/tca9548a'
+origin = 'ti'
+name = 'TCA9548A'
+summary = '8-channel I2C bus switch with a single control register'
+bindings = ['i2c']
+provenance = { doc = 'TI TCA9548A datasheet', confidence = 'high' }
+
+# アドレスは A0-A2 ピンで 0x70..0x77。制御レジスタへの書き込み 1 バイトで
+# チャネルを切り替える。電源投入時は全チャネル切断（制御レジスタ 0x00）。
+[i2c]
+addresses = [0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77]
+channels = 8
+
+[[register]]
+name = 'control'
+offset = 0x00
+access = 'rw'
+reset = 0x00
+note = 'bit n = チャネル n のイネーブル。唯一のレジスタ'

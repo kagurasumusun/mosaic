@@ -1,0 +1,18 @@
+[identity]
+id = 'ip:arm/pl061'
+summary = 'ARM PrimeCell GPIO port (PL061) functional register model'
+spec = ['ARM DDI 0190']
+variants = []
+
+[tags]
+function = ['gpio']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['combined'] }
+pins = { contract = 'gpio/port', role = 'endpoint', count = 8 }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

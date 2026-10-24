@@ -45,7 +45,9 @@ jobs:
           set +e
           cargo fmt --all > ci-reports/fmt.log 2>&1
           code=$?
-          git diff > ci-reports/rustfmt.diff
+          # ci-reports 自体は追跡済みなので差分の対象から除外する
+          # （自己参照で常に fail になるのを防ぐ）。
+          git diff -- . ':(exclude)ci-reports' > ci-reports/rustfmt.diff
           if [ $code -eq 0 ] && [ ! -s ci-reports/rustfmt.diff ]; then
             echo "formatting: ok" >> ci-reports/status.txt
           else

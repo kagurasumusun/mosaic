@@ -272,15 +272,16 @@ mod tests {
         let mut core = Arm926ejS::new(params());
         let mut ctx = CtxStub;
         let attr = attr();
-        core.write(&mut ctx, reg::CONTROL, AccessSize::Word, 0x1234_5678, &attr)
-            .unwrap();
+        // CONTROL keeps only the ENABLE bit, so width masking is observed on
+        // the full-width read-only MIDR (0x4105_9261).
+        assert_eq!(core.read(&mut ctx, reg::MIDR, AccessSize::Byte, &attr), Ok(0x61));
         assert_eq!(
-            core.read(&mut ctx, reg::CONTROL, AccessSize::Byte, &attr),
-            Ok(0x78)
+            core.read(&mut ctx, reg::MIDR, AccessSize::HalfWord, &attr),
+            Ok(0x9261)
         );
         assert_eq!(
-            core.read(&mut ctx, reg::CONTROL, AccessSize::HalfWord, &attr),
-            Ok(0x5678)
+            core.read(&mut ctx, reg::MIDR, AccessSize::Word, &attr),
+            Ok(MIDR as u64)
         );
     }
 

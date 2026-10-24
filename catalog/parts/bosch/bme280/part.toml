@@ -1,0 +1,98 @@
+# Bosch BME280 統合環境センサの記述。値は Bosch BME280 データシート
+# (BST-BME280-DS002) に基づく。現フェーズは宣言のみで、消費するパーサは
+# 後続フェーズ（describe 実装）で導入する。
+[part]
+id = 'part:bosch/bme280'
+origin = 'bosch'
+name = 'BME280'
+summary = 'Digital humidity, pressure and temperature sensor (I2C / SPI)'
+bindings = ['i2c', 'spi']
+provenance = { doc = 'Bosch BME280 datasheet', confidence = 'high' }
+
+# I2C: アドレスは SDO ピンで 0x76 / 0x77。書き込みフレームの先頭バイトが
+# レジスタポインタで、読み書きはポインタを自動インクリメントする。
+[i2c]
+addresses = [0x76, 0x77]
+pointer-width = 8
+
+# SPI: 4 線式。コマンドバイト bit7 = 方向（1 = read）、bit6..0 = アドレス
+# 下位 7 ビット（全レジスタは 0x80 以上なので実アドレスは |0x80）。
+[spi]
+mode = [0, 3]
+dummy-bytes-on-read = 1
+
+[[register]]
+name = 'calib00'
+offset = 0x88
+size = 26
+access = 'ro'
+note = 'dig_T1..dig_P9 の 16 ビット LE 配列（0x88..0xA1）'
+
+[[register]]
+name = 'calib_h1'
+offset = 0xA1
+access = 'ro'
+
+[[register]]
+name = 'chip_id'
+offset = 0xD0
+access = 'ro'
+reset = 0x60
+
+[[register]]
+name = 'reset'
+offset = 0xE0
+access = 'wo'
+note = '0xB6 書き込みでソフトリセット'
+
+[[register]]
+name = 'calib_h2'
+offset = 0xE1
+size = 7
+access = 'ro'
+note = 'dig_H2..dig_H6（0xE1..0xE7、H4/H5 はニブル連結の 12 ビット符号付き）'
+
+[[register]]
+name = 'ctrl_hum'
+offset = 0xF2
+access = 'rw'
+reset = 0x00
+
+[[register]]
+name = 'status'
+offset = 0xF3
+access = 'ro'
+reset = 0x00
+
+[[register]]
+name = 'ctrl_meas'
+offset = 0xF4
+access = 'rw'
+reset = 0x00
+
+[[register]]
+name = 'config'
+offset = 0xF5
+access = 'rw'
+reset = 0x00
+
+[[register]]
+name = 'press_msb'
+offset = 0xF7
+size = 3
+access = 'ro'
+note = '20 ビット生圧力（msb[19:12], lsb[11:4], xlsb[3:0]）'
+
+[[register]]
+name = 'temp_msb'
+offset = 0xFA
+size = 3
+access = 'ro'
+note = '20 ビット生温度'
+
+[[register]]
+name = 'hum_msb'
+offset = 0xFD
+size = 2
+access = 'ro'
+note = '16 ビット生湿度'

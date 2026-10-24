@@ -1,0 +1,20 @@
+[identity]
+id = 'ip:synopsys/dw-apb-i2c'
+summary = 'Synopsys DesignWare APB I2C master-mode functional register model'
+spec = ['Synopsys DW_apb_i2c databook']
+variants = []
+
+[tags]
+function = ['i2c']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['combined'] }
+i2c = { contract = 'i2c/initiator', role = 'initiator' }
+
+[params]
+rx_depth = { type = 'usize', default = 16 }
+tx_depth = { type = 'usize', default = 16 }
+unmapped = { type = 'policy', default = 'raz-wi' }

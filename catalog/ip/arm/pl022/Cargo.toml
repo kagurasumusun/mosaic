@@ -1,0 +1,21 @@
+[package]
+name = "mosaic-ip-arm-pl022"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "catalog"
+kind = "ip"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-types = { path = "../../../../framework/core/types" }
+mosaic-contract-mmio = { path = "../../../../framework/contract/mmio" }
+mosaic-contract-model = { path = "../../../../framework/contract/model" }
+mosaic-contract-spi = { path = "../../../../framework/contract/spi" }
+mosaic-ip-arm-primecell-id = { path = "../primecell-id" }

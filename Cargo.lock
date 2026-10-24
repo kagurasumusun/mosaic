@@ -430,6 +430,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-arm-pl022"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-contract-spi",
+ "mosaic-core-types",
+ "mosaic-ip-arm-primecell-id",
+]
+
+[[package]]
+name = "mosaic-ip-arm-pl061"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-gpio",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+ "mosaic-ip-arm-primecell-id",
+]
+
+[[package]]
 name = "mosaic-ip-arm-primecell-id"
 version = "0.1.0"
 
@@ -444,6 +466,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-synopsys-dw-apb-i2c"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-i2c",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
@@ -453,6 +485,26 @@ dependencies = [
 [[package]]
 name = "mosaic-modelkit-fifo"
 version = "0.1.0"
+
+[[package]]
+name = "mosaic-part-bosch-bme280"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+ "mosaic-contract-spi",
+ "mosaic-core-types",
+ "mosaic-prim-bits",
+]
+
+[[package]]
+name = "mosaic-part-ti-tca9548a"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-i2c",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
 
 [[package]]
 name = "mosaic-prim-bits"

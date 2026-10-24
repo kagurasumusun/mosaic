@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:arm/pl022'
+summary = 'ARM PrimeCell synchronous serial port (PL022) functional register model'
+spec = ['ARM DDI 0194']
+variants = []
+
+[tags]
+function = ['spi']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['combined'] }
+spi = { contract = 'spi/initiator', role = 'initiator' }
+
+[params]
+cs = { type = 'u8', default = 0 }
+unmapped = { type = 'policy', default = 'raz-wi' }
