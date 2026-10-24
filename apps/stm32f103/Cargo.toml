@@ -1,0 +1,37 @@
+[package]
+name = "mosaic-apps-stm32f103"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "apps"
+kind = "app"
+level = 6
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The CPU backend stays opt-in, matching the CLI and ADR 0007.
+unicorn = [
+    "dep:mosaic-engine-unicorn",
+    "mosaic-assemble/unicorn",
+]
+
+[dependencies]
+mosaic-assemble = { path = "../../framework/assemble" }
+mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
+mosaic-contract-model = { path = "../../framework/contract/model" }
+mosaic-contract-signal = { path = "../../framework/contract/signal" }
+mosaic-core-runtime = { path = "../../framework/core/runtime" }
+mosaic-core-types = { path = "../../framework/core/types" }
+mosaic-engine-unicorn = { path = "../../framework/engine/unicorn", optional = true }
+mosaic-interconnect-uart-pair = { path = "../../framework/interconnect/uart-pair" }
+mosaic-ip-arm-scs = { path = "../../catalog/ip/arm/scs" }
+mosaic-ip-st-gpio-f1 = { path = "../../catalog/ip/st/gpio-f1" }
+mosaic-ip-st-rcc-f1 = { path = "../../catalog/ip/st/rcc-f1" }
+mosaic-ip-st-usart-f1 = { path = "../../catalog/ip/st/usart-f1" }
+mosaic-isa-arm = { path = "../../framework/isa/arm" }

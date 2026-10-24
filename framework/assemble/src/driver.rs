@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBusFault, EngineError, RunOutcome, StopReason};
 use mosaic_core_runtime::{Machine, MachineError};
 use mosaic_core_types::VTime;
-use mosaic_engine_unicorn::UnicornArm;
 
 use crate::IrqMailbox;
 
@@ -46,14 +45,20 @@ pub struct StepReport {
 }
 
 /// Owns one engine and the shared machine it executes against.
-pub struct MachineDriver {
-    engine: UnicornArm,
+///
+/// Generic over the engine type so the same cooperative loop drives every
+/// backend adapter — the A32 [`UnicornArm`](mosaic_engine_unicorn::UnicornArm)
+/// and the M-class `UnicornCortexM3` of microcontroller slices alike. The
+/// engine only needs the [`CpuEngine`] contract; backend-specific inspection
+/// (register access, recorded interrupt edges) goes through `engine()`.
+pub struct MachineDriver<E: CpuEngine> {
+    engine: E,
     machine: Arc<Mutex<Machine>>,
     irq: Option<Arc<IrqMailbox>>,
 }
 
-impl MachineDriver {
-    pub fn new(engine: UnicornArm, machine: Arc<Mutex<Machine>>) -> Self {
+impl<E: CpuEngine> MachineDriver<E> {
+    pub fn new(engine: E, machine: Arc<Mutex<Machine>>) -> Self {
         Self {
             engine,
             machine,
@@ -77,11 +82,11 @@ impl MachineDriver {
         Ok(())
     }
 
-    pub fn engine(&self) -> &UnicornArm {
+    pub fn engine(&self) -> &E {
         &self.engine
     }
 
-    pub fn engine_mut(&mut self) -> &mut UnicornArm {
+    pub fn engine_mut(&mut self) -> &mut E {
         &mut self.engine
     }
 
@@ -251,7 +256,7 @@ mod tests {
         )
     }
 
-    fn build(code: &[u8]) -> (MachineDriver, LevelProbe) {
+    fn build(code: &[u8]) -> (MachineDriver<UnicornArm>, LevelProbe) {
         let view = FlatView::build(&[
             leaf(0, 0x1000, ROM, MemoryKind::Rom, Permissions::RX),
             leaf(0x2000, 0x1000, DEVICE, MemoryKind::Mmio, Permissions::RW),
@@ -378,7 +383,7 @@ mod tests {
         }
     }
 
-    fn build_timer(code: &[u8]) -> (MachineDriver, LevelProbe) {
+    fn build_timer(code: &[u8]) -> (MachineDriver<UnicornArm>, LevelProbe) {
         let view = FlatView::build(&[
             leaf(0, 0x1000, ROM, MemoryKind::Rom, Permissions::RX),
             leaf(0x2000, 0x1000, DEVICE, MemoryKind::Mmio, Permissions::RW),

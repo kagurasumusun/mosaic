@@ -1,0 +1,20 @@
+[identity]
+id = 'ip:st/usart-f1'
+summary = 'STM32F1 USART (SR/DR/BRR/CR1/CR2/CR3/GTPR) functional register model'
+spec = ['ST RM0008']
+variants = ['STM32F103 medium density']
+
+[tags]
+function = ['uart']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1C }
+irq = { role = 'source', pins = ['combined'] }
+stream = { contract = 'stream/byte', role = 'endpoint', optional = true }
+clock = { contract = 'model/signal', role = 'endpoint', count = 1 }
+
+[params]
+# The RCC clock-gate input and the interrupt output signal id are injected at
+# construction; the byte-stream port is optional.

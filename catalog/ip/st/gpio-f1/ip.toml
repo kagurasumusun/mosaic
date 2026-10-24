@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:st/gpio-f1'
+summary = 'STM32F1 GPIO port (CRL/CRH/IDR/ODR/BSRR/BRR/LCKR) functional register model'
+spec = ['ST RM0008']
+variants = ['STM32F103 medium density']
+
+[tags]
+function = ['gpio']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1C }
+pins = { contract = 'model/signal', role = 'source', count = 16 }
+clock = { contract = 'model/signal', role = 'endpoint', count = 1 }
+
+[params]
+# The RCC clock-gate input (source node, signal id) is injected with
+# GpioF1::bind_clock after construction (ADR 0008 port injection).

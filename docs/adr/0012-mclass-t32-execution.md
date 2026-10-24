@@ -1,8 +1,8 @@
 # 0012: T32 実行のための M-class エンジン構成
 
-状態: 暫定採用（P3 vic-thermal の CI で A32 側の限界を実証、M-class 側は
-STM32F103 スライスが契約を検証するまで暫定）。根拠: 設計書 §12.3、ADR 0007、
-ADR 0009、ADR 0010。
+状態: 採用（P3 vic-thermal の CI で A32 側の限界を実証、STM32F103 スライス
+`apps/stm32f103` が T32 ファームウェアの end-to-end 実行で契約を検証した）。
+根拠: 設計書 §12.3、ADR 0007、ADR 0009、ADR 0010。
 
 ## 背景
 
@@ -83,13 +83,16 @@ ARMv7-M は FIQ 入力を持たず、外部割り込みは NVIC 経由である�
   から T32 命令列が実行できること、半語整列 PC 書込みが受理されること、
   A32 側が引き続き 2 mod 4 を拒否すること。実 Unicorn が必要なため
   CI の `--all-features` test ステップで検証する。
-- STM32F103 スライス（次段階）が end-to-end の検証となる。
+- STM32F103 スライス (`apps/stm32f103`) が end-to-end の検証: capstone 検証
+  済み T32 ファームウェア（ベクタテーブル、BL サブルーチン、リテラル
+  プール、ポーリングループ）が M-class 構成で起動し、RCC ゲート →
+  GPIO/USART クロック配線 → NVIC (ISER/ISPR/ICSR) の観測までを含む
+  ゴールデン出力を CI の `--all-features` test ステップで照合する。
 
-## 退出条件 / 次の作業
+## 残る作業
 
-- STM32F103 スライス: NVIC（ARMv7-M 割り込みコントローラ）、RCC、GPIO、
-  flash エイリアスを含む実モデルと、`bind_flat_view_paged` による
-  ビットバンド領域の表現。
+- STM32F103 スライスの残量: ビットバンド領域（0x2200_0000 / 0x4200_0000）
+  の表現、EXTI、SysTick を含む時間駆動の観測、USART 受信。
 - T32 ファームウェアの isa 語彙（必要になれば A32 と分離した encoding
   ヘルパ）の整備。
 - 現行 vic-thermal の A32 系は本変更の影響を受けないことを CI の

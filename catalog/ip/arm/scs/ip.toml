@@ -1,0 +1,21 @@
+[identity]
+id = 'ip:arm/scs'
+summary = 'ARMv7-M System Control Space (SysTick, NVIC, SCB) functional register model'
+spec = ['ARM DDI 0403E', 'ARM DDI 0337', 'ST RM0008']
+variants = ['Cortex-M3 r1p1 class']
+
+[tags]
+function = ['interrupt-controller', 'system-timer', 'system-control']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+inputs = { contract = 'model/signal', role = 'endpoint', count = 43 }
+
+[params]
+num_irq = { type = 'u8', default = 43 }
+hclk_hz = { type = 'u32', default = 72000000 }
+calib_tenms = { type = 'u32', default = 9000 }
+# Wired IRQ inputs (source node, signal id) -> IRQ position are injected with
+# Scs::bind_irq after model construction (ADR 0008 port injection).

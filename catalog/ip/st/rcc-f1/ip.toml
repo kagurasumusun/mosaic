@@ -1,0 +1,21 @@
+[identity]
+id = 'ip:st/rcc-f1'
+summary = 'STM32F1 reset and clock control (RCC) functional register model with clock tree and gate outputs'
+spec = ['ST RM0008']
+variants = ['STM32F103 medium density']
+
+[tags]
+function = ['clock-control']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x28 }
+irq = { role = 'source', pins = ['rcc'] }
+gates = { contract = 'model/signal', role = 'source', count = 39 }
+
+[params]
+hse_hz = { type = 'u32', default = 8000000 }
+hsi_hz = { type = 'u32', default = 8000000 }
+# The RCC interrupt output signal id and the per-gate signal ids are injected
+# at construction (RccF1Params::new); gate ids use the GATE_* constants.
