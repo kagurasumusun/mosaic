@@ -28,8 +28,10 @@ pub struct SharedRam {
 
 impl SharedRam {
     /// A zeroed buffer of `size` bytes. Zero is a composition error, not a
-    /// guest fault.
-    pub fn new(size: usize) -> Result<Arc<Self>, EngineError> {
+    /// guest fault. The size is a byte count in the address-space unit, so
+    /// callers pass the same `u64` they use for mapping sizes.
+    pub fn new(size: u64) -> Result<Arc<Self>, EngineError> {
+        let size = usize::try_from(size).map_err(|_| EngineError::InvalidMapping)?;
         if size == 0 {
             return Err(EngineError::InvalidMapping);
         }
@@ -38,6 +40,7 @@ impl SharedRam {
         }))
     }
 
+    /// Buffer size in bytes.
     pub fn len(&self) -> usize {
         self.lock().len()
     }

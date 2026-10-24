@@ -304,7 +304,8 @@ pub fn run_multicore(quantum: NonZeroU64, rounds: usize) -> Result<MulticoreRepo
     let machine = Arc::new(Mutex::new(machine));
 
     // The shared page is ONE host buffer mapped into all three engines.
-    let ram = SharedRam::new(SHARED_SIZE).map_err(|error| format!("shared ram: {error:?}"))?;
+    let ram = SharedRam::new(SHARED_SIZE)
+        .map_err(|error| format!("shared ram: {error:?}"))?;
     let shared = [SharedRegion {
         node: SHARED,
         ram: Arc::clone(&ram),

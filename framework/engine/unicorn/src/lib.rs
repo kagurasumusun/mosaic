@@ -723,7 +723,7 @@ mod tests {
         // Design §12.3 rule 1 verification: both instances map one host
         // buffer, so a guest store through the first core is immediately
         // visible to the second core and to host-side accessors.
-        let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+        let ram = SharedRam::new(PAGE_SIZE).unwrap();
         let mut first = UnicornArm::new().unwrap();
         let mut second = UnicornArm::new().unwrap();
         for core in [&mut first, &mut second] {
@@ -761,7 +761,7 @@ mod tests {
 
     #[test]
     fn shared_mappings_validate_like_native_regions() {
-        let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+        let ram = SharedRam::new(PAGE_SIZE).unwrap();
         let mut engine = UnicornArm::new().unwrap();
         assert!(matches!(
             SharedRam::new(0),
@@ -1092,7 +1092,7 @@ mod tests {
             let (bus, record) = FakeBus::new(0x0bad_f00d);
             engine.attach_bus(Box::new(bus)).unwrap();
             engine.map_mmio(Addr(0x2000), PAGE_SIZE).unwrap();
-            let ram = SharedRam::new(PAGE_SIZE as usize).unwrap();
+            let ram = SharedRam::new(PAGE_SIZE).unwrap();
             engine
                 .map_shared_memory(Addr(0x10000), PAGE_SIZE, Permissions::RW, Arc::clone(&ram))
                 .unwrap();
