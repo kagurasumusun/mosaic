@@ -1,14 +1,23 @@
-diff --git a/apps/multicore/src/multicore.rs b/apps/multicore/src/multicore.rs
-index cb56b73..0d3417a 100644
---- a/apps/multicore/src/multicore.rs
-+++ b/apps/multicore/src/multicore.rs
-@@ -304,8 +304,7 @@ pub fn run_multicore(quantum: NonZeroU64, rounds: usize) -> Result<MulticoreRepo
-     let machine = Arc::new(Mutex::new(machine));
+diff --git a/framework/engine/unicorn/src/shared.rs b/framework/engine/unicorn/src/shared.rs
+index 168bd46..7f8ab0e 100644
+--- a/framework/engine/unicorn/src/shared.rs
++++ b/framework/engine/unicorn/src/shared.rs
+@@ -51,14 +51,15 @@ impl SharedRam {
  
-     // The shared page is ONE host buffer mapped into all three engines.
--    let ram = SharedRam::new(SHARED_SIZE)
--        .map_err(|error| format!("shared ram: {error:?}"))?;
-+    let ram = SharedRam::new(SHARED_SIZE).map_err(|error| format!("shared ram: {error:?}"))?;
-     let shared = [SharedRegion {
-         node: SHARED,
-         ram: Arc::clone(&ram),
+     /// Whether the loader image has already been copied into the buffer.
+     pub fn is_initialized(&self) -> bool {
+-        self.initialized
+-            .load(std::sync::atomic::Ordering::Acquire)
++        self.initialized.load(std::sync::atomic::Ordering::Acquire)
+     }
+ 
+     /// Mark the buffer as carrying the loader image. Returns false when
+     /// another core already initialized it, so the caller can skip the copy.
+     pub fn mark_initialized(&self) -> bool {
+-        !self.initialized.swap(true, std::sync::atomic::Ordering::AcqRel)
++        !self
++            .initialized
++            .swap(true, std::sync::atomic::Ordering::AcqRel)
+     }
+ 
+     pub fn is_empty(&self) -> bool {

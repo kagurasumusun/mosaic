@@ -1,15 +1,10 @@
-48:test heterogeneous_configuration_reaches_the_golden_outcome ... FAILED
-50:failures:
-54:thread 'heterogeneous_configuration_reaches_the_golden_outcome' panicked at apps/multicore/tests/multicore.rs:27:5:
-77:failures:
-80:test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
-123:test unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core ... FAILED
-125:failures:
-129:thread 'unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core' panicked at framework/assemble/src/unicorn_bind.rs:401:9:
-152:failures:
-155:test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
-357:test tests::riscv32::mmio_and_shared_paths_match_the_arm_adapter ... FAILED
-359:failures:
-363:thread 'tests::riscv32::mmio_and_shared_paths_match_the_arm_adapter' panicked at framework/engine/unicorn/src/lib.rs:1109:13:
-386:failures:
-389:test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+93:test unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core ... FAILED
+95:failures:
+99:thread 'unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core' panicked at framework/assemble/src/unicorn_bind.rs:412:9:
+122:failures:
+125:test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+327:test tests::riscv32::mmio_and_shared_paths_match_the_arm_adapter ... FAILED
+329:failures:
+333:thread 'tests::riscv32::mmio_and_shared_paths_match_the_arm_adapter' panicked at framework/engine/unicorn/src/lib.rs:1104:13:
+356:failures:
+359:test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
