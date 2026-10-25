@@ -51,9 +51,11 @@ fn iso_lookup_finds_kernel_and_initramfs() {
 fn boot_a_real_linux_kernel() {
     let Some(iso) = image(TINYCORE) else { return };
     let options = PcBootOptions {
-        quantum: 100_000,
-        instruction_limit: 50_000_000,
-        trace_instructions: 24,
+        quantum: 1_000_000,
+        instruction_limit: 5_000_000,
+        trace_instructions: 60,
+        dumps: vec![(0x90200, 0x180)],
+        watch_writes: vec![(0x902D1, 56)],
         ..PcBootOptions::default()
     };
     let report = run_linux_boot(
@@ -74,6 +76,30 @@ fn boot_a_real_linux_kernel() {
     println!("regs {:08x?}", report.registers);
     println!("serial {:?}", String::from_utf8_lossy(&report.serial));
     println!("screen {:?}", report.screen);
+    println!("quantum starts {:x?}", report.trace);
+    println!("interrupts {:?}", report.interrupts);
+    // The setup code in memory is what the guest executes; printing it is how
+    // a placement bug is told apart from a decode bug.
+    for (address, bytes) in &report.dumps {
+        for (index, chunk) in bytes.chunks(16).enumerate() {
+            let text = chunk
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{:08x}  {text}", address + (index * 16) as u64);
+        }
+    }
+    println!("watched {} stores", report.watched_writes.len());
+    for write in report.watched_writes.iter().take(8) {
+        println!("  write {write:?}");
+    }
+    for (address, size, cs) in &report.instruction_trace {
+        println!("  {address:#08x} size {size} cs {cs:#06x}");
+    }
+    for entry in report.interrupt_log.iter().rev().take(12).rev() {
+        println!("  int log {entry:?}");
+    }
     // The kernel's own code must have run: the loader only places the image
     // and jumps. Thousands of instructions of setup code is the proof.
     assert!(

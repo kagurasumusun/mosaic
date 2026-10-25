@@ -31,7 +31,7 @@ use mosaic_contract_cpu_engine::{
 use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 use ownership::{Counters, OwnedUnicorn};
 use unicorn_engine::{
-    unicorn_const::{Arch, Mode, Prot},
+    unicorn_const::{Arch, HookType, Mode, Prot},
     RegisterARM, RegisterARM64, RegisterX86, Unicorn,
 };
 
@@ -69,7 +69,12 @@ pub struct EngineData {
     /// other record of *where* it went, and a debugger is not always
     /// available; the size lets the caller decode what actually executed
     /// instead of what the file on disk says should be there.
-    trace: Option<std::collections::VecDeque<(u64, u32)>>,
+    trace: Option<std::collections::VecDeque<(u64, u32, u64)>>,
+    /// Watched write regions and the writes seen in them, as
+    /// `(guest address, writer pc, size)`. Off unless asked for: the hook runs
+    /// on every store.
+    watch: Vec<(u64, u64)>,
+    writes: Vec<(u64, u64, u32)>,
 }
 
 /// Engine-facing port I/O port (IA-32 `IN`/`OUT`).
@@ -674,7 +679,17 @@ impl Common {
                 let Ok(pc) = self.inner.0.reg_read(RegisterX86::EIP) else {
                     return outcome(StopReason::Fault, 0);
                 };
-                if matches!(self.backend, Backend::X86Real) {
+                // In *real* mode `EIP` is a 16-bit offset that wraps inside the
+                // segment; a guest that has set `CR0.PE` executes 32-bit
+                // offsets and must not be truncated. The kernel's decompressor
+                // running at `10007Ch` is exactly the case that catches this.
+                let protected = self
+                    .inner
+                    .0
+                    .reg_read(RegisterX86::CR0 as i32)
+                    .map(|cr0| cr0 & 1 != 0)
+                    .unwrap_or(true);
+                if matches!(self.backend, Backend::X86Real) && !protected {
                     pc & 0xFFFF
                 } else {
                     pc
@@ -1490,20 +1505,61 @@ impl UnicornX86 {
             .inner
             .0
             .add_code_hook(1, 0, move |uc, address, size| {
+                // `CS` is read through the vendor binding, which is the only
+                // place that knows the identifier.
+                let cs = uc.reg_read(RegisterX86::CS as i32).unwrap_or(0);
                 let data = uc.get_data_mut();
                 if let Some(trace) = data.trace.as_mut() {
                     if trace.len() == capacity {
                         trace.pop_front();
                     }
-                    trace.push_back((address, size as u32));
+                    trace.push_back((address, size as u32, cs));
                 }
             })
             .map_err(|_| EngineError::Backend)?;
         Ok(())
     }
 
-    /// The recorded instructions as `(address, size)`, oldest first.
-    pub fn instruction_trace(&self) -> Vec<(u64, u32)> {
+    /// Record every store into `[base, base + length)`, with the address of the
+    /// instruction that made it. This is how an overwritten code page is
+    /// traced back to the writer instead of guessed at.
+    pub fn watch_writes(&mut self, base: u64, length: u64) -> Result<(), EngineError> {
+        self.0.inner.0.get_data_mut().watch.push((base, length));
+        self.0
+            .inner
+            .0
+            .add_mem_hook(
+                HookType::MEM_WRITE,
+                0,
+                u64::MAX,
+                move |uc, _, address, size, _| {
+                    let data = uc.get_data();
+                    let watched = data
+                        .watch
+                        .iter()
+                        .any(|(start, length)| address >= *start && address < start + length);
+                    if !watched {
+                        return true;
+                    }
+                    let pc = uc.reg_read(RegisterX86::EIP as i32).unwrap_or(0);
+                    let data = uc.get_data_mut();
+                    if data.writes.len() < 4096 {
+                        data.writes.push((address, pc, size as u32));
+                    }
+                    true
+                },
+            )
+            .map_err(|_| EngineError::Backend)?;
+        Ok(())
+    }
+
+    /// Stores seen in the watched regions, oldest first.
+    pub fn watched_writes(&self) -> Vec<(u64, u64, u32)> {
+        self.0.inner.0.get_data().writes.clone()
+    }
+
+    /// The recorded instructions as `(address, size, cs)`, oldest first.
+    pub fn instruction_trace(&self) -> Vec<(u64, u32, u64)> {
         self.0
             .inner
             .0

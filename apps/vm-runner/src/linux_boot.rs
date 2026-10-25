@@ -12,8 +12,6 @@
 //! `0x1F1`, the real-mode part in the low 32 KiB of the file, the 32-bit part
 //! at `(setup_sects + 1) * 512` and, for a `LOAD_HIGH` kernel, at `100000h`.
 
-use crate::pc_boot::{CONVENTIONAL_TOP, EXTENDED_RAM};
-
 /// Where the real-mode part of a Linux kernel is loaded.
 pub const SETUP_BASE: u64 = 0x0009_0000;
 /// Where a `LOAD_HIGH` kernel's protected-mode part is loaded.
@@ -277,23 +275,17 @@ pub fn prepare_setup(
         setup[0x218..0x21C].copy_from_slice(&(address as u32).to_le_bytes());
         setup[0x21C..0x220].copy_from_slice(&(size as u32).to_le_bytes());
     }
-    // The memory map the kernel's setup code forwards to the 32-bit kernel.
-    // Same ranges the firmware reports through `INT 15h E820`.
-    let entries: [(u64, u64, u32); 3] = [
-        (0, CONVENTIONAL_TOP, 1),
-        (CONVENTIONAL_TOP, 0x10_0000 - CONVENTIONAL_TOP, 2),
-        (PAYLOAD_HIGH, EXTENDED_RAM, 1),
-    ];
-    setup[0x1E8] = entries.len() as u8;
-    for (index, (base, length, kind)) in entries.iter().enumerate() {
-        let at = 0x2D0 + index * 20;
-        setup[at..at + 8].copy_from_slice(&base.to_le_bytes());
-        setup[at + 8..at + 16].copy_from_slice(&length.to_le_bytes());
-        setup[at + 16..at + 20].copy_from_slice(&kind.to_le_bytes());
-    }
-    // Screen: keep the 80x25 text mode the machine already has, and tell the
-    // kernel it may use the VGA console.
-    setup[0x1FA..0x1FC].copy_from_slice(&3u16.to_le_bytes());
+    // The memory map is *not* written here. `struct boot_params` at 0x2D0 is
+    // inside the real-mode image the kernel is executing from, and the kernel
+    // builds that table itself by calling `INT 15h` with `E820` — which this
+    // machine answers (see `PcBios`). Writing it from the loader overwrites
+    // the kernel's own `intcall` routine, and the kernel then executes the
+    // memory map as if it were code.
+    // Screen: `0xFFFF` is the protocol's "normal video", meaning "leave the
+    // display the way the firmware set it up". Asking for a specific mode
+    // number makes the kernel probe the VGA BIOS mode table, which this
+    // firmware does not publish, and it stops to ask the user instead.
+    setup[0x1FA..0x1FC].copy_from_slice(&0xFFFFu16.to_le_bytes());
     Ok(command)
 }
 

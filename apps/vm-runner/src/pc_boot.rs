@@ -160,6 +160,12 @@ pub struct PcBootOptions {
     /// How many recent instruction addresses to record, for diagnosis. Zero
     /// records nothing; the hook is expensive, so it stays off by default.
     pub trace_instructions: usize,
+    /// Guest memory regions to copy into the report after the run, as
+    /// `(address, length)`. A stop is often a question about memory content,
+    /// and the report is the only thing that survives the run.
+    pub dumps: Vec<(u64, usize)>,
+    /// Regions whose stores are recorded as `(address, length)`.
+    pub watch_writes: Vec<(u64, u64)>,
 }
 
 impl Default for PcBootOptions {
@@ -171,6 +177,8 @@ impl Default for PcBootOptions {
             // that disagrees probes the drive table instead.
             boot_drive: 0x9F,
             trace_instructions: 0,
+            dumps: Vec::new(),
+            watch_writes: Vec::new(),
         }
     }
 }
@@ -228,12 +236,17 @@ pub struct PcBootReport {
     pub kernel: Option<KernelSummary>,
     /// Recent instructions as `(address, size)`, oldest first; empty unless
     /// [`PcBootOptions::trace_instructions`] asked for them.
-    pub instruction_trace: Vec<(u64, u32)>,
+    pub instruction_trace: Vec<(u64, u32, u64)>,
     /// Registers `EAX..SS` at the end of the run, in Mosaic `RegId` order.
     /// A fault message without the register file is a guessing game.
     pub registers: Vec<u64>,
     /// Bus fault the engine recorded, if the stop was a device refusal.
     pub bus_fault: Option<String>,
+    /// Stores into the regions named by [`PcBootOptions::watch_writes`], as
+    /// `(guest address, writer eip, size)`, oldest first.
+    pub watched_writes: Vec<(u64, u64, u32)>,
+    /// Copies of guest memory requested through [`PcBootOptions::dumps`].
+    pub dumps: Vec<(u64, Vec<u8>)>,
     /// `CR0` at the end of the run: bit 0 is `PE`, so this says whether the
     /// guest had switched to protected mode before it stopped.
     pub cr0: u64,
@@ -1443,6 +1456,11 @@ fn run_with(
         )
         .map_err(|error| format!("flags: {error:?}"))?;
 
+    for (base, length) in &options.watch_writes {
+        engine
+            .watch_writes(*base, *length)
+            .map_err(|error| format!("watch: {error:?}"))?;
+    }
     if options.trace_instructions > 0 {
         engine
             .trace_instructions(options.trace_instructions)
@@ -1471,7 +1489,7 @@ fn run_with(
     let last_traced = engine
         .instruction_trace()
         .last()
-        .map(|(address, _)| *address);
+        .map(|(address, _, _)| *address);
     let bios = bios.lock().map_err(|_| "bios lock".to_string())?;
     let screen = bios.read_screen_from(&FirmwareCpuView { engine: &engine });
     let mut serial_bytes = Vec::new();
@@ -1494,6 +1512,18 @@ fn run_with(
         boot_drive: bios.boot_drive,
         kernel: None,
         instruction_trace: engine.instruction_trace(),
+        watched_writes: engine.watched_writes(),
+        dumps: options
+            .dumps
+            .iter()
+            .map(|(address, length)| {
+                let mut bytes = vec![0u8; *length];
+                let ok = engine
+                    .read_memory(mosaic_core_types::Addr(*address), &mut bytes)
+                    .is_ok();
+                (*address, if ok { bytes } else { Vec::new() })
+            })
+            .collect(),
         registers: (0..16u32)
             .map(|id: u32| engine.reg_read(RegId(id)).unwrap_or(0))
             .collect(),
