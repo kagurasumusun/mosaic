@@ -60,6 +60,7 @@ pub struct EngineData {
     counters: Counters,
     bus: Option<Box<dyn EngineBus>>,
     ports: Option<Box<dyn PortBus>>,
+    interrupts: Option<Box<dyn InterruptService>>,
     fault: Option<EngineBusFault>,
     /// x86 descriptor tables recorded when the guest executes `LGDT`/`LIDT`.
     tables: DescriptorTables,
@@ -73,6 +74,32 @@ pub struct EngineData {
 pub trait PortBus: Send {
     fn read(&mut self, port: u16, size: usize) -> Result<u32, BusFault>;
     fn write(&mut self, port: u16, size: usize, value: u32) -> Result<(), BusFault>;
+}
+
+/// CPU view handed to a software-interrupt service.
+///
+/// Register numbers are Mosaic [`RegId`] values, so a platform never sees a
+/// vendor register enum. The adapter re-uses the same register map as the
+/// backend, which keeps `INT`-level firmware emulation and normal execution in
+/// agreement.
+pub trait SoftwareInterruptCpu {
+    fn reg_read(&self, reg: RegId) -> Result<u64, EngineError>;
+    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError>;
+    fn mem_read(&self, address: u64, data: &mut [u8]) -> Result<(), EngineError>;
+    fn mem_write(&mut self, address: u64, data: &[u8]) -> Result<(), EngineError>;
+}
+
+/// Services software interrupts (`INT n`) for the platform.
+///
+/// A PC's firmware interface *is* the software-interrupt table, so a machine
+/// that boots real guest code needs somewhere to answer `INT 13h`/`INT 10h`
+/// without a full BIOS ROM. Unicorn reports the `INT` through its interrupt
+/// hook before any gate is entered; the service answers it and the guest
+/// resumes at the instruction after the `INT` (ADR 0019).
+pub trait InterruptService: Send {
+    /// Answer `vector`. Returning `false` leaves the vector to the caller's
+    /// own gate delivery, which is how a guest-installed handler keeps working.
+    fn service(&mut self, vector: u8, cpu: &mut dyn SoftwareInterruptCpu) -> bool;
 }
 
 /// Last observed `GDTR`/`IDTR` values: `(base, limit)`.
@@ -234,6 +261,25 @@ impl Common {
                 match outcome {
                     Ok(value) => value,
                     Err(fault) => stop_with_bus_fault(uc, u64::from(port), size, fault) as u32,
+                }
+            })
+            .map_err(|_| EngineError::Backend)?;
+            uc.add_intr_hook(|uc, vector| {
+                // Take the service out of the engine data for the duration of
+                // the callback: the view handed to it borrows the same Unicorn
+                // handle, so holding both would alias. Same pattern as the
+                // runtime device arena.
+                let mut service = uc.get_data_mut().interrupts.take();
+                let mut handled = false;
+                if let (Some(service), Ok(vector)) = (service.as_mut(), u8::try_from(vector)) {
+                    let mut view = InterruptCpuView { uc };
+                    handled = service.service(vector, &mut view);
+                }
+                uc.get_data_mut().interrupts = service;
+                if !handled {
+                    // Nothing claimed the vector: stop the quantum so the
+                    // caller can decide instead of silently skipping it.
+                    let _ = uc.emu_stop();
                 }
             })
             .map_err(|_| EngineError::Backend)?;
@@ -1432,6 +1478,78 @@ impl UnicornX86 {
     pub fn segment_base(&self, selector: u16) -> Result<u64, EngineError> {
         self.0.x86_descriptor_base(selector)
     }
+
+    /// Answer software interrupts through `service`, as firmware would.
+    pub fn attach_interrupt_service(
+        &mut self,
+        service: Box<dyn InterruptService>,
+    ) -> Result<(), EngineError> {
+        let data = self.0.inner.0.get_data_mut();
+        if data.interrupts.is_some() {
+            return Err(EngineError::BusAlreadyAttached);
+        }
+        data.interrupts = Some(service);
+        Ok(())
+    }
+}
+
+/// [`SoftwareInterruptCpu`] view over the live Unicorn handle.
+///
+/// It only lives for the duration of one service callback; the register map is
+/// the backend's, so a service sees exactly what guest code would see.
+struct InterruptCpuView<'a, 'b> {
+    uc: &'a mut Unicorn<'b, EngineData>,
+}
+
+impl InterruptCpuView<'_, '_> {
+    fn register(&self, reg: RegId) -> Result<i32, EngineError> {
+        match reg.0 {
+            0 => Ok(RegisterX86::EAX as i32),
+            1 => Ok(RegisterX86::ECX as i32),
+            2 => Ok(RegisterX86::EDX as i32),
+            3 => Ok(RegisterX86::EBX as i32),
+            4 => Ok(RegisterX86::ESP as i32),
+            5 => Ok(RegisterX86::EBP as i32),
+            6 => Ok(RegisterX86::ESI as i32),
+            7 => Ok(RegisterX86::EDI as i32),
+            8 => Ok(RegisterX86::EIP as i32),
+            9 => Ok(RegisterX86::EFLAGS as i32),
+            10 => Ok(RegisterX86::CS as i32),
+            11 => Ok(RegisterX86::DS as i32),
+            12 => Ok(RegisterX86::ES as i32),
+            13 => Ok(RegisterX86::FS as i32),
+            14 => Ok(RegisterX86::GS as i32),
+            15 => Ok(RegisterX86::SS as i32),
+            _ => Err(EngineError::InvalidRegister),
+        }
+    }
+}
+
+impl SoftwareInterruptCpu for InterruptCpuView<'_, '_> {
+    fn reg_read(&self, reg: RegId) -> Result<u64, EngineError> {
+        self.uc
+            .reg_read(self.register(reg)?)
+            .map_err(|_| EngineError::Backend)
+    }
+
+    fn reg_write(&mut self, reg: RegId, value: u64) -> Result<(), EngineError> {
+        let id = self.register(reg)?;
+        self.uc
+            .reg_write(id, value)
+            .map_err(|_| EngineError::Backend)
+    }
+
+    fn mem_read(&self, address: u64, data: &mut [u8]) -> Result<(), EngineError> {
+        self.uc
+            .mem_read(address, data)
+            .map_err(|_| EngineError::Backend)
+    }
+
+    fn mem_write(&mut self, address: u64, data: &[u8]) -> Result<(), EngineError> {
+        self.uc
+            .mem_write(address, data)
+            .map_err(|_| EngineError::Backend)
+    }
 }
 
 #[cfg(feature = "arch-riscv")]
@@ -1528,6 +1646,43 @@ mod tests {
             self.writes.push((port, size, value));
             Ok(())
         }
+    }
+
+    struct RecordingInterrupts {
+        seen: Vec<u8>,
+    }
+
+    impl InterruptService for RecordingInterrupts {
+        fn service(&mut self, vector: u8, cpu: &mut dyn SoftwareInterruptCpu) -> bool {
+            self.seen.push(vector);
+            // Report a value through AX, as a BIOS service would.
+            let _ = cpu.reg_write(RegId(0), 0xB10C);
+            true
+        }
+    }
+
+    #[test]
+    fn x86_software_interrupt_service_answers_and_resumes_after_the_int() {
+        use mosaic_isa_x86::Register;
+        let mut engine = x86_engine(None);
+        engine
+            .attach_interrupt_service(Box::new(RecordingInterrupts { seen: Vec::new() }))
+            .unwrap();
+        // int 0x10 ; mov ah, 0x4C ; hlt
+        let program = [0xCD, 0x10, 0xB4, 0x4C, 0xF4];
+        engine.write_memory(Addr(0x100), &program).unwrap();
+        engine.reg_write(Register::Cs.into(), 0).unwrap();
+        engine.reg_write(Register::Eip.into(), 0x100).unwrap();
+        engine.reg_write(Register::Esp.into(), 0x8000).unwrap();
+        engine.run(NonZeroU64::new(2).unwrap());
+        // The service wrote AX = 0xB10C and the guest then executed
+        // `mov ah, 0x4C`, so AX ends as 0x4C0C: the service ran, and the CPU
+        // resumed after the two-byte INT encoding instead of re-executing it.
+        assert_eq!(engine.reg_read(Register::Eax.into()).unwrap(), 0x4C0C);
+        assert!(
+            engine.reg_read(Register::Eip.into()).unwrap() >= 0x103,
+            "EIP must be past the INT instruction"
+        );
     }
 
     #[test]
