@@ -1,8 +1,42 @@
 [1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
 [1m[32m   Compiling[0m unicorn-engine v2.1.5
 [1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
+[0m[1m[33mwarning[0m[0m[1m: unused variable: `high`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:964:13[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m964[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let high = u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m             [0m[0m[1m[33m^^^^[0m[0m [0m[0m[1m[33mhelp: if this is intentional, prefix it with an underscore: `_high`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_variables)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: value assigned to `at` is never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1135:17[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1135[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                at += 1;[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[33m^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: maybe it is overwritten before being read?[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_assignments)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: value assigned to `offset` is never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1146:13[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1146[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    let mut offset = 0u64;[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m             [0m[0m[1m[33m^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: maybe it is overwritten before being read?[0m
+
+[0m[1m[33mwarning[0m[0m[1m: function `x86_tables_known` is never used[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1031:4[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1031[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mfn x86_tables_known(uc: &Unicorn<'_, EngineData>) -> bool {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m    [0m[0m[1m[33m^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
 [1m[32m   Compiling[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
+[1m[33mwarning[0m[1m:[0m `mosaic-engine-unicorn` (lib) generated 4 warnings
 [1m[32m   Compiling[0m mosaic-apps-cli v0.1.0 (/home/runner/work/mosaic/mosaic/apps/cli)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 18.99s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 20.08s
 [1m[32m     Running[0m `target/debug/mosaic-apps-cli unicorn-smoke`
 diff: tests/unicorn-arm.stdout: No such file or directory
