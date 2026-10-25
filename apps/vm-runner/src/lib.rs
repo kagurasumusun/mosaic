@@ -9,6 +9,7 @@
 mod machine_pc;
 
 #[cfg(feature = "unicorn")]
+pub mod linux_boot;
 pub mod pc_boot;
 
 #[cfg(feature = "unicorn")]

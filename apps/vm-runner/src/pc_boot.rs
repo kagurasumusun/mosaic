@@ -27,6 +27,8 @@ use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, RegId, SignalId, VDelta, VTime};
 use mosaic_engine_unicorn::{InterruptService, PortBus, SoftwareInterruptCpu, UnicornX86};
+
+use crate::linux_boot::SETUP_BASE;
 use mosaic_ip_x86_pic_8259::Pic8259;
 use mosaic_ip_x86_pit_8254::Pit8254;
 use mosaic_ip_x86_rtc_mc146818::RtcMc146818;
@@ -40,7 +42,7 @@ pub const VGA_TEXT_SIZE: u64 = 0x8000;
 pub const BIOS_ROM_BASE: u64 = 0x000F_0000;
 pub const BIOS_ROM_SIZE: u64 = 0x0001_0000;
 /// Size of the RAM the machine has above 1 MiB.
-pub const EXTENDED_RAM: u64 = 15 * 1024 * 1024;
+pub const EXTENDED_RAM: u64 = 63 * 1024 * 1024;
 /// Top of conventional RAM, and of the address space the firmware describes.
 pub const CONVENTIONAL_TOP: u64 = 0x0009_FC00;
 /// The VGA aperture (`A0000h..BFFFFh`), including the text window.
@@ -52,8 +54,8 @@ pub const ROM_GAP_SIZE: u64 = 0x0003_0000;
 
 /// Where an El Torito no-emulation image is conventionally loaded.
 pub const DEFAULT_LOAD_SEGMENT: u16 = 0x07C0;
-/// Extended BIOS data area size reported through `INT 15h`.
-pub const EXTENDED_KIB: u64 = 15 * 1024;
+/// Extended memory reported through `INT 15h`, in KiB.
+pub const EXTENDED_KIB: u64 = EXTENDED_RAM / 1024;
 /// `F000h`-relative offset of the interrupt trampolines (see [`firmware_image`]).
 pub const BIOS_STUB_OFFSET: u64 = 0x1000;
 /// `F000h`-relative reset vector: `F000:E05B` is where every PC starts.
@@ -123,6 +125,27 @@ pub struct BootPoint {
     pub cs: u16,
     pub ip: u16,
     pub drive: u8,
+    /// Data/stack segment the image expects (`DS`, `ES`, `SS`).
+    pub data_segment: u16,
+    /// Initial stack pointer.
+    pub stack_pointer: u16,
+    /// Whether interrupts are enabled on entry. Firmware hands a boot sector
+    /// control with `IF` set; a Linux kernel requires it clear.
+    pub interrupts: bool,
+}
+
+impl BootPoint {
+    /// A boot sector at `0000:7C00h`, with the stack just below it.
+    pub fn boot_sector(drive: u8) -> Self {
+        Self {
+            cs: 0x07C0,
+            ip: 0,
+            drive,
+            data_segment: 0,
+            stack_pointer: 0x7C00,
+            interrupts: true,
+        }
+    }
 }
 
 /// Machine limits and fixtures.
@@ -150,6 +173,17 @@ impl Default for PcBootOptions {
             trace_instructions: 0,
         }
     }
+}
+
+/// Header facts about the kernel that was booted.
+#[derive(Clone, Debug)]
+pub struct KernelSummary {
+    pub version: String,
+    pub protocol: String,
+    pub setup_sects: u8,
+    pub loaded_high: bool,
+    pub payload_bytes: usize,
+    pub initrd_bytes: usize,
 }
 
 /// One disk read the firmware served.
@@ -189,9 +223,17 @@ pub struct PcBootReport {
     pub interrupt_log: Vec<(u8, u64, u64)>,
     /// The drive number the machine booted from.
     pub boot_drive: u8,
+    /// Present when the machine booted a Linux kernel rather than a boot
+    /// sector or an El Torito image.
+    pub kernel: Option<KernelSummary>,
     /// Recent instructions as `(address, size)`, oldest first; empty unless
     /// [`PcBootOptions::trace_instructions`] asked for them.
     pub instruction_trace: Vec<(u64, u32)>,
+    /// Registers `EAX..SS` at the end of the run, in Mosaic `RegId` order.
+    /// A fault message without the register file is a guessing game.
+    pub registers: Vec<u64>,
+    /// Bus fault the engine recorded, if the stop was a device refusal.
+    pub bus_fault: Option<String>,
     /// `CR0` at the end of the run: bit 0 is `PE`, so this says whether the
     /// guest had switched to protected mode before it stopped.
     pub cr0: u64,
@@ -763,16 +805,20 @@ impl PcBios {
                 Self::set_flag(cpu, FLAG_CF, false);
             }
             0x8800 => {
-                Self::set_ax(cpu, EXTENDED_KIB as u16);
+                // Extended memory in KiB. The interface caps at 15 MiB, so a
+                // machine with more reports the cap and leaves the rest to
+                // `E801h` and `E820h`, which is what real firmware does.
+                Self::set_ax(cpu, (EXTENDED_KIB).min(0x3C00) as u16);
                 Self::set_flag(cpu, FLAG_CF, false);
             }
             0xE801 => {
-                // 1 MiB..16 MiB in KB, then the same in 64 KiB pages.
-                let kib = (EXTENDED_KIB as u16).min(0x3C00);
-                let _ = cpu.reg_write(REG_EAX, u64::from(kib));
-                let _ = cpu.reg_write(REG_EBX, u64::from(kib / 64));
-                let _ = cpu.reg_write(REG_ECX, 0);
-                let _ = cpu.reg_write(REG_EDX, 0);
+                // 1 MiB..16 MiB in KiB, then 16 MiB..4 GiB in 64 KiB pages.
+                let below = EXTENDED_KIB.min(0x3C00);
+                let above = (EXTENDED_KIB.saturating_sub(0x3C00)) / 64;
+                let _ = cpu.reg_write(REG_EAX, below);
+                let _ = cpu.reg_write(REG_EBX, above);
+                let _ = cpu.reg_write(REG_ECX, below);
+                let _ = cpu.reg_write(REG_EDX, above);
                 Self::set_flag(cpu, FLAG_CF, false);
             }
             0xE820 => self.memory_map(cpu),
@@ -1141,20 +1187,109 @@ pub fn run_pc_boot(
             cs: image.load_segment,
             ip: 0,
             drive,
+            data_segment: 0,
+            stack_pointer: 0x7C00,
+            interrupts: true,
         };
-        return run_with(disks, Some(boot), options, Some(image));
+        return run_with(disks, Some(boot), options, Some(image), None);
     }
     if let Some(disk) = disk {
         let drive = 0x80;
         disks.push(DiskImage::fixed(drive, disk));
-        let boot = BootPoint {
-            cs: 0x07C0,
-            ip: 0,
-            drive,
-        };
-        return run_with(disks, Some(boot), options, None);
+        let boot = BootPoint::boot_sector(drive);
+        return run_with(disks, Some(boot), options, None, None);
     }
     Err("a boot source (ISO or disk image) is required".into())
+}
+
+/// Where a Linux kernel's two halves go.
+pub struct KernelPlacement {
+    pub setup: Vec<u8>,
+    pub payload: Vec<u8>,
+    pub payload_base: u64,
+    /// Extra images at fixed addresses, such as an initramfs.
+    pub blobs: Vec<(u64, Vec<u8>)>,
+}
+
+/// Boot a Linux kernel taken from an ISO image or from a kernel file.
+///
+/// The boot loader work is ours: find the kernel (and an optional initramfs) in
+/// the ISO, place both halves where the boot protocol says, fill in the fields
+/// the protocol says the loader owns, and jump to the kernel's real-mode entry
+/// with `DS=ES=SS` at the setup segment and interrupts off. Everything after
+/// that is the kernel's own code.
+pub fn run_linux_boot(
+    iso: Option<&[u8]>,
+    kernel: Option<&[u8]>,
+    kernel_path: &str,
+    initrd_path: Option<&str>,
+    cmdline: &str,
+    disk: Option<Vec<u8>>,
+    options: &PcBootOptions,
+) -> Result<PcBootReport, String> {
+    let image = match (iso, kernel) {
+        (Some(iso), _) => {
+            let file = crate::linux_boot::iso_file(iso, kernel_path)
+                .ok_or_else(|| format!("{kernel_path} is not in the ISO image"))?;
+            file.read(iso).ok_or("kernel file is outside the image")?
+        }
+        (None, Some(kernel)) => kernel.to_vec(),
+        (None, None) => return Err("a kernel image or an ISO is required".into()),
+    };
+    let parsed = crate::linux_boot::BzImage::parse(&image)?;
+    let initrd = match (iso, initrd_path) {
+        (Some(iso), Some(path)) => {
+            let file = crate::linux_boot::iso_file(iso, path)
+                .ok_or_else(|| format!("{path} is not in the ISO image"))?;
+            let bytes = file.read(iso).ok_or("initramfs is outside the image")?;
+            // Above the kernel, page aligned: the kernel relocates nothing
+            // that a loader put there.
+            let base = (parsed.payload_base() + parsed.payload.len() as u64 + 0xFFFF) & !0xFFFF;
+            Some((base, bytes))
+        }
+        _ => None,
+    };
+    let mut setup = parsed.setup.clone();
+    let command = crate::linux_boot::prepare_setup(
+        &mut setup,
+        &parsed,
+        &crate::linux_boot::BootParams {
+            cmdline: cmdline.to_string(),
+            initrd: initrd
+                .as_ref()
+                .map(|(base, bytes)| (*base, bytes.len() as u64)),
+        },
+    )?;
+    let mut disks = Vec::new();
+    if let Some(disk) = disk {
+        disks.push(DiskImage::fixed(0x80, disk));
+    }
+    let mut blobs: Vec<(u64, Vec<u8>)> = initrd.iter().cloned().collect();
+    blobs.push((crate::linux_boot::command_line_address(), command));
+    let placement = KernelPlacement {
+        setup,
+        payload: parsed.payload.clone(),
+        payload_base: parsed.payload_base(),
+        blobs,
+    };
+    let boot = BootPoint {
+        cs: parsed.entry_segment(),
+        ip: 0,
+        drive: 0x80,
+        data_segment: (SETUP_BASE >> 4) as u16,
+        stack_pointer: crate::linux_boot::HEAP_END,
+        interrupts: false,
+    };
+    let mut report = run_with(disks, Some(boot), options, None, Some(placement))?;
+    report.kernel = Some(KernelSummary {
+        version: parsed.version.clone(),
+        protocol: format!("{:#06x}", parsed.protocol),
+        setup_sects: parsed.setup_sects,
+        loaded_high: parsed.loaded_high(),
+        payload_bytes: parsed.payload.len(),
+        initrd_bytes: initrd.as_ref().map(|(_, bytes)| bytes.len()).unwrap_or(0),
+    });
+    Ok(report)
 }
 
 fn run_with(
@@ -1162,6 +1297,7 @@ fn run_with(
     boot: Option<BootPoint>,
     options: &PcBootOptions,
     image: Option<ElToritoImage>,
+    kernel: Option<KernelPlacement>,
 ) -> Result<PcBootReport, String> {
     let Some(boot) = boot else {
         return Err("no boot point".into());
@@ -1211,7 +1347,7 @@ fn run_with(
 
     // A raw disk contributes its first sector to `7C00h`, which is where the
     // firmware's own bootstrap would have copied it.
-    let boot_sector = if image.is_none() {
+    let boot_sector = if image.is_none() && kernel.is_none() {
         let disk = disks.first().ok_or("boot disk missing")?;
         let size = (disk.block_size as usize).min(512);
         Some(
@@ -1248,6 +1384,22 @@ fn run_with(
             .write_memory(mosaic_core_types::Addr(base), &image.bytes)
             .map_err(|error| format!("boot image load: {error:?}"))?;
     }
+    if let Some(kernel) = &kernel {
+        engine
+            .write_memory(mosaic_core_types::Addr(SETUP_BASE), &kernel.setup)
+            .map_err(|error| format!("kernel setup load: {error:?}"))?;
+        engine
+            .write_memory(
+                mosaic_core_types::Addr(kernel.payload_base),
+                &kernel.payload,
+            )
+            .map_err(|error| format!("kernel payload load: {error:?}"))?;
+        for (base, bytes) in &kernel.blobs {
+            engine
+                .write_memory(mosaic_core_types::Addr(*base), bytes)
+                .map_err(|error| format!("kernel blob at {base:#x}: {error:?}"))?;
+        }
+    }
     if let Some(sector) = &boot_sector {
         engine
             .write_memory(mosaic_core_types::Addr(0x7C00), sector)
@@ -1270,22 +1422,25 @@ fn run_with(
         .reg_write(Register::Eip.into(), BOOT_TRAMPOLINE)
         .map_err(|error| format!("eip: {error:?}"))?;
     engine
-        .reg_write(Register::Ds.into(), 0)
+        .reg_write(Register::Ds.into(), u64::from(boot.data_segment))
         .map_err(|error| format!("ds: {error:?}"))?;
     engine
-        .reg_write(Register::Es.into(), 0)
+        .reg_write(Register::Es.into(), u64::from(boot.data_segment))
         .map_err(|error| format!("es: {error:?}"))?;
     engine
-        .reg_write(Register::Ss.into(), 0)
+        .reg_write(Register::Ss.into(), u64::from(boot.data_segment))
         .map_err(|error| format!("ss: {error:?}"))?;
     engine
-        .reg_write(Register::Esp.into(), 0x7C00)
+        .reg_write(Register::Esp.into(), u64::from(boot.stack_pointer))
         .map_err(|error| format!("sp: {error:?}"))?;
     engine
         .reg_write(Register::Edx.into(), u64::from(boot.drive))
         .map_err(|error| format!("dl: {error:?}"))?;
     engine
-        .reg_write(Register::Eflags.into(), 2)
+        .reg_write(
+            Register::Eflags.into(),
+            if boot.interrupts { 0x202 } else { 0x002 },
+        )
         .map_err(|error| format!("flags: {error:?}"))?;
 
     if options.trace_instructions > 0 {
@@ -1337,7 +1492,12 @@ fn run_with(
         unhandled_interrupt: bios.unhandled,
         interrupt_log: bios.log.clone(),
         boot_drive: bios.boot_drive,
+        kernel: None,
         instruction_trace: engine.instruction_trace(),
+        registers: (0..16u32)
+            .map(|id: u32| engine.reg_read(RegId(id)).unwrap_or(0))
+            .collect(),
+        bus_fault: engine.take_bus_fault().map(|fault| format!("{fault:?}")),
         cr0: engine
             .reg_read(mosaic_isa_x86::Register::Cr0.into())
             .unwrap_or(0),
