@@ -1,7 +1,7 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40194968905
-commit: 2c9010a76896e9a62b6b84f8301e56083a35068a
-ref: refs/heads/feat/generic-vm-infrastructure-5457539609175066870
-started: 2026-10-25T12:51:50Z
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40234022226
+commit: 4aba58de82ba88ccb23c7f27ec0f810f1dc26e30
+ref: refs/heads/verify-vm-runner-boot-tests-6137952705574907505
+started: 2026-10-25T21:08:25Z
 formatting: ok
 xtask: ok
 clippy: ok
@@ -16,4 +16,4 @@ sensorbus: ok
 multicore: ok
 vic-thermal: ok
 doctor: ok
-finished: 2026-10-25T12:53:56Z
+finished: 2026-10-25T21:10:12Z
