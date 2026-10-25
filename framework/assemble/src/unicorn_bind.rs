@@ -14,7 +14,9 @@ use std::sync::{Arc, Mutex};
 use mosaic_contract_cpu_engine::{CpuEngine, EngineBus, EngineError};
 use mosaic_core_runtime::{FlatView, Machine};
 use mosaic_core_types::{Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions};
-use mosaic_engine_unicorn::{SharedRam, UnicornArm, UnicornCortexM3, PAGE_SIZE};
+use mosaic_engine_unicorn::{
+    SharedRam, UnicornArm, UnicornArm64, UnicornCortexM3, UnicornX86_64, PAGE_SIZE,
+};
 
 #[cfg(feature = "unicorn-riscv")]
 use mosaic_engine_unicorn::UnicornRiscV32;
@@ -104,6 +106,46 @@ impl EngineMap for UnicornCortexM3 {
         ram: Arc<SharedRam>,
     ) -> Result<(), EngineError> {
         UnicornCortexM3::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+impl EngineMap for UnicornArm64 {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        UnicornArm64::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornArm64::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornArm64::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+impl EngineMap for UnicornX86_64 {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        UnicornX86_64::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornX86_64::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornX86_64::map_shared_memory(self, base, size, permissions, ram)
     }
 }
 

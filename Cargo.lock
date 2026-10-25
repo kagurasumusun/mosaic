@@ -298,6 +298,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-apps-vm-runner"
+version = "0.1.0"
+dependencies = [
+ "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-runtime",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-ip-arm-gic-v2",
+ "mosaic-ip-arm-pl011",
+ "mosaic-ip-pci-pci-host",
+ "mosaic-ip-pci-pci-ide",
+ "mosaic-ip-virtio-virtio-blk",
+ "mosaic-ip-x86-pic-8259",
+ "mosaic-ip-x86-pit-8254",
+ "mosaic-ip-x86-rtc-mc146818",
+ "mosaic-isa-aarch64",
+ "mosaic-isa-arm",
+ "mosaic-isa-x86-64",
+]
+
+[[package]]
 name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [
@@ -472,8 +496,10 @@ version = "0.1.0"
 dependencies = [
  "mosaic-contract-cpu-engine",
  "mosaic-core-types",
+ "mosaic-isa-aarch64",
  "mosaic-isa-arm",
  "mosaic-isa-riscv",
+ "mosaic-isa-x86-64",
  "unicorn-engine",
 ]
 
@@ -531,6 +557,15 @@ dependencies = [
  "mosaic-contract-model",
  "mosaic-contract-stream",
  "mosaic-contract-uart-line",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-arm-gic-v2"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
  "mosaic-core-types",
 ]
 
@@ -611,6 +646,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-pci-pci-host"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-pci-pci-ide"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
 name = "mosaic-ip-st-gpio-f1"
 version = "0.1.0"
 dependencies = [
@@ -649,6 +702,76 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-ip-virtio-virtio-blk"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-virtio-virtio-net"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-x86-fw-cfg"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-x86-ioapic"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-x86-pic-8259"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-x86-pit-8254"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-ip-x86-rtc-mc146818"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-isa-aarch64"
+version = "0.1.0"
+dependencies = [
+ "mosaic-core-types",
+]
+
+[[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
@@ -657,6 +780,13 @@ dependencies = [
 
 [[package]]
 name = "mosaic-isa-riscv"
+version = "0.1.0"
+dependencies = [
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-isa-x86-64"
 version = "0.1.0"
 dependencies = [
  "mosaic-core-types",

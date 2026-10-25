@@ -1,0 +1,18 @@
+[identity]
+id = 'ip:x86/pit-8254'
+summary = 'Intel 8254 Programmable Interval Timer'
+spec = ['Intel 8254 Datasheet']
+variants = []
+
+[tags]
+function = ['timer']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x10 }
+irq = { role = 'source', pins = ['out0'] }
+
+[params]
+frequency = { type = 'u32', default = 1193182 }
+unmapped = { type = 'policy', default = 'raz-wi' }

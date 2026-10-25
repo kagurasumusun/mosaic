@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:arm/gic-v2'
+summary = 'ARM Generic Interrupt Controller Architecture v2'
+spec = ['ARM Generic Interrupt Controller Architecture Specification']
+variants = []
+
+[tags]
+function = ['irq-controller']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x10000 }
+irq = { role = 'source', pins = ['cpu_irq', 'cpu_fiq'] }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

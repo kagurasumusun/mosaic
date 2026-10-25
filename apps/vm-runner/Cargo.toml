@@ -1,0 +1,39 @@
+[package]
+name = "mosaic-apps-vm-runner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "apps"
+kind = "app"
+level = 6
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core-types = { path = "../../framework/core/types" }
+mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
+mosaic-isa-arm = { path = "../../framework/isa/arm" }
+mosaic-isa-aarch64 = { path = "../../framework/isa/aarch64" }
+mosaic-isa-x86-64 = { path = "../../framework/isa/x86-64" }
+mosaic-contract-mmio = { path = "../../framework/contract/mmio" }
+mosaic-contract-model = { path = "../../framework/contract/model" }
+mosaic-core-runtime = { path = "../../framework/core/runtime" }
+mosaic-assemble = { path = "../../framework/assemble" }
+mosaic-engine-unicorn = { path = "../../framework/engine/unicorn", optional = true }
+
+mosaic-ip-x86-pic-8259 = { path = "../../catalog/ip/x86/pic-8259" }
+mosaic-ip-x86-pit-8254 = { path = "../../catalog/ip/x86/pit-8254" }
+mosaic-ip-x86-rtc-mc146818 = { path = "../../catalog/ip/x86/rtc-mc146818" }
+mosaic-ip-pci-pci-host = { path = "../../catalog/ip/pci/pci-host" }
+mosaic-ip-pci-pci-ide = { path = "../../catalog/ip/pci/pci-ide" }
+mosaic-ip-virtio-virtio-blk = { path = "../../catalog/ip/virtio/virtio-blk" }
+mosaic-ip-arm-gic-v2 = { path = "../../catalog/ip/arm/gic-v2" }
+mosaic-ip-arm-pl011 = { path = "../../catalog/ip/arm/pl011" }
+
+[features]
+default = []
+unicorn = ["dep:mosaic-engine-unicorn", "mosaic-assemble/unicorn"]

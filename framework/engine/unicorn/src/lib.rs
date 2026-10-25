@@ -19,7 +19,7 @@ use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 use ownership::{Counters, OwnedUnicorn};
 use unicorn_engine::{
     unicorn_const::{Arch, Mode, Prot},
-    RegisterARM, Unicorn,
+    RegisterARM, RegisterARM64, RegisterX86, Unicorn,
 };
 
 #[cfg(feature = "arch-riscv")]
@@ -55,6 +55,8 @@ enum Backend {
     Arm,
     /// ARMv7-M class core (Cortex-M3): T32 execution from reset.
     ArmMClass,
+    Arm64,
+    X86_64,
     #[cfg(feature = "arch-riscv")]
     RiscV32,
 }
@@ -97,6 +99,9 @@ const RISCV_GENERAL: [RegisterRISCV; 32] = [
     RegisterRISCV::X31,
 ];
 
+/// Opaque CPU register and backend execution context captured by Unicorn.
+pub struct UnicornContext(pub(crate) unicorn_engine::Context);
+
 /// All backend logic lives here; the public structs are thin per-ISA wrappers
 /// created by [`unicorn_wrapper`].
 struct Common {
@@ -125,6 +130,8 @@ impl Common {
             // MCLASS selects the Cortex-M3 CPU model, which is Thumb-only and
             // enters T32 from reset (ADR 0012).
             Backend::ArmMClass => (Arch::ARM, Mode::MCLASS | Mode::LITTLE_ENDIAN),
+            Backend::Arm64 => (Arch::ARM64, Mode::LITTLE_ENDIAN),
+            Backend::X86_64 => (Arch::X86, Mode::MODE_64),
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
         };
@@ -340,6 +347,68 @@ impl Common {
                 };
                 Ok(mapped as i32)
             }
+            Backend::Arm64 => {
+                let mapped = match reg.0 {
+                    0 => RegisterARM64::X0,
+                    1 => RegisterARM64::X1,
+                    2 => RegisterARM64::X2,
+                    3 => RegisterARM64::X3,
+                    4 => RegisterARM64::X4,
+                    5 => RegisterARM64::X5,
+                    6 => RegisterARM64::X6,
+                    7 => RegisterARM64::X7,
+                    8 => RegisterARM64::X8,
+                    9 => RegisterARM64::X9,
+                    10 => RegisterARM64::X10,
+                    11 => RegisterARM64::X11,
+                    12 => RegisterARM64::X12,
+                    13 => RegisterARM64::X13,
+                    14 => RegisterARM64::X14,
+                    15 => RegisterARM64::X15,
+                    16 => RegisterARM64::X16,
+                    17 => RegisterARM64::X17,
+                    18 => RegisterARM64::X18,
+                    19 => RegisterARM64::X19,
+                    20 => RegisterARM64::X20,
+                    21 => RegisterARM64::X21,
+                    22 => RegisterARM64::X22,
+                    23 => RegisterARM64::X23,
+                    24 => RegisterARM64::X24,
+                    25 => RegisterARM64::X25,
+                    26 => RegisterARM64::X26,
+                    27 => RegisterARM64::X27,
+                    28 => RegisterARM64::X28,
+                    29 => RegisterARM64::FP,
+                    30 => RegisterARM64::LR,
+                    31 => RegisterARM64::SP,
+                    32 => RegisterARM64::PC,
+                    _ => return Err(EngineError::InvalidRegister),
+                };
+                Ok(mapped as i32)
+            }
+            Backend::X86_64 => {
+                let mapped = match reg.0 {
+                    0 => RegisterX86::RAX,
+                    1 => RegisterX86::RBX,
+                    2 => RegisterX86::RCX,
+                    3 => RegisterX86::RDX,
+                    4 => RegisterX86::RSI,
+                    5 => RegisterX86::RDI,
+                    6 => RegisterX86::RSP,
+                    7 => RegisterX86::RBP,
+                    8 => RegisterX86::R8,
+                    9 => RegisterX86::R9,
+                    10 => RegisterX86::R10,
+                    11 => RegisterX86::R11,
+                    12 => RegisterX86::R12,
+                    13 => RegisterX86::R13,
+                    14 => RegisterX86::R14,
+                    15 => RegisterX86::R15,
+                    16 => RegisterX86::RIP,
+                    _ => return Err(EngineError::InvalidRegister),
+                };
+                Ok(mapped as i32)
+            }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => match reg.0 {
                 // The arm covers X0..X31; the index is in bounds by the arm.
@@ -398,6 +467,18 @@ impl Common {
                 };
                 pc | 1
             }
+            Backend::Arm64 => {
+                let Ok(pc) = self.inner.0.reg_read(RegisterARM64::PC) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                pc
+            }
+            Backend::X86_64 => {
+                let Ok(pc) = self.inner.0.reg_read(RegisterX86::RIP) else {
+                    return outcome(StopReason::Fault, 0);
+                };
+                pc
+            }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => {
                 let Ok(pc) = self.inner.0.reg_read(RegisterRISCV::PC) else {
@@ -441,13 +522,16 @@ impl Common {
         // cores are always in T32 and use halfword alignment.
         let pc_id = match self.backend {
             Backend::Arm | Backend::ArmMClass => 15,
+            Backend::Arm64 => 32,
+            Backend::X86_64 => 16,
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => 32,
         };
         if reg.0 == pc_id {
             let aligned = match self.backend {
-                Backend::Arm => value % 4 == 0,
+                Backend::Arm | Backend::Arm64 => value % 4 == 0,
                 Backend::ArmMClass => value % 2 == 0,
+                Backend::X86_64 => true, // x86 instructions are byte aligned
                 #[cfg(feature = "arch-riscv")]
                 Backend::RiscV32 => value % 4 == 0,
             };
@@ -503,14 +587,36 @@ impl Common {
             .map_err(|_| EngineError::Backend)
     }
 
+    fn save_context(&self) -> Result<UnicornContext, EngineError> {
+        let mut ctx = self
+            .inner
+            .0
+            .context_init()
+            .map_err(|_| EngineError::Backend)?;
+        self.inner
+            .0
+            .context_save(&mut ctx)
+            .map_err(|_| EngineError::Backend)?;
+        Ok(UnicornContext(ctx))
+    }
+
+    fn restore_context(&mut self, context: &UnicornContext) -> Result<(), EngineError> {
+        self.inner
+            .0
+            .context_restore(&context.0)
+            .map_err(|_| EngineError::Backend)
+    }
+
     fn set_line(&mut self, line: IrqLine, high: bool) -> Result<(), EngineError> {
         let supported = match self.backend {
-            // ARMv7-A exposes the physical IRQ and FIQ inputs; any other
+            // ARMv7-A / ARM64 exposes the physical IRQ and FIQ inputs; any other
             // number is a composition error, not a guest fault.
-            Backend::Arm => line.0 <= 1,
+            Backend::Arm | Backend::Arm64 => line.0 <= 1,
             // ARMv7-M routes external interrupts through the NVIC; the core
             // itself exposes only the (maskable) exception input.
             Backend::ArmMClass => line.0 == 0,
+            // x86_64 takes INTR on line 0.
+            Backend::X86_64 => line.0 == 0,
             // RV32I cores take the machine external interrupt on line 0.
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => line.0 == 0,
@@ -590,6 +696,14 @@ macro_rules! unicorn_wrapper {
             pub fn irq_level(&self, line: IrqLine) -> Option<bool> {
                 self.0.irq_level(line)
             }
+
+            pub fn save_context(&self) -> Result<UnicornContext, EngineError> {
+                self.0.save_context()
+            }
+
+            pub fn restore_context(&mut self, context: &UnicornContext) -> Result<(), EngineError> {
+                self.0.restore_context(context)
+            }
         }
 
         impl CpuEngine for $name {
@@ -660,6 +774,16 @@ unicorn_wrapper! {
     /// writes use halfword alignment (ADR 0012). Intended for M-profile
     /// board slices such as STM32F103.
     UnicornCortexM3 => Backend::ArmMClass
+}
+
+unicorn_wrapper! {
+    /// AArch64 (ARM 64-bit) little-endian core adapter.
+    UnicornArm64 => Backend::Arm64
+}
+
+unicorn_wrapper! {
+    /// x86_64 64-bit core adapter.
+    UnicornX86_64 => Backend::X86_64
 }
 
 #[cfg(feature = "arch-riscv")]
@@ -777,6 +901,56 @@ mod tests {
             a32.reg_write(Register::Pc.into(), 0x1002),
             Err(EngineError::InvalidValue)
         );
+    }
+
+    #[test]
+    fn context_save_and_restore_preserves_registers() {
+        let mut engine = engine();
+        engine.reg_write(Register::R0.into(), 123).unwrap();
+        engine.reg_write(Register::R1.into(), 456).unwrap();
+        let ctx = engine.save_context().unwrap();
+        engine.reg_write(Register::R0.into(), 999).unwrap();
+        engine.reg_write(Register::R1.into(), 888).unwrap();
+        engine.restore_context(&ctx).unwrap();
+        assert_eq!(engine.reg_read(Register::R0.into()), Ok(123));
+        assert_eq!(engine.reg_read(Register::R1.into()), Ok(456));
+    }
+
+    #[test]
+    fn x86_64_backend_executes_instructions() {
+        use mosaic_isa_x86_64::Register as X86Reg;
+        let mut engine = UnicornX86_64::new().unwrap();
+        engine
+            .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+            .unwrap();
+        // nop (0x90), nop (0x90), jmp $ (0xeb, 0xfe)
+        engine
+            .write_memory(Addr(0x1000), &[0x90, 0x90, 0xeb, 0xfe])
+            .unwrap();
+        engine.reg_write(X86Reg::Rip.into(), 0x1000).unwrap();
+        let outcome = engine.run(NonZeroU64::new(2).unwrap());
+        assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        assert_eq!(engine.reg_read(X86Reg::Rip.into()), Ok(0x1002));
+    }
+
+    #[test]
+    fn arm64_backend_executes_instructions() {
+        use mosaic_isa_aarch64::Register as Arm64Reg;
+        let mut engine = UnicornArm64::new().unwrap();
+        engine
+            .map_memory(Addr(0x1000), PAGE_SIZE, Permissions::RWX)
+            .unwrap();
+        // nop (0xd503201f le), b . (0x14000000 le)
+        engine
+            .write_memory(
+                Addr(0x1000),
+                &[0x1f, 0x20, 0x03, 0xd5, 0x00, 0x00, 0x00, 0x14],
+            )
+            .unwrap();
+        engine.reg_write(Arm64Reg::Pc.into(), 0x1000).unwrap();
+        let outcome = engine.run(NonZeroU64::new(1).unwrap());
+        assert_eq!(outcome.reason, StopReason::BudgetExhausted);
+        assert_eq!(engine.reg_read(Arm64Reg::Pc.into()), Ok(0x1004));
     }
 
     #[test]

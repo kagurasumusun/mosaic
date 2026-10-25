@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:x86/pic-8259'
+summary = 'Dual Intel 8259 Programmable Interrupt Controller'
+spec = ['Intel 825A Datasheet']
+variants = []
+
+[tags]
+function = ['irq-controller']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x20 }
+irq = { role = 'source', count = 16 }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

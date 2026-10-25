@@ -19,10 +19,12 @@ all = "warn"
 [dependencies]
 mosaic-core-types = { path = "../../core/types" }
 mosaic-contract-cpu-engine = { path = "../../contract/cpu-engine" }
-unicorn-engine = { version = "=2.1.5", default-features = false, features = ["arch_arm"] }
+unicorn-engine = { version = "=2.1.5", default-features = false, features = ["arch_arm", "arch_aarch64", "arch_x86"] }
 
 [dev-dependencies]
 mosaic-isa-arm = { path = "../../isa/arm" }
+mosaic-isa-aarch64 = { path = "../../isa/aarch64" }
+mosaic-isa-x86-64 = { path = "../../isa/x86-64" }
 mosaic-isa-riscv = { path = "../../isa/riscv" }
 
 [features]

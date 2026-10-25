@@ -516,7 +516,7 @@ mod tests {
                 .iter()
                 .map(|v| v.as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["arch_arm"]
+            ["arch_arm", "arch_aarch64", "arch_x86"]
         );
         assert_eq!(
             manifest["lints"]["rust"]["unsafe_code"].as_str(),

@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:x86/ioapic'
+summary = 'x86 I/O Advanced Programmable Interrupt Controller'
+spec = ['Intel I/O APIC Architecture Specification']
+variants = []
+
+[tags]
+function = ['irq-controller']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', count = 24 }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

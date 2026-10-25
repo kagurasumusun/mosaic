@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:virtio/virtio-blk'
+summary = 'VirtIO MMIO Block Device'
+spec = ['VirtIO Specification v1.1']
+variants = []
+
+[tags]
+function = ['storage']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x200 }
+irq = { role = 'source', pins = ['virtio'] }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }

@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:pci/pci-host'
+summary = 'Generic PCI Host Bridge and Configuration Space Controller'
+spec = ['PCI Local Bus Specification 3.0']
+variants = []
+
+[tags]
+function = ['pci-host']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+
+[params]
+unmapped = { type = 'policy', default = 'raz-wi' }
