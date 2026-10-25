@@ -143,8 +143,8 @@ fn diagnose_tinycore() {
     );
     println!("screen {:?}", report.screen);
     let trace = &report.instruction_trace;
-    for (address, size) in trace {
-        println!("{address:#08x} size {size}");
+    for (address, size, cs) in trace {
+        println!("{address:#08x} size {size} cs {cs:#06x}");
     }
     println!("instruction {:02x?}", report.last_instruction);
     for read in &report.disk_reads {

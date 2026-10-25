@@ -77,6 +77,8 @@ const REG_ESI: RegId = RegId(6);
 const REG_EDI: RegId = RegId(7);
 const REG_EIP: RegId = RegId(8);
 const REG_EFLAGS: RegId = RegId(9);
+/// `CR0`: bit 0 is `PE`, which says whether selectors are indices or paragraphs.
+const REG_CR0: RegId = RegId(16);
 const REG_CS: RegId = RegId(10);
 const REG_DS: RegId = RegId(11);
 const REG_ES: RegId = RegId(12);
@@ -586,8 +588,23 @@ impl PcBios {
         u32::from_le_bytes(buf)
     }
 
-    fn segment_base(segment: u16) -> u64 {
-        u64::from(segment) * 16
+    /// Linear base of a selector.
+    ///
+    /// In real mode a selector is a paragraph address. Once the guest has set
+    /// `CR0.PE` the same register holds a descriptor index, and the guest's
+    /// own descriptors (flat, base 0) decide the base — firmware that kept
+    /// multiplying by 16 would write its answers to paragraph-sized addresses
+    /// and the guest would read garbage.
+    fn segment_base(cpu: &dyn SoftwareInterruptCpu, selector: u16) -> u64 {
+        let protected = cpu
+            .reg_read(REG_CR0)
+            .map(|cr0| cr0 & 1 != 0)
+            .unwrap_or(false);
+        if protected {
+            0
+        } else {
+            u64::from(selector) * 16
+        }
     }
 
     fn set_flag(cpu: &mut dyn SoftwareInterruptCpu, mask: u64, high: bool) {
@@ -650,7 +667,7 @@ impl PcBios {
             return;
         };
         let previous_ax = Self::ax(cpu);
-        let buffer = Self::segment_base(cpu.reg_read(REG_DS).unwrap_or(0) as u16)
+        let buffer = Self::segment_base(cpu, cpu.reg_read(REG_DS).unwrap_or(0) as u16)
             + u64::from(cpu.reg_read(REG_ESI).unwrap_or(0) as u16);
         match (previous_ax & 0xFF) as u8 {
             // Get status: 5-byte packet, byte 1 is 0 for "no emulation".
@@ -693,7 +710,7 @@ impl PcBios {
         let cylinder = ((cx >> 8) & 0xFF) | ((cx & 0xC0) << 2);
         let sector = (cx & 0x3F).max(1);
         let head = (cpu.reg_read(REG_EDX).unwrap_or(0) >> 8) & 0xFF;
-        let buffer = Self::segment_base(cpu.reg_read(REG_ES).unwrap_or(0) as u16)
+        let buffer = Self::segment_base(cpu, cpu.reg_read(REG_ES).unwrap_or(0) as u16)
             + u64::from(cpu.reg_read(REG_EBX).unwrap_or(0) as u16);
         let Some(disk) = self.disk(drive).cloned() else {
             Self::set_ax(cpu, (ax & 0xFF00) | 0x01);
@@ -732,14 +749,14 @@ impl PcBios {
 
     fn extended_read(&mut self, cpu: &mut dyn SoftwareInterruptCpu, drive: u8) {
         let ax = Self::ax(cpu);
-        let packet = Self::segment_base(cpu.reg_read(REG_DS).unwrap_or(0) as u16)
+        let packet = Self::segment_base(cpu, cpu.reg_read(REG_DS).unwrap_or(0) as u16)
             + u64::from(cpu.reg_read(REG_ESI).unwrap_or(0) as u32);
         let count = Self::read_word(cpu, packet + 2);
         let offset = Self::read_word(cpu, packet + 4);
         let segment = Self::read_word(cpu, packet + 6);
         let lba = u64::from(Self::read_dword(cpu, packet + 8))
             | (u64::from(Self::read_dword(cpu, packet + 12)) << 32);
-        let buffer = Self::segment_base(segment) + u64::from(offset);
+        let buffer = Self::segment_base(cpu, segment) + u64::from(offset);
         let Some(disk) = self.disk(drive).cloned() else {
             Self::set_ax(cpu, (ax & 0xFF00) | 0x01);
             Self::set_flag(cpu, FLAG_CF, true);
@@ -777,7 +794,7 @@ impl PcBios {
             Self::set_flag(cpu, FLAG_CF, true);
             return;
         };
-        let packet = Self::segment_base(cpu.reg_read(REG_DS).unwrap_or(0) as u16)
+        let packet = Self::segment_base(cpu, cpu.reg_read(REG_DS).unwrap_or(0) as u16)
             + u64::from(cpu.reg_read(REG_ESI).unwrap_or(0) as u32);
         let requested = Self::read_word(cpu, packet);
         if requested < 0x1A {
@@ -856,7 +873,7 @@ impl PcBios {
             Self::set_flag(cpu, FLAG_CF, true);
             return;
         }
-        let buffer = Self::segment_base(cpu.reg_read(REG_ES).unwrap_or(0) as u16)
+        let buffer = Self::segment_base(cpu, cpu.reg_read(REG_ES).unwrap_or(0) as u16)
             + u64::from(cpu.reg_read(REG_EDI).unwrap_or(0) as u32);
         let (base, length, kind) = entries[ebx as usize];
         let mut entry = [0u8; 24];
@@ -892,7 +909,7 @@ impl PcBios {
             0x13 => {
                 // Write string: AL = mode, CX = count, BL = attribute.
                 let count = cpu.reg_read(REG_ECX).unwrap_or(0) as usize;
-                let buffer = Self::segment_base(cpu.reg_read(REG_ES).unwrap_or(0) as u16)
+                let buffer = Self::segment_base(cpu, cpu.reg_read(REG_ES).unwrap_or(0) as u16)
                     + u64::from(cpu.reg_read(REG_EBX).unwrap_or(0) as u16);
                 for index in 0..count {
                     let mut byte = [0u8; 1];
