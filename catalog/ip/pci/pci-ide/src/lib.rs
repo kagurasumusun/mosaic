@@ -5,21 +5,11 @@ use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId, Snapshot, SnapshotError};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IdeDrive {
     pub is_atapi: bool,
     pub image_size: u64,
     pub buffer: Vec<u8>,
-}
-
-impl Default for IdeDrive {
-    fn default() -> Self {
-        Self {
-            is_atapi: false,
-            image_size: 0,
-            buffer: Vec::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

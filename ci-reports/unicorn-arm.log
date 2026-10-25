@@ -3,5 +3,5 @@
 [1m[32m   Compiling[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
 [1m[32m   Compiling[0m mosaic-assemble v0.1.0 (/home/runner/work/mosaic/mosaic/framework/assemble)
 [1m[32m   Compiling[0m mosaic-apps-cli v0.1.0 (/home/runner/work/mosaic/mosaic/apps/cli)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 20.33s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 11.21s
 [1m[32m     Running[0m `target/debug/mosaic-apps-cli unicorn-smoke`

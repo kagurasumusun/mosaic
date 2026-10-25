@@ -73,7 +73,7 @@ impl Pit8254 {
             counter.count
         };
 
-        let byte = match counter.access_mode {
+        match counter.access_mode {
             1 => val as u8,        // LSB
             2 => (val >> 8) as u8, // MSB
             3 => {
@@ -90,8 +90,7 @@ impl Pit8254 {
                 }
             }
             _ => 0,
-        };
-        byte
+        }
     }
 
     fn write_counter(&mut self, ctx: &mut dyn Ctx, channel: usize, val: u8) {

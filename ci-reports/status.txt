@@ -1,12 +1,12 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40172441861
-commit: 57565f0885ffda1622f8c8ca47958861e8f432a1
-ref: refs/heads/feat/generic-vm-infrastructure-5457539609175066870
-started: 2026-10-25T07:21:39Z
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40144334051
+commit: e6f47bf312744fae471742cd02e0495ccda39bfe
+ref: refs/heads/arena/50cc0b10-mosaic
+started: 2026-10-24T23:50:39Z
 formatting: ok
 xtask: ok
-clippy: fail (code=101)
+clippy: ok
 build: ok
-test: ok
+test: fail (code=101)
 smoke-events: ok
 smoke-machine: ok
 smoke-snapshot: ok
@@ -16,4 +16,4 @@ sensorbus: ok
 multicore: ok
 vic-thermal: ok
 doctor: ok
-finished: 2026-10-25T07:23:41Z
+finished: 2026-10-24T23:52:05Z

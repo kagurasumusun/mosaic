@@ -44,6 +44,7 @@ pub struct GenericVmReport {
     pub reason: StopReason,
     pub ide_storage_ready: bool,
     pub virtio_storage_ready: bool,
+    pub iso_volume_id: Option<String>,
 }
 
 fn leaf(base: u64, size: u64, node: NodeId, kind: MemoryKind, perms: Permissions) -> Region {
@@ -125,7 +126,16 @@ pub fn run_generic_pc_vm(
     if let Some(disk) = disk_image {
         ide.attach_drive(0, false, disk);
     }
+    let mut iso_vol_id = None;
     if let Some(iso) = iso_image {
+        // Parse ISO9660 Primary Volume Descriptor at sector 16 (offset 0x8000)
+        if iso.len() >= 0x8000 + 72 && &iso[0x8001..0x8006] == b"CD001" {
+            let raw_id = &iso[0x8028..0x8048];
+            let name = String::from_utf8_lossy(raw_id).trim().to_string();
+            if !name.is_empty() {
+                iso_vol_id = Some(name);
+            }
+        }
         ide.attach_drive(1, true, iso);
     }
 
@@ -198,6 +208,7 @@ pub fn run_generic_pc_vm(
         reason: report.engine.reason,
         ide_storage_ready: true,
         virtio_storage_ready: true,
+        iso_volume_id: iso_vol_id,
     })
 }
 
@@ -290,5 +301,6 @@ pub fn run_generic_arm64_virt_vm(disk_image: Option<Vec<u8>>) -> Result<GenericV
         reason: report.engine.reason,
         ide_storage_ready: false,
         virtio_storage_ready: true,
+        iso_volume_id: None,
     })
 }

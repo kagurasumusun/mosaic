@@ -5,7 +5,7 @@ use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx, EventTarget};
 use mosaic_core_types::{AccessSize, Attr, BusFault, SignalId, Snapshot, SnapshotError};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct SinglePicState {
     icw_step: u8,
     icw1: u8,
@@ -20,26 +20,6 @@ struct SinglePicState {
     special_mask: bool,
     auto_eoi: bool,
     rotate_on_auto_eoi: bool,
-}
-
-impl Default for SinglePicState {
-    fn default() -> Self {
-        Self {
-            icw_step: 0,
-            icw1: 0,
-            icw2: 0,
-            icw3: 0,
-            icw4: 0,
-            irr: 0,
-            imr: 0,
-            isr: 0,
-            priority_add: 0,
-            read_reg_select: 0,
-            special_mask: false,
-            auto_eoi: false,
-            rotate_on_auto_eoi: false,
-        }
-    }
 }
 
 impl SinglePicState {

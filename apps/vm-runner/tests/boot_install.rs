@@ -5,7 +5,8 @@ use mosaic_apps_vm_runner::{run_generic_arm64_virt_vm, run_generic_pc_vm};
 
 #[test]
 fn linux_boot_and_install_verification() {
-    let linux_iso = vec![0x7Fu8; 2048 * 500]; // Simulated Linux ISO installer
+    let linux_iso = std::fs::read("testdata/tinycore.iso")
+        .expect("Real Linux ISO installer 'testdata/tinycore.iso' must exist");
     let target_disk = vec![0x00u8; 512 * 2000]; // Target disk
 
     let report = run_generic_pc_vm(Some(target_disk), Some(linux_iso))
@@ -14,6 +15,7 @@ fn linux_boot_and_install_verification() {
     assert_eq!(report.hooks, 100);
     assert!(report.ide_storage_ready);
     assert!(report.virtio_storage_ready);
+    assert_eq!(report.iso_volume_id.as_deref(), Some("Core"));
 }
 
 #[test]
