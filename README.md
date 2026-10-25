@@ -125,7 +125,7 @@ context / IRQ sink / shared mirror の checkpoint、永続化と State migration
 Unicorn 2.1.x に無い外部割り込み注入（`EngineCaps::line_injection = false`）、
 キャッシュ/TLB 無効化の粒度、書き込み可能な共有 DMI です。
 
-詳細は [開発ガイド](docs/guides/development.md)、[ゲスト OS 起動・インストール検証計画](docs/guides/guest-os-validation.md)、[ADR 一覧](docs/adr/README.md) を参照してください。
+詳細は [開発ガイド](docs/guides/development.md) と [ADR 一覧](docs/adr/README.md) を参照してください。
 
 ## ライセンス・貢献規約
 
