@@ -1,31 +1,31 @@
 [1m[32m Downloading[0m crates ...
-[1m[32m  Downloaded[0m cmake v0.1.58
-[1m[32m  Downloaded[0m cfg-if v1.0.5
-[1m[32m  Downloaded[0m heck v0.5.0
-[1m[32m  Downloaded[0m aho-corasick v1.1.5
-[1m[32m  Downloaded[0m rustc-hash v2.1.3
+[1m[32m  Downloaded[0m cexpr v0.6.0
 [1m[32m  Downloaded[0m glob v0.3.4
-[1m[32m  Downloaded[0m either v1.19.0
+[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
+[1m[32m  Downloaded[0m aho-corasick v1.1.5
+[1m[32m  Downloaded[0m cc v1.9.0
 [1m[32m  Downloaded[0m shlex v2.0.1
+[1m[32m  Downloaded[0m heck v0.5.0
+[1m[32m  Downloaded[0m libloading v0.8.9
 [1m[32m  Downloaded[0m shlex v1.3.0
 [1m[32m  Downloaded[0m pkg-config v0.3.34
-[1m[32m  Downloaded[0m find-msvc-tools v0.1.15
-[1m[32m  Downloaded[0m cexpr v0.6.0
-[1m[32m  Downloaded[0m libloading v0.8.9
+[1m[32m  Downloaded[0m either v1.19.0
+[1m[32m  Downloaded[0m rustc-hash v2.1.3
+[1m[32m  Downloaded[0m log v0.4.34
 [1m[32m  Downloaded[0m quote v1.0.47
 [1m[32m  Downloaded[0m unicode-ident v1.0.27
-[1m[32m  Downloaded[0m clang-sys v1.9.1
-[1m[32m  Downloaded[0m proc-macro2 v1.0.107
-[1m[32m  Downloaded[0m log v0.4.34
-[1m[32m  Downloaded[0m unicorn-engine v2.1.5
 [1m[32m  Downloaded[0m prettyplease v0.2.37
-[1m[32m  Downloaded[0m bitflags v2.13.2
+[1m[32m  Downloaded[0m unicorn-engine v2.1.5
+[1m[32m  Downloaded[0m proc-macro2 v1.0.107
 [1m[32m  Downloaded[0m minimal-lexical v0.2.1
+[1m[32m  Downloaded[0m regex v1.13.1
 [1m[32m  Downloaded[0m nom v7.1.3
 [1m[32m  Downloaded[0m itertools v0.13.0
-[1m[32m  Downloaded[0m cc v1.9.0
-[1m[32m  Downloaded[0m regex v1.13.1
 [1m[32m  Downloaded[0m bindgen v0.71.1
+[1m[32m  Downloaded[0m bitflags v2.13.2
+[1m[32m  Downloaded[0m cmake v0.1.58
+[1m[32m  Downloaded[0m clang-sys v1.9.1
+[1m[32m  Downloaded[0m cfg-if v1.0.5
 [1m[32m  Downloaded[0m syn v2.0.119
 [1m[32m  Downloaded[0m regex-syntax v0.8.11
 [1m[32m  Downloaded[0m regex-automata v0.4.18
@@ -33,30 +33,30 @@
 [1m[32m  Downloaded[0m unicorn-engine-sys v2.1.5
 [1m[32m    Checking[0m mosaic-prim-bits v0.1.0 (/home/runner/work/mosaic/mosaic/framework/prim/bits)
 [1m[32m   Compiling[0m proc-macro2 v1.0.107
-[1m[32m   Compiling[0m glob v0.3.4
-[1m[32m   Compiling[0m unicode-ident v1.0.27
-[1m[32m    Checking[0m mosaic-core-types v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/types)
 [1m[32m   Compiling[0m quote v1.0.47
+[1m[32m   Compiling[0m unicode-ident v1.0.27
+[1m[32m   Compiling[0m glob v0.3.4
+[1m[32m    Checking[0m mosaic-core-types v0.1.0 (/home/runner/work/mosaic/mosaic/framework/core/types)
 [1m[32m    Checking[0m mosaic-contract-model v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/model)
 [1m[32m    Checking[0m mosaic-contract-mmio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/mmio)
 [1m[32m    Checking[0m mosaic-contract-cpu-engine v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/cpu-engine)
 [1m[32m   Compiling[0m libc v0.2.191
-[1m[32m   Compiling[0m clang-sys v1.9.1
 [1m[32m   Compiling[0m prettyplease v0.2.37
-[1m[32m   Compiling[0m memchr v2.8.3
+[1m[32m   Compiling[0m clang-sys v1.9.1
 [1m[32m   Compiling[0m minimal-lexical v0.2.1
 [1m[32m   Compiling[0m regex-syntax v0.8.11
+[1m[32m   Compiling[0m memchr v2.8.3
 [1m[32m   Compiling[0m cfg-if v1.0.5
+[1m[32m   Compiling[0m syn v2.0.119
 [1m[32m   Compiling[0m libloading v0.8.9
 [1m[32m   Compiling[0m nom v7.1.3
-[1m[32m   Compiling[0m syn v2.0.119
 [1m[32m   Compiling[0m regex-automata v0.4.18
-[1m[32m   Compiling[0m shlex v2.0.1
 [1m[32m   Compiling[0m find-msvc-tools v0.1.15
-[1m[32m   Compiling[0m either v1.19.0
 [1m[32m   Compiling[0m bindgen v0.71.1
-[1m[32m   Compiling[0m itertools v0.13.0
+[1m[32m   Compiling[0m shlex v2.0.1
+[1m[32m   Compiling[0m either v1.19.0
 [1m[32m   Compiling[0m cc v1.9.0
+[1m[32m   Compiling[0m itertools v0.13.0
 [1m[32m   Compiling[0m regex v1.13.1
 [1m[32m   Compiling[0m cexpr v0.6.0
 [1m[32m    Checking[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/arm)
@@ -75,43 +75,43 @@
 [1m[32m    Checking[0m mosaic-ip-arm-primecell-id v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/primecell-id)
 [1m[32m    Checking[0m mosaic-modelkit-fifo v0.1.0 (/home/runner/work/mosaic/mosaic/framework/modelkit/fifo)
 [1m[32m    Checking[0m mosaic-contract-uart-line v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/uart-line)
-[1m[32m    Checking[0m mosaic-interconnect-uart-pair v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/uart-pair)
 [1m[32m    Checking[0m mosaic-ip-arm-pl011 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl011)
-[1m[32m    Checking[0m mosaic-contract-i2c v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/i2c)
+[1m[32m    Checking[0m mosaic-interconnect-uart-pair v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/uart-pair)
 [1m[32m    Checking[0m mosaic-contract-gpio v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/gpio)
+[1m[32m    Checking[0m mosaic-contract-i2c v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/i2c)
 [1m[32m    Checking[0m serde_core v1.0.229
 [1m[32m    Checking[0m mosaic-contract-spi v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/spi)
-[1m[32m    Checking[0m equivalent v1.0.3
 [1m[32m    Checking[0m hashbrown v0.17.1
+[1m[32m    Checking[0m equivalent v1.0.3
 [1m[32m    Checking[0m toml_write v0.1.2
 [1m[32m    Checking[0m indexmap v2.14.2
 [1m[32m    Checking[0m winnow v0.7.15
 [1m[32m    Checking[0m serde v1.0.229
-[1m[32m    Checking[0m mosaic-interconnect-i2c-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/i2c-bus)
 [1m[32m    Checking[0m toml_datetime v0.6.11
 [1m[32m    Checking[0m serde_spanned v0.6.9
+[1m[32m    Checking[0m mosaic-interconnect-i2c-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/i2c-bus)
 [1m[32m    Checking[0m mosaic-ip-synopsys-dw-apb-i2c v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/synopsys/dw-apb-i2c)
+[1m[32m    Checking[0m toml_edit v0.22.27
 [1m[32m    Checking[0m mosaic-isa-riscv v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/riscv)
-[1m[32m    Checking[0m mosaic-isa-x86-64 v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/x86-64)
 [1m[32m    Checking[0m mosaic-isa-x86 v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/x86)
 [1m[32m    Checking[0m mosaic-isa-aarch64 v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/aarch64)
+[1m[32m    Checking[0m mosaic-isa-x86-64 v0.1.0 (/home/runner/work/mosaic/mosaic/framework/isa/x86-64)
 [1m[32m    Checking[0m mosaic-contract-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/net)
-[1m[32m    Checking[0m mosaic-ip-x86-pic-8259 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/pic-8259)
-[1m[32m    Checking[0m toml_edit v0.22.27
-[1m[32m    Checking[0m mosaic-ip-arm-gic-v2 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/gic-v2)
-[1m[32m    Checking[0m mosaic-ip-pci-pci-ide v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/pci/pci-ide)
-[1m[32m    Checking[0m mosaic-ip-x86-rtc-mc146818 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/rtc-mc146818)
 [1m[32m    Checking[0m mosaic-ip-pci-pci-host v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/pci/pci-host)
+[1m[32m    Checking[0m mosaic-ip-pci-pci-ide v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/pci/pci-ide)
+[1m[32m    Checking[0m mosaic-ip-x86-pic-8259 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/pic-8259)
 [1m[32m    Checking[0m mosaic-ip-virtio-virtio-blk v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/virtio/virtio-blk)
 [1m[32m    Checking[0m mosaic-ip-x86-pit-8254 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/pit-8254)
+[1m[32m    Checking[0m mosaic-ip-arm-gic-v2 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/gic-v2)
+[1m[32m    Checking[0m mosaic-ip-x86-rtc-mc146818 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/rtc-mc146818)
 [1m[32m    Checking[0m zmij v1.0.23
 [1m[32m    Checking[0m mosaic-interconnect-gpio-net v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/gpio-net)
 [1m[32m    Checking[0m mosaic-cpu-sifive-e31 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/sifive/e31)
 [1m[32m    Checking[0m mosaic-part-bosch-bme280 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/parts/bosch/bme280)
 [1m[32m    Checking[0m mosaic-interconnect-spi-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/spi-bus)
 [1m[32m    Checking[0m mosaic-ip-arm-pl022 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl022)
-[1m[32m    Checking[0m mosaic-ip-arm-pl061 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl061)
 [1m[32m    Checking[0m mosaic-part-ti-tca9548a v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/parts/ti/tca9548a)
+[1m[32m    Checking[0m mosaic-ip-arm-pl061 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl061)
 [1m[32m    Checking[0m mosaic-ip-arm-sp804 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/sp804)
 [1m[32m    Checking[0m mosaic-cpu-arm-arm926ej-s v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/arm/arm926ej-s)
 [1m[32m    Checking[0m mosaic-ip-arm-mhu v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/mhu)
@@ -120,34 +120,34 @@
 [1m[32m    Checking[0m mosaic-ip-arm-pl190 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/pl190)
 [1m[32m    Checking[0m mosaic-ip-st-usart-f1 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/st/usart-f1)
 [1m[32m    Checking[0m mosaic-engine-native-armv7m v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/native/armv7m)
-[1m[32m    Checking[0m serde_json v1.0.154
 [1m[32m    Checking[0m toml v0.8.23
+[1m[32m    Checking[0m serde_json v1.0.154
+[1m[32m    Checking[0m mosaic-ip-arm-scs v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/scs)
 [1m[32m    Checking[0m mosaic-ip-st-rcc-f1 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/st/rcc-f1)
 [1m[32m    Checking[0m mosaic-ip-st-gpio-f1 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/st/gpio-f1)
-[1m[32m    Checking[0m mosaic-ip-arm-scs v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/arm/scs)
 [1m[32m    Checking[0m mosaic-contract-can v0.1.0 (/home/runner/work/mosaic/mosaic/framework/contract/can)
 [1m[32m    Checking[0m mosaic-engine-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/conformance)
 [1m[32m    Checking[0m mosaic-interconnect-can-bus v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/can-bus)
 [1m[32m    Checking[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
 [1m[32m    Checking[0m mosaic-interconnect-pinmux v0.1.0 (/home/runner/work/mosaic/mosaic/framework/interconnect/pinmux)
 [1m[32m    Checking[0m mosaic-cpu-arm-cortex-m3 v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/cpu/arm/cortex-m3)
-[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
 [1m[32m    Checking[0m mosaic-ip-x86-ioapic v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/ioapic)
+[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
 [1m[32m    Checking[0m mosaic-ip-x86-fw-cfg v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/x86/fw-cfg)
 [1m[32m    Checking[0m mosaic-ip-virtio-virtio-net v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/ip/virtio/virtio-net)
 [1m[32m    Checking[0m unicorn-engine v2.1.5
 [1m[32m    Checking[0m mosaic-engine-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/framework/engine/unicorn)
 [0m[1m[38;5;9merror[0m[0m[1m: operator precedence can trip the unwary[0m
-[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1250:18[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1375:18[0m
 [0m     [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m1250[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m        offset = base[0m
+[0m[1m[38;5;12m1375[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m        offset = base[0m
 [0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m __________________^[0m
-[0m[1m[38;5;12m1251[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            & 0xFFFF_FFFF[0m
-[0m[1m[38;5;12m1252[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                + ((index & 0xFFFF_FFFF) << shift)[0m
-[0m[1m[38;5;12m1253[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                + if base_field == 0b101 && mode == 0b00 {[0m
+[0m[1m[38;5;12m1376[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            & 0xFFFF_FFFF[0m
+[0m[1m[38;5;12m1377[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                + ((index & 0xFFFF_FFFF) << shift)[0m
+[0m[1m[38;5;12m1378[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                + if base_field == 0b101 && mode == 0b00 {[0m
 [0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
-[0m[1m[38;5;12m1259[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    0[0m
-[0m[1m[38;5;12m1260[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                };[0m
+[0m[1m[38;5;12m1384[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    0[0m
+[0m[1m[38;5;12m1385[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                };[0m
 [0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________________^[0m
 [0m     [0m[0m[1m[38;5;12m|[0m
 [0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#precedence[0m
@@ -155,28 +155,18 @@
 [0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::precedence)]`[0m
 [0m[1m[38;5;14mhelp[0m[0m: consider parenthesizing your expression[0m
 [0m     [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m1250[0m[0m [0m[0m[38;5;10m~ [0m[0m        offset = [0m[0m[38;5;10mbase & (0xFFFF_FFFF[0m
-[0m[1m[38;5;12m1251[0m[0m [0m[0m[38;5;10m+                 + ((index & 0xFFFF_FFFF) << shift)[0m
-[0m[1m[38;5;12m1252[0m[0m [0m[0m[38;5;10m+                 + if base_field == 0b101 && mode == 0b00 {[0m
-[0m[1m[38;5;12m1253[0m[0m [0m[0m[38;5;10m+                     let mut disp = [0u8; 4];[0m
-[0m[1m[38;5;12m1254[0m[0m [0m[0m[38;5;10m+                     uc.mem_read(at, &mut disp).ok()?;[0m
-[0m[1m[38;5;12m1255[0m[0m [0m[0m[38;5;10m+                     at += 4;[0m
-[0m[1m[38;5;12m1256[0m[0m [0m[0m[38;5;10m+                     u64::from(u32::from_le_bytes(disp))[0m
-[0m[1m[38;5;12m1257[0m[0m [0m[0m[38;5;10m+                 } else {[0m
-[0m[1m[38;5;12m1258[0m[0m [0m[0m[38;5;10m+                     0[0m
-[0m[1m[38;5;12m1259[0m[0m [0m[0m[38;5;10m~                 })[0m[0m;[0m
+[0m[1m[38;5;12m1375[0m[0m [0m[0m[38;5;10m~ [0m[0m        offset = [0m[0m[38;5;10mbase & (0xFFFF_FFFF[0m
+[0m[1m[38;5;12m1376[0m[0m [0m[0m[38;5;10m+                 + ((index & 0xFFFF_FFFF) << shift)[0m
+[0m[1m[38;5;12m1377[0m[0m [0m[0m[38;5;10m+                 + if base_field == 0b101 && mode == 0b00 {[0m
+[0m[1m[38;5;12m1378[0m[0m [0m[0m[38;5;10m+                     let mut disp = [0u8; 4];[0m
+[0m[1m[38;5;12m1379[0m[0m [0m[0m[38;5;10m+                     uc.mem_read(at, &mut disp).ok()?;[0m
+[0m[1m[38;5;12m1380[0m[0m [0m[0m[38;5;10m+                     at += 4;[0m
+[0m[1m[38;5;12m1381[0m[0m [0m[0m[38;5;10m+                     u64::from(u32::from_le_bytes(disp))[0m
+[0m[1m[38;5;12m1382[0m[0m [0m[0m[38;5;10m+                 } else {[0m
+[0m[1m[38;5;12m1383[0m[0m [0m[0m[38;5;10m+                     0[0m
+[0m[1m[38;5;12m1384[0m[0m [0m[0m[38;5;10m~                 })[0m[0m;[0m
 [0m     [0m[0m[1m[38;5;12m|[0m
 
-[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u32` -> `u32`)[0m
-[0m    [0m[0m[1m[38;5;12m--> [0m[0mframework/engine/unicorn/src/lib.rs:1516:47[0m
-[0m     [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m1516[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    trace.push_back((address, size as u32, cs));[0m
-[0m     [0m[0m[1m[38;5;12m|[0m[0m                                               [0m[0m[1m[38;5;9m^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `size`[0m
-[0m     [0m[0m[1m[38;5;12m|[0m
-[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
-[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::unnecessary-cast` implied by `-D warnings`[0m
-[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`[0m
-
-[1m[31merror[0m[1m:[0m could not compile `mosaic-engine-unicorn` (lib) due to 2 previous errors
+[1m[31merror[0m[1m:[0m could not compile `mosaic-engine-unicorn` (lib) due to 1 previous error
 [1m[33mwarning[0m[1m:[0m build failed, waiting for other jobs to finish...
-[1m[31merror[0m[1m:[0m could not compile `mosaic-engine-unicorn` (lib test) due to 2 previous errors
+[1m[31merror[0m[1m:[0m could not compile `mosaic-engine-unicorn` (lib test) due to 1 previous error

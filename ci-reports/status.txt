@@ -1,12 +1,12 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40242189673
-commit: 25462fca75ab43a06321bd623e8b7295af8b63c3
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40243982392
+commit: d61c2e43722a536c51a7580d56ba9198c0783918
 ref: refs/heads/master
-started: 2026-10-25T22:53:10Z
+started: 2026-10-25T23:16:34Z
 formatting: ok
 xtask: ok
 clippy: fail (code=101)
-build: fail (code=101)
-test: fail (code=101)
+build: ok
+test: ok
 smoke-events: fail (run=0 diff=2)
 smoke-machine: fail (run=0 diff=2)
 smoke-snapshot: fail (run=0 diff=2)
@@ -16,4 +16,4 @@ sensorbus: ok
 multicore: ok
 vic-thermal: ok
 doctor: ok
-finished: 2026-10-25T22:55:03Z
+finished: 2026-10-25T23:18:43Z
