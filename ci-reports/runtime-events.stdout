@@ -1,0 +1,6 @@
+time=0 node=1 signal=7 high=true
+time=10 node=1 timer=100
+time=10 node=2 timer=200
+time=10 node=2 signal=7 high=false
+time=20 node=1 timer=101
+snapshot replay: identical
