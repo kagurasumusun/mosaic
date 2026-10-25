@@ -1007,7 +1007,7 @@ impl Common {
         let mut raw = [0u8; 8];
         self.x86_read_bytes(idtr_base + gate_at, &mut raw)?;
         let low = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
-        let high = u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);
+        let _high = u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);
         // Intel SDM Vol.3 Fig.6-2: byte 5 is P(1) DPL(2) S(1) Type(4).
         let present = raw[5] & 0x80 != 0;
         let gate_type = raw[5] & 0x0F;
@@ -1071,12 +1071,6 @@ impl Common {
         }
         Ok(())
     }
-}
-
-/// Both descriptor tables already observed, so per-instruction decoding stops.
-fn x86_tables_known(uc: &Unicorn<'_, EngineData>) -> bool {
-    let tables = uc.get_data().tables;
-    tables.gdt.is_some() && tables.idt.is_some()
 }
 
 /// Decode `LGDT`/`LIDT` (`0F 01 /2` and `0F 01 /3`) at `address` and record the
@@ -1143,7 +1137,7 @@ fn x86_modrm_operand(
         return None;
     }
     if real_mode {
-        let mut at = modrm_at + 1;
+        let at = modrm_at + 1;
         let ds = u64::from(uc.reg_read(RegisterX86::DS as i32).ok()? as u16) * 16;
         if mode == 0b00 && rm == 0b110 {
             let mut disp = [0u8; 2];
@@ -1178,7 +1172,6 @@ fn x86_modrm_operand(
             0b01 => {
                 let mut disp = [0u8; 1];
                 uc.mem_read(at, &mut disp).ok()?;
-                at += 1;
                 base = base.wrapping_add(disp[0] as i8 as i64 as u64);
             }
             _ => {
@@ -1189,7 +1182,8 @@ fn x86_modrm_operand(
         }
         return Some(base & 0x10_FFEF);
     }
-    let mut offset = 0u64;
+    // Every path below assigns `offset` before it is read.
+    let mut offset;
     let mut at = modrm_at + 1;
     if rm == 0b101 && mode == 0b00 {
         let mut disp = [0u8; 4];

@@ -18,6 +18,7 @@ mosaic-core-types = { path = "../../framework/core/types" }
 mosaic-contract-cpu-engine = { path = "../../framework/contract/cpu-engine" }
 mosaic-isa-arm = { path = "../../framework/isa/arm" }
 mosaic-isa-aarch64 = { path = "../../framework/isa/aarch64" }
+mosaic-isa-x86 = { path = "../../framework/isa/x86" }
 mosaic-isa-x86-64 = { path = "../../framework/isa/x86-64" }
 mosaic-contract-mmio = { path = "../../framework/contract/mmio" }
 mosaic-contract-model = { path = "../../framework/contract/model" }

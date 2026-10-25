@@ -318,6 +318,7 @@ dependencies = [
  "mosaic-ip-x86-rtc-mc146818",
  "mosaic-isa-aarch64",
  "mosaic-isa-arm",
+ "mosaic-isa-x86",
  "mosaic-isa-x86-64",
 ]
 
