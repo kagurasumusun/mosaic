@@ -2,7 +2,7 @@
 
 Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-[構成設計書](docs/大規模仮想マシン%20構成設計書.md) に沿って、P0–P3 の縦スライスを構築し、**P4 の in-memory runtime checkpoint**を開始しました。
+[構成設計書](docs/architecture.md) に沿って、P0–P3 の縦スライスを構築し、**P4 の in-memory runtime checkpoint**を開始しました。
 P4 は全 catalog モデル・CPU engine・signal sink・永続形式までは未完です。
 `bringup`・`sensorbus`・`multicore` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
 
