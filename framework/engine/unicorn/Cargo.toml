@@ -24,6 +24,7 @@ unicorn-engine = { version = "=2.1.5", default-features = false, features = ["ar
 [dev-dependencies]
 mosaic-isa-arm = { path = "../../isa/arm" }
 mosaic-isa-aarch64 = { path = "../../isa/aarch64" }
+mosaic-isa-x86 = { path = "../../isa/x86" }
 mosaic-isa-x86-64 = { path = "../../isa/x86-64" }
 mosaic-isa-riscv = { path = "../../isa/riscv" }
 

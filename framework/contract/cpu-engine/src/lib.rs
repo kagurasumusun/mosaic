@@ -126,6 +126,10 @@ pub enum EngineError {
     /// The engine does not accept this interrupt line, for example an unknown
     /// line number on a single-core ARM adapter.
     LineNotSupported,
+    /// The backend cannot perform this request against the current guest
+    /// state: for example an IA-32 task gate, an LDT selector, or an interrupt
+    /// gate whose `IDTR` the backend has not observed yet (ADR 0018).
+    CapabilityMissing,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -499,6 +499,7 @@ dependencies = [
  "mosaic-isa-aarch64",
  "mosaic-isa-arm",
  "mosaic-isa-riscv",
+ "mosaic-isa-x86",
  "mosaic-isa-x86-64",
  "unicorn-engine",
 ]
@@ -780,6 +781,13 @@ dependencies = [
 
 [[package]]
 name = "mosaic-isa-riscv"
+version = "0.1.0"
+dependencies = [
+ "mosaic-core-types",
+]
+
+[[package]]
+name = "mosaic-isa-x86"
 version = "0.1.0"
 dependencies = [
  "mosaic-core-types",
