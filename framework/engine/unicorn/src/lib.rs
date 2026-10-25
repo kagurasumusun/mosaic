@@ -64,6 +64,10 @@ pub struct EngineData {
     fault: Option<EngineBusFault>,
     /// x86 descriptor tables recorded when the guest executes `LGDT`/`LIDT`.
     tables: DescriptorTables,
+    /// Bounded ring of recent instruction addresses, recorded only when a
+    /// bring-up harness asks for it. A guest that faults leaves no other
+    /// record of *where* it went, and a debugger is not always available.
+    trace: Option<std::collections::VecDeque<u64>>,
 }
 
 /// Engine-facing port I/O port (IA-32 `IN`/`OUT`).
@@ -1471,6 +1475,41 @@ impl UnicornX86 {
     /// `GDTR` descriptor base for `selector`, resolved through the guest GDT.
     pub fn segment_base(&self, selector: u16) -> Result<u64, EngineError> {
         self.0.x86_descriptor_base(selector)
+    }
+
+    /// Record the last `capacity` instruction addresses, retrievable with
+    /// [`UnicornX86::instruction_trace`]. Off by default: the hook doubles the
+    /// cost of every instruction.
+    pub fn trace_instructions(&mut self, capacity: usize) -> Result<(), EngineError> {
+        let data = self.0.inner.0.get_data_mut();
+        data.trace = Some(std::collections::VecDeque::with_capacity(capacity));
+        let capacity = capacity.max(1);
+        self.0
+            .inner
+            .0
+            .add_code_hook(1, 0, move |uc, address, _| {
+                let data = uc.get_data_mut();
+                if let Some(trace) = data.trace.as_mut() {
+                    if trace.len() == capacity {
+                        trace.pop_front();
+                    }
+                    trace.push_back(address);
+                }
+            })
+            .map_err(|_| EngineError::Backend)?;
+        Ok(())
+    }
+
+    /// The recorded instruction addresses, oldest first.
+    pub fn instruction_trace(&self) -> Vec<u64> {
+        self.0
+            .inner
+            .0
+            .get_data()
+            .trace
+            .as_ref()
+            .map(|trace| trace.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Answer software interrupts through `service`, as firmware would.

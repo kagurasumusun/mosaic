@@ -39,6 +39,17 @@ pub const VGA_TEXT_SIZE: u64 = 0x8000;
 /// BIOS ROM window: mapped so a guest that reads it does not fault.
 pub const BIOS_ROM_BASE: u64 = 0x000F_0000;
 pub const BIOS_ROM_SIZE: u64 = 0x0001_0000;
+/// Size of the RAM the machine has above 1 MiB.
+pub const EXTENDED_RAM: u64 = 15 * 1024 * 1024;
+/// Top of conventional RAM, and of the address space the firmware describes.
+pub const CONVENTIONAL_TOP: u64 = 0x0009_FC00;
+/// The VGA aperture (`A0000h..BFFFFh`), including the text window.
+pub const VGA_APERTURE_BASE: u64 = 0x000A_0000;
+pub const VGA_APERTURE_SIZE: u64 = 0x0002_0000;
+/// Option ROM space between the VGA aperture and the BIOS window.
+pub const ROM_GAP_BASE: u64 = 0x000C_0000;
+pub const ROM_GAP_SIZE: u64 = 0x0003_0000;
+
 /// Where an El Torito no-emulation image is conventionally loaded.
 pub const DEFAULT_LOAD_SEGMENT: u16 = 0x07C0;
 /// Extended BIOS data area size reported through `INT 15h`.
@@ -123,6 +134,9 @@ pub struct PcBootOptions {
     pub instruction_limit: u64,
     /// Drive number handed to the boot image in `DL`.
     pub boot_drive: u8,
+    /// How many recent instruction addresses to record, for diagnosis. Zero
+    /// records nothing; the hook is expensive, so it stays off by default.
+    pub trace_instructions: usize,
 }
 
 impl Default for PcBootOptions {
@@ -133,8 +147,20 @@ impl Default for PcBootOptions {
             // `0x9F` is what ATAPI-CD firmware conventionally passes; a guest
             // that disagrees probes the drive table instead.
             boot_drive: 0x9F,
+            trace_instructions: 0,
         }
     }
+}
+
+/// One disk read the firmware served.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DiskRead {
+    pub drive: u8,
+    /// First block, in the drive's own block size.
+    pub lba: u64,
+    pub blocks: u16,
+    /// Guest address the data landed at.
+    pub buffer: u64,
 }
 
 /// What the run observed. Everything a failing boot needs to be diagnosed.
@@ -146,8 +172,8 @@ pub struct PcBootReport {
     pub serial: Vec<u8>,
     /// BIOS calls answered, by vector.
     pub interrupts: BTreeMap<u8, u32>,
-    /// Disk reads served, in request order: `(drive, lba, blocks)`.
-    pub disk_reads: Vec<(u8, u64, u16)>,
+    /// Disk reads served, in request order.
+    pub disk_reads: Vec<DiskRead>,
     pub instructions: u64,
     pub stop_reason: String,
     /// Final architectural state, for triage.
@@ -163,6 +189,12 @@ pub struct PcBootReport {
     pub interrupt_log: Vec<(u8, u64, u64)>,
     /// The drive number the machine booted from.
     pub boot_drive: u8,
+    /// Recent instruction addresses, oldest first; empty unless
+    /// [`PcBootOptions::trace_instructions`] asked for them.
+    pub instruction_trace: Vec<u64>,
+    /// Bytes at the last recorded instruction, so a fault can be disassembled
+    /// without a debugger.
+    pub last_instruction: Vec<u8>,
 }
 
 impl PcBootReport {
@@ -358,7 +390,7 @@ struct PcBios {
     cursor_row: usize,
     cursor_col: usize,
     interrupts: BTreeMap<u8, u32>,
-    disk_reads: Vec<(u8, u64, u16)>,
+    disk_reads: Vec<DiskRead>,
     boot_drive: u8,
     /// The El Torito boot image the machine booted from, if it booted a CD.
     eltorito: Option<ElToritoImage>,
@@ -619,7 +651,12 @@ impl PcBios {
             Self::set_flag(cpu, FLAG_CF, true);
             return;
         }
-        self.disk_reads.push((drive, lba, count as u16));
+        self.disk_reads.push(DiskRead {
+            drive,
+            lba,
+            blocks: count as u16,
+            buffer,
+        });
         let _ = cpu.reg_write(REG_EAX, u64::from(ax & 0xFF00));
         Self::set_flag(cpu, FLAG_CF, false);
     }
@@ -653,7 +690,12 @@ impl PcBios {
             Self::set_flag(cpu, FLAG_CF, true);
             return;
         }
-        self.disk_reads.push((drive, lba, count));
+        self.disk_reads.push(DiskRead {
+            drive,
+            lba,
+            blocks: count,
+            buffer,
+        });
         let _ = cpu.reg_write(REG_EAX, u64::from(ax & 0xFF00));
         Self::set_flag(cpu, FLAG_CF, false);
     }
@@ -728,12 +770,13 @@ impl PcBios {
     }
 
     fn memory_map(&mut self, cpu: &mut dyn SoftwareInterruptCpu) {
+        // Usable, then everything the address decode reserves before 1 MiB,
+        // then extended RAM. The map is what the machine actually maps: a
+        // kernel that trusts it and faults has found a real bug.
         let mut entries: Vec<(u64, u64, u32)> = vec![
-            (0, 0x9_F800, 1),     // conventional
-            (0x9_F800, 0x800, 2), // EBDA + reserved
-            (0x10_0000, EXTENDED_KIB * 1024, 1),
-            (VGA_TEXT_BASE, VGA_TEXT_SIZE, 2),
-            (BIOS_ROM_BASE, BIOS_ROM_SIZE, 2),
+            (0, CONVENTIONAL_TOP, 1),
+            (CONVENTIONAL_TOP, 0x10_0000 - CONVENTIONAL_TOP, 2),
+            (0x0010_0000, EXTENDED_RAM, 1),
         ];
         let mut ebx = cpu.reg_read(REG_EBX).unwrap_or(0) as u32;
         if ebx as usize >= entries.len() {
@@ -1134,6 +1177,13 @@ fn run_with(
             mosaic_core_types::Permissions::RWX,
         )
         .map_err(|error| format!("rom map: {error:?}"))?;
+    engine
+        .map_memory(
+            mosaic_core_types::Addr(0x0010_0000),
+            EXTENDED_RAM,
+            mosaic_core_types::Permissions::RWX,
+        )
+        .map_err(|error| format!("extended ram map: {error:?}"))?;
 
     let serial = Arc::new(Mutex::new(Serial16550::default()));
     engine
@@ -1224,6 +1274,12 @@ fn run_with(
         .reg_write(Register::Eflags.into(), 2)
         .map_err(|error| format!("flags: {error:?}"))?;
 
+    if options.trace_instructions > 0 {
+        engine
+            .trace_instructions(options.trace_instructions)
+            .map_err(|error| format!("trace: {error:?}"))?;
+    }
+
     let quantum = std::num::NonZeroU64::new(options.quantum.max(1)).ok_or("zero quantum")?;
     let mut trace = Vec::new();
     let mut executed = 0u64;
@@ -1243,6 +1299,7 @@ fn run_with(
         }
     }
 
+    let last_traced = engine.instruction_trace().last().copied();
     let bios = bios.lock().map_err(|_| "bios lock".to_string())?;
     let screen = bios.read_screen_from(&FirmwareCpuView { engine: &engine });
     let mut serial_bytes = Vec::new();
@@ -1263,6 +1320,20 @@ fn run_with(
         unhandled_interrupt: bios.unhandled,
         interrupt_log: bios.log.clone(),
         boot_drive: bios.boot_drive,
+        instruction_trace: engine.instruction_trace(),
+        last_instruction: {
+            let mut bytes = [0u8; 16];
+            match last_traced {
+                Some(address)
+                    if engine
+                        .read_memory(mosaic_core_types::Addr(address), &mut bytes)
+                        .is_ok() =>
+                {
+                    bytes.to_vec()
+                }
+                _ => Vec::new(),
+            }
+        },
     })
 }
 

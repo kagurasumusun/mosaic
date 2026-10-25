@@ -94,11 +94,9 @@ fn firmware_disk_read_serves_the_boot_disk() {
         0xEB, 0xFE, // jmp $
     ];
     let report = boot(None, Some(boot_sector(&code)), 1_000);
-    assert_eq!(
-        report.disk_reads.first().copied(),
-        Some((0x80, 0, 1)),
-        "the firmware must serve the read the guest asked for"
-    );
+    let read = report.disk_reads.first().copied().expect("one read");
+    assert_eq!((read.drive, read.lba, read.blocks), (0x80, 0, 1));
+    assert_eq!(read.buffer, 0x200, "the data must land at 0000:0200");
     assert_eq!(report.screen.len(), 0);
 }
 
@@ -128,4 +126,27 @@ fn tinycore_iso_boots_the_real_bootloader() {
         "the boot loader never read the CD: {:?}",
         report.interrupts
     );
+}
+
+#[test]
+fn diagnose_tinycore() {
+    let options = PcBootOptions {
+        quantum: 20_000,
+        instruction_limit: 5_000_000,
+        trace_instructions: 40,
+        ..PcBootOptions::default()
+    };
+    let report = run_pc_boot(Some(tinycore()), None, &options).expect("boot");
+    println!("stop {} eip {:#x}", report.stop_reason, report.eip);
+    println!("screen {:?}", report.screen);
+    let trace = &report.instruction_trace;
+    for window in trace.windows(2) {
+        let delta = window[1] as i64 - window[0] as i64;
+        println!("{:#08x} {:+}", window[0], delta);
+    }
+    println!("last {:#x}", trace.last().copied().unwrap_or(0));
+    println!("instruction {:02x?}", report.last_instruction);
+    for read in &report.disk_reads {
+        println!("read {read:?}");
+    }
 }
