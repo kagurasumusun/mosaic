@@ -1,5 +1,0 @@
-68:test firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths ... FAILED
-70:failures:
-74:thread 'firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths' panicked at apps/sensorbus/tests/sensorbus.rs:13:5:
-97:failures:
-100:test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
