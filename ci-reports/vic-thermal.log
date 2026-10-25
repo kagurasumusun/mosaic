@@ -3,4 +3,4 @@
 [1m[32m     Running[0m `target/debug/mosaic-apps-vic-thermal`
 console="t=00001900 v=00001400 k=00BEEF00 c=00001000\n"
 hooks=2048 events=5 irq_edges=1
-elapsed_us=11162 instr_per_s=183479
+elapsed_us=9160 instr_per_s=223580

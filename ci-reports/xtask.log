@@ -1,37 +1,37 @@
 [1m[32m    Updating[0m crates.io index
 [1m[32m Downloading[0m crates ...
-[1m[32m  Downloaded[0m equivalent v1.0.3
 [1m[32m  Downloaded[0m itoa v1.0.18
 [1m[32m  Downloaded[0m serde_core v1.0.229
-[1m[32m  Downloaded[0m serde_spanned v0.6.9
-[1m[32m  Downloaded[0m toml_datetime v0.6.11
 [1m[32m  Downloaded[0m toml_write v0.1.2
-[1m[32m  Downloaded[0m zmij v1.0.23
+[1m[32m  Downloaded[0m equivalent v1.0.3
+[1m[32m  Downloaded[0m toml_datetime v0.6.11
+[1m[32m  Downloaded[0m serde_spanned v0.6.9
 [1m[32m  Downloaded[0m toml v0.8.23
-[1m[32m  Downloaded[0m serde v1.0.229
-[1m[32m  Downloaded[0m toml_edit v0.22.27
+[1m[32m  Downloaded[0m zmij v1.0.23
 [1m[32m  Downloaded[0m memchr v2.8.3
+[1m[32m  Downloaded[0m toml_edit v0.22.27
 [1m[32m  Downloaded[0m indexmap v2.14.2
 [1m[32m  Downloaded[0m winnow v0.7.15
 [1m[32m  Downloaded[0m serde_json v1.0.154
 [1m[32m  Downloaded[0m hashbrown v0.17.1
+[1m[32m  Downloaded[0m serde v1.0.229
 [1m[32m   Compiling[0m serde_core v1.0.229
 [1m[32m   Compiling[0m serde v1.0.229
+[1m[32m   Compiling[0m equivalent v1.0.3
 [1m[32m   Compiling[0m hashbrown v0.17.1
 [1m[32m   Compiling[0m zmij v1.0.23
-[1m[32m   Compiling[0m equivalent v1.0.3
 [1m[32m   Compiling[0m toml_write v0.1.2
 [1m[32m   Compiling[0m winnow v0.7.15
-[1m[32m   Compiling[0m indexmap v2.14.2
 [1m[32m   Compiling[0m serde_json v1.0.154
-[1m[32m   Compiling[0m itoa v1.0.18
+[1m[32m   Compiling[0m indexmap v2.14.2
 [1m[32m   Compiling[0m memchr v2.8.3
+[1m[32m   Compiling[0m itoa v1.0.18
 [1m[32m   Compiling[0m mosaic-describe v0.1.0 (/home/runner/work/mosaic/mosaic/framework/describe)
 [1m[32m   Compiling[0m serde_spanned v0.6.9
 [1m[32m   Compiling[0m toml_datetime v0.6.11
 [1m[32m   Compiling[0m toml_edit v0.22.27
 [1m[32m   Compiling[0m toml v0.8.23
 [1m[32m   Compiling[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 6.90s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 6.47s
 [1m[32m     Running[0m `target/debug/mosaic-xtask check`
 check: OK (68 workspace crates)
