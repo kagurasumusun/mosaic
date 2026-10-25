@@ -1907,6 +1907,31 @@ mod tests {
     }
 
     #[test]
+    fn x86_unclaimed_exception_stops_the_quantum_and_names_the_vector() {
+        // Unicorn never delivers an exception through the guest's IDT: it calls
+        // UC_HOOK_INTR and moves on. With no service attached the engine must
+        // stop instead of silently skipping the fault, and the report has to
+        // say which vector it was.
+        let mut engine = UnicornX86Boot::new().unwrap();
+        engine
+            .map_memory(Addr(0), 0x10_0000, Permissions::RWX)
+            .unwrap();
+        // xor ecx,ecx ; div ecx  -> #DE (vector 0)
+        engine
+            .write_memory(Addr(0x500), &[0x31, 0xC9, 0xF7, 0xF1])
+            .unwrap();
+        engine
+            .reg_write(mosaic_isa_x86::Register::Eip.into(), 0x500)
+            .unwrap();
+        let outcome = engine.run(NonZeroU64::new(4).unwrap());
+        println!(
+            "{:?} unclaimed {:?}",
+            outcome.reason,
+            engine.take_unclaimed_interrupt()
+        );
+    }
+
+    #[test]
     fn x86_boot_core_resumes_across_a_real_mode_far_jump() {
         use mosaic_isa_x86::Register;
         // `MODE_16`'s `uc_emu_start` rewrites the start address as a 16-bit IP

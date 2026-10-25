@@ -379,12 +379,116 @@ impl Serial16550 {
     }
 }
 
+/// VGA register file, as much of it as a text console needs.
+///
+/// `vgacon` is not satisfied by a text window alone: before it prints a
+/// character it reads the CRTC to learn the cursor position, the row count and
+/// the start address, and it programs the attribute controller for colour. A
+/// port that reads back as all ones (`FFh`, an idle ISA bus) leaves the console
+/// either dead or writing out of the window. Writes are recorded and read back,
+/// and the retrace bit alternates so neither retrace poll can spin forever.
+#[derive(Debug)]
+pub struct VgaRegisters {
+    crtc_index: u8,
+    crtc: [u8; 32],
+    sequencer_index: u8,
+    sequencer: [u8; 8],
+    graphics_index: u8,
+    graphics: [u8; 16],
+    attribute_index: u8,
+    attribute: [u8; 32],
+    retrace: bool,
+}
+
+impl Default for VgaRegisters {
+    fn default() -> Self {
+        let mut vga = Self {
+            crtc_index: 0,
+            crtc: [0; 32],
+            sequencer_index: 0,
+            sequencer: [0; 8],
+            graphics_index: 0,
+            graphics: [0; 16],
+            attribute_index: 0,
+            attribute: [0; 32],
+            retrace: false,
+        };
+        // The mode 3 state a PC leaves in the CRTC after the video BIOS runs:
+        // 80x25 characters of 16 lines each, cursor at the top left, display
+        // starting at offset 0 with a 4000-byte line offset.
+        vga.crtc[0x0A] = 0x0E; // cursor start scanline
+        vga.crtc[0x0B] = 0x0F; // cursor end scanline
+        vga.crtc[0x0C] = 0x00; // start address high
+        vga.crtc[0x0D] = 0x00; // start address low
+        vga.crtc[0x0E] = 0x00; // cursor location high
+        vga.crtc[0x0F] = 0x00; // cursor location low
+        vga.crtc[0x12] = 0x8F; // vertical display end: 25 * 16 - 1 = 399
+        vga.crtc[0x13] = 0x28; // offset: 80 cells per row / 2
+        vga
+    }
+}
+
+impl VgaRegisters {
+    fn read(&mut self, port: u16) -> u32 {
+        u32::from(match port {
+            // Input status 1: the retrace bit alternates. `vgacon` waits for it
+            // to clear and then to set again, so a constant answer either way
+            // is an infinite loop.
+            0x3DA | 0x3BA => {
+                self.retrace = !self.retrace;
+                if self.retrace {
+                    0x09
+                } else {
+                    0x00
+                }
+            }
+            // Miscellaneous output: colour I/O addressing (bit 0 set), 25 MHz
+            // clock, display enabled.
+            0x3CC => 0x67,
+            0x3C4 => self.sequencer_index,
+            0x3C5 => self.sequencer[usize::from(self.sequencer_index) & 0x07],
+            0x3CE => self.graphics_index,
+            0x3CF => self.graphics[usize::from(self.graphics_index) & 0x0F],
+            0x3D4 | 0x3B4 => self.crtc_index,
+            0x3D5 | 0x3B5 => self.crtc[usize::from(self.crtc_index) & 0x1F],
+            // The attribute controller reads back the index with bit 7 clear.
+            0x3C0 | 0x3C1 => self.attribute_index & 0x1F,
+            0x3C2 => 0x00,
+            _ => 0xFF,
+        })
+    }
+
+    fn write(&mut self, port: u16, value: u8) {
+        match port {
+            0x3C4 => self.sequencer_index = value,
+            0x3C5 => self.sequencer[usize::from(self.sequencer_index) & 0x07] = value,
+            0x3CE => self.graphics_index = value,
+            0x3CF => self.graphics[usize::from(self.graphics_index) & 0x0F] = value,
+            0x3D4 | 0x3B4 => self.crtc_index = value,
+            0x3D5 | 0x3B5 => {
+                self.crtc[usize::from(self.crtc_index) & 0x1F] = value;
+            }
+            0x3C0 | 0x3C1 => {
+                // Writing with bit 7 clear after the first write selects the
+                // index; the port is shared with the data register.
+                if value & 0x80 != 0 {
+                    self.attribute_index = value & 0x1F;
+                } else if self.attribute_index < 0x20 {
+                    self.attribute[usize::from(self.attribute_index)] = value;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// PC port space: the only way a real guest reaches these devices.
 struct PcPorts {
     pic: Pic8259,
     pit: Pit8254,
     rtc: RtcMc146818,
     serial: Arc<Mutex<Serial16550>>,
+    vga: VgaRegisters,
 }
 
 impl PortBus for PcPorts {
@@ -417,6 +521,15 @@ impl PortBus for PcPorts {
                 let mut serial = self.serial.lock().map_err(|_| BusFault::Device)?;
                 Ok(serial.read(offset))
             }
+            // The VGA's register file. A text console lives or dies by these.
+            0x3B4..=0x3B5
+            | 0x3BA
+            | 0x3C0..=0x3C2
+            | 0x3C4..=0x3C5
+            | 0x3CC
+            | 0x3CE..=0x3CF
+            | 0x3D4..=0x3D5
+            | 0x3DA => Ok(self.vga.read(port)),
             // 8042 keyboard controller status: no byte waiting, input buffer
             // empty. Firmware flushes this port before enabling A20 and
             // before every mode switch, and a status byte of all ones (an
@@ -459,6 +572,10 @@ impl PortBus for PcPorts {
                 let offset = port - 0x3F8;
                 let mut serial = self.serial.lock().map_err(|_| BusFault::Device)?;
                 serial.write(offset, byte);
+                Ok(())
+            }
+            0x3B4..=0x3B5 | 0x3C0..=0x3C2 | 0x3C4..=0x3C5 | 0x3CE..=0x3CF | 0x3D4..=0x3D5 => {
+                self.vga.write(port, byte);
                 Ok(())
             }
             // The 8042 data port and the POST diagnostic port take writes as
@@ -1407,6 +1524,7 @@ fn run_with(
             pit: Pit8254::new(),
             rtc: RtcMc146818::new(),
             serial: Arc::clone(&serial),
+            vga: VgaRegisters::default(),
         }))
         .map_err(|error| format!("ports: {error:?}"))?;
 

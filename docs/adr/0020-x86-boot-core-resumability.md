@@ -88,3 +88,37 @@ Unicorn 2.1.5 のモード語は 3 つしかなく、うち `UC_MODE_32` は初�
 - コンソール。`boot_params.screen_info` を埋めていないので `vgacon` は
   名乗り出ず、シリアルも 8250 が見つからず、カーネルの `printk` はどこにも
   出ない。次はここ。
+
+## 実測で分かったこと（コンソールが無くてもカーネルは読める）
+
+`printk` はリングバッファ（`prb`、カーネルの `.data`/`.bss` の中）に
+**平文**でメッセージを積む。コンソールが 1 つも登録されていなくても、
+そこは読める。`PcBootOptions::dumps` で `0xB50000` 付近（i386 の
+`Linux version` バナーが実際に居た場所）を指定し、印字可能な連続領域を
+拾うだけで、起動ログ全文が手に入る。Tiny Core 6.6.8 の実測:
+
+- `Linux version 6.6.8-tinycore ... #666 SMP`
+- `BIOS-e820: [mem 0x100000-0x3ffffff] usable` など、ファームウェアの
+  `INT 15h E820` をカーネルが受理している
+- `RAMDISK: [mem 0x630000-0x125bfff]` — ローダが置いた initramfs を発見
+- `Found and enabled local APIC!` — `0xFEE00000` の 4 KiB で足りた
+- `Kernel command line: console=tty0 ...` — **コマンドラインは届いている**
+- `ACPI BIOS Error (bug): A valid RSDP was not found` — 警告であって致命ではない
+
+その後 `Checking if this processor honours the WP bit even in supervisor mode...`
+で止まる。ここは読み取り専用ページへの書き込みでページフォルトを起こし、
+例外テーブルで受け止める検査であり、**例外を IDT で配送できない**上記の穴に
+そのまま突き当たる。
+
+次にやること:
+
+1. 例外配送。`UC_HOOK_INTR` の中で、サービスが答えないベクタについて
+   ゲストの IDT（保護モード。32 ビットゲート限定）または IVT で
+   フレームを積んでゲートへ飛ぶ。エラーコードを持つベクタは 8/10-14/17/21/29/30。
+   `#PF` の `CR2` とエラーコードは Unicorn が露出しないので、
+   `UC_HOOK_MEM_*` で自前で拾う必要がある。
+2. コンソール。`screen_info` は埋めた（`orig_video_isVGA = 22h`、80x25）ので
+   `vgacon` が名乗り出るはずだが、VGA の CRTC/属性/シーケンサ・レジスタ
+   （`3B4h`–`3DAh`）を読めるようにしてから確認する。シリアルは
+   8250 が PNP/ACPI 無しでは見つからないので、`earlyprintk` は
+   `CONFIG_EARLY_PRINTK` 依存だと分かった（このカーネルでは出ない）。

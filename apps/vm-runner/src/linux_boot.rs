@@ -29,6 +29,11 @@ const LOADED_HIGH: u8 = 0x01;
 const CAN_USE_HEAP: u8 = 0x80;
 /// Offset of the 64-bit entry point inside the protected-mode payload.
 pub const ENTRY_64_OFFSET: u64 = 0x200;
+/// `screen_info.orig_video_isVGA` for a VGA in text mode, which is what the
+/// machine's text window at `B8000h` is.
+pub const VIDEO_TYPE_VGAC: u8 = 0x22;
+/// Size of the RAM above 1 MiB the machine reports, in KiB.
+const EXTENDED_KIB: u64 = 63 * 1024;
 
 /// One file inside an ISO9660 image, located but not copied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -286,6 +291,23 @@ pub fn prepare_setup(
     // number makes the kernel probe the VGA BIOS mode table, which this
     // firmware does not publish, and it stops to ask the user instead.
     setup[0x1FA..0x1FC].copy_from_slice(&0xFFFFu16.to_le_bytes());
+    // `screen_info` at the head of `boot_params`. This is the loader's job, and
+    // it is what `vgacon` reads before it will offer itself as a console: with
+    // `orig_video_isVGA = 0` the kernel registers no `tty0` at all and every
+    // `printk` of the boot goes nowhere. The machine already writes text into
+    // `B8000h`, so the loader describes exactly that: 80x25, colour, 16-pixel
+    // font, cursor at the top left.
+    setup[0x00] = 0; // orig_x
+    setup[0x01] = 0; // orig_y
+    setup[0x02..0x04].copy_from_slice(&(EXTENDED_KIB as u16).to_le_bytes()); // ext_mem_k
+    setup[0x04..0x06].copy_from_slice(&0u16.to_le_bytes()); // orig_video_page
+    setup[0x06] = 3; // orig_video_mode: 80x25 colour text
+    setup[0x07] = 80; // orig_video_cols
+    setup[0x08] = 0; // flags
+    setup[0x0A..0x0C].copy_from_slice(&0u16.to_le_bytes()); // orig_video_ega_bx
+    setup[0x0E] = 25; // orig_video_lines
+    setup[0x0F] = VIDEO_TYPE_VGAC; // orig_video_isVGA
+    setup[0x10..0x12].copy_from_slice(&16u16.to_le_bytes()); // orig_video_points
     Ok(command)
 }
 

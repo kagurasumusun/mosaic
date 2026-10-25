@@ -108,3 +108,83 @@ fn boot_a_real_linux_kernel() {
         report.instructions
     );
 }
+
+/// The kernel's printk ring buffer lives in its own `.data`, and every message
+/// is stored there as plain text before any console exists. Scraping it is how
+/// a boot that produces no console output at all is still readable — the same
+/// trick a `dmesg` from a serial-less machine needs.
+fn printk_log(report: &mosaic_apps_vm_runner::pc_boot::PcBootReport) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (_, bytes) in &report.dumps {
+        let mut run = Vec::new();
+        for &byte in bytes {
+            if (0x20..0x7f).contains(&byte) || byte == b'\n' {
+                run.push(byte);
+            } else {
+                if run.len() >= 8 {
+                    lines.push(String::from_utf8_lossy(&run).trim().to_string());
+                }
+                run.clear();
+            }
+        }
+        if run.len() >= 8 {
+            lines.push(String::from_utf8_lossy(&run).trim().to_string());
+        }
+    }
+    lines
+}
+
+#[test]
+fn the_kernel_decompresses_and_starts_its_own_init() {
+    let Some(iso) = image(TINYCORE) else { return };
+    let options = PcBootOptions {
+        quantum: 1_000_000,
+        // Enough for the decompressor (~276M instructions) plus a few million
+        // of the kernel's own early init.
+        instruction_limit: 400_000_000,
+        // The kernel's data/bss, where `prb` (the printk ring buffer) lives.
+        dumps: vec![(0xb5_0000, 0x2_0000)],
+        ..PcBootOptions::default()
+    };
+    let report = run_linux_boot(
+        Some(&iso),
+        None,
+        "boot/vmlinuz",
+        Some("boot/core.gz"),
+        "console=tty0",
+        None,
+        &options,
+    )
+    .expect("boot");
+
+    let screen = report.screen.join("\n");
+    println!("screen:\n{screen}");
+    let log = printk_log(&report);
+    for line in log.iter().filter(|line| !line.is_empty()) {
+        println!("log: {line}");
+    }
+
+    // The decompressor's own progress, written straight into the VGA window.
+    assert!(
+        screen.contains("Decompressing Linux"),
+        "the decompressor never ran: {screen:?}"
+    );
+    assert!(
+        screen.contains("Booting the kernel"),
+        "the kernel was never entered: {screen:?}"
+    );
+    // And the kernel's own view of the machine, from its log buffer.
+    assert!(
+        log.iter()
+            .any(|line| line.contains("Linux version") && line.contains("tinycore")),
+        "no Linux version banner in the kernel log"
+    );
+    assert!(
+        log.iter().any(|line| line.contains("BIOS-e820")),
+        "the kernel did not accept the firmware's memory map"
+    );
+    assert!(
+        log.iter().any(|line| line.contains("RAMDISK")),
+        "the kernel did not find the initramfs the loader placed"
+    );
+}
