@@ -137,14 +137,15 @@ fn diagnose_tinycore() {
         ..PcBootOptions::default()
     };
     let report = run_pc_boot(Some(tinycore()), None, &options).expect("boot");
-    println!("stop {} eip {:#x}", report.stop_reason, report.eip);
+    println!(
+        "stop {} eip {:#x} cr0 {:#x}",
+        report.stop_reason, report.eip, report.cr0
+    );
     println!("screen {:?}", report.screen);
     let trace = &report.instruction_trace;
-    for window in trace.windows(2) {
-        let delta = window[1] as i64 - window[0] as i64;
-        println!("{:#08x} {:+}", window[0], delta);
+    for (address, size) in trace {
+        println!("{address:#08x} size {size}");
     }
-    println!("last {:#x}", trace.last().copied().unwrap_or(0));
     println!("instruction {:02x?}", report.last_instruction);
     for read in &report.disk_reads {
         println!("read {read:?}");

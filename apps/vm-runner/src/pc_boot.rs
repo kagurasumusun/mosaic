@@ -189,9 +189,12 @@ pub struct PcBootReport {
     pub interrupt_log: Vec<(u8, u64, u64)>,
     /// The drive number the machine booted from.
     pub boot_drive: u8,
-    /// Recent instruction addresses, oldest first; empty unless
+    /// Recent instructions as `(address, size)`, oldest first; empty unless
     /// [`PcBootOptions::trace_instructions`] asked for them.
-    pub instruction_trace: Vec<u64>,
+    pub instruction_trace: Vec<(u64, u32)>,
+    /// `CR0` at the end of the run: bit 0 is `PE`, so this says whether the
+    /// guest had switched to protected mode before it stopped.
+    pub cr0: u64,
     /// Bytes at the last recorded instruction, so a fault can be disassembled
     /// without a debugger.
     pub last_instruction: Vec<u8>,
@@ -1310,7 +1313,10 @@ fn run_with(
         }
     }
 
-    let last_traced = engine.instruction_trace().last().copied();
+    let last_traced = engine
+        .instruction_trace()
+        .last()
+        .map(|(address, _)| *address);
     let bios = bios.lock().map_err(|_| "bios lock".to_string())?;
     let screen = bios.read_screen_from(&FirmwareCpuView { engine: &engine });
     let mut serial_bytes = Vec::new();
@@ -1332,6 +1338,9 @@ fn run_with(
         interrupt_log: bios.log.clone(),
         boot_drive: bios.boot_drive,
         instruction_trace: engine.instruction_trace(),
+        cr0: engine
+            .reg_read(mosaic_isa_x86::Register::Cr0.into())
+            .unwrap_or(0),
         last_instruction: {
             let mut bytes = [0u8; 16];
             match last_traced {
