@@ -1,7 +1,7 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40241464933
-commit: a3f5e84e3eb1c463b02d446a56ab4c8b2bcc22a1
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40241681009
+commit: 311774bd6593d8fed6efe9155b1b9898a2107f8a
 ref: refs/heads/master
-started: 2026-10-25T22:43:22Z
+started: 2026-10-25T22:45:59Z
 formatting: ok
 xtask: ok
 clippy: fail (code=101)
@@ -16,4 +16,4 @@ sensorbus: ok
 multicore: ok
 vic-thermal: ok
 doctor: ok
-finished: 2026-10-25T22:45:22Z
+finished: 2026-10-25T22:48:27Z
