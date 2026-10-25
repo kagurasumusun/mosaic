@@ -93,3 +93,40 @@ Send の不変条件と 1 箇所の unsafe impl については [ADR 0007](../ad
 プロジェクト自身のライセンス、DCO / CLA、配布形態の判断は引き続き ADR 0006 の未決事項です。
 `publish = false` や feature による opt-in は法的な適合性の保証ではありません。
 今回は CI でビルド・実行を検証し、release / バイナリ公開 / artifact 配布は追加しません。
+
+## IA-32（実モードと PC 起動）
+
+`UnicornX86` は `MODE_16`（実モード）の 1 インスタンスである。PC の起動はここから
+始まり、ゲストが `CR0.PE` と `LGDT` を書けば同じインスタンスが保護モードへ移る。
+アダプタは次を提供する。
+
+- `attach_ports(Box<dyn PortBus>)`: `IN`/`OUT` を 1/2/4 バイトの 1 トランザクションで
+  渡す。PIC・PIT・RTC・UART はこの向こう側にある。
+- `attach_interrupt_service(Box<dyn InterruptService>)`: `INT n` をファームウェア
+  境界として答える。`false` を返すとゲストのハンドラに譲る。
+- `trace_instructions(n)` / `instruction_trace()`: 直近 n 命令の番地を記録する。
+  既定は無効（フックは命令ごとの費用がある）。
+- `queue_interrupt(vector)`: 外部割り込みを量子境界で配送する。`EFLAGS.IF` が
+  0 の間はキューに残る。
+
+実測で分かっている落とし穴（ADR 0018）:
+
+- `EIP` はセグメント相対のオフセットである。`uc_reg_write(CS)` でセレクタを
+  書いてもベースは設置されない。`JMP FAR` だけが設置する。起動点へは
+  `JMP FAR` スタブで入る。
+- `INT n` は Unicorn 自身が IVT/IDT から配送しない。サービスが答えなければ
+  `UC_ERR_EXCEPTION` になる。
+- `MODE_16` のインスタンスに `CR0` を書く経路は失敗する。モード遷移は
+  ゲストの `CR0` 書き込みに任せる。
+
+PC のスライスは `apps/vm-runner` にあり、実 ISO で駆動する。
+
+```sh
+cargo test -p mosaic-apps-vm-runner --features unicorn -- --nocapture
+```
+
+`pc_boot` は低メモリ（IVT・BDA・ベクタごとの `INT n; IRET` トランポリン）、
+El Torito ローダ、`INT 10h`/`11h`/`12h`/`13h`（`AH=4Bh` を含む）/`15h`/`16h`/`1Ah`
+のサービスを持つ。Tiny Core の isolinux は自分自身のコードで CD を検出し、
+第 2 段を読み込み、バナーを VGA テキスト窓に出すところまで到達する。
+カーネル起動は未到達である。

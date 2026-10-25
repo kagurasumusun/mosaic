@@ -342,6 +342,13 @@ impl PortBus for PcPorts {
                 let mut serial = self.serial.lock().map_err(|_| BusFault::Device)?;
                 Ok(serial.read(offset))
             }
+            // 8042 keyboard controller status: no byte waiting, input buffer
+            // empty. Firmware flushes this port before enabling A20 and
+            // before every mode switch, and a status byte of all ones (an
+            // unclaimed port) makes that flush loop forever.
+            0x64 => Ok(0x00),
+            // POST diagnostic port: writes are dropped, reads see nothing.
+            0x80 => Ok(0x00),
             // Unclaimed ports read as all ones, as an idle ISA bus does. A
             // bootloader probing an absent device has to see "no device".
             _ => Ok(0xFF),
@@ -379,6 +386,10 @@ impl PortBus for PcPorts {
                 serial.write(offset, byte);
                 Ok(())
             }
+            // The 8042 data port and the POST diagnostic port take writes as
+            // completion tokens: nothing is attached, and firmware writes them
+            // to time a bus cycle, not to control a device.
+            0x60 | 0x64 | 0x80 => Ok(()),
             _ => Ok(()),
         }
     }
