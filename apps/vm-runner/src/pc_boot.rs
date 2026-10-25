@@ -26,7 +26,7 @@ use mosaic_contract_cpu_engine::{CpuEngine, RunOutcome, StopReason};
 use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, RegId, SignalId, VDelta, VTime};
-use mosaic_engine_unicorn::{InterruptService, PortBus, SoftwareInterruptCpu, UnicornX86};
+use mosaic_engine_unicorn::{InterruptService, PortBus, SoftwareInterruptCpu, UnicornX86Boot};
 
 use crate::linux_boot::SETUP_BASE;
 use mosaic_ip_x86_pic_8259::Pic8259;
@@ -51,6 +51,11 @@ pub const VGA_APERTURE_SIZE: u64 = 0x0002_0000;
 /// Option ROM space between the VGA aperture and the BIOS window.
 pub const ROM_GAP_BASE: u64 = 0x000C_0000;
 pub const ROM_GAP_SIZE: u64 = 0x0003_0000;
+/// Local APIC register page. A kernel reads `APIC_ID` before it knows whether
+/// an APIC is even present, so the page must decode; nothing here is a timer
+/// yet, and the registers read back as a zeroed, idle LAPIC.
+pub const LOCAL_APIC_BASE: u64 = 0xFEE0_0000;
+pub const LOCAL_APIC_SIZE: u64 = 0x0000_1000;
 
 /// Where an El Torito no-emulation image is conventionally loaded.
 pub const DEFAULT_LOAD_SEGMENT: u16 = 0x07C0;
@@ -242,6 +247,11 @@ pub struct PcBootReport {
     /// Registers `EAX..SS` at the end of the run, in Mosaic `RegId` order.
     /// A fault message without the register file is a guessing game.
     pub registers: Vec<u64>,
+    /// The backend's own error text for the stop, when it had one.
+    pub engine_error: Option<String>,
+    /// First unmapped access of the run, as `(is_write, address, size)`. The
+    /// error text names the class of fault; this names the pointer.
+    pub unmapped: Option<(bool, u64, usize)>,
     /// Bus fault the engine recorded, if the stop was a device refusal.
     pub bus_fault: Option<String>,
     /// Stores into the regions named by [`PcBootOptions::watch_writes`], as
@@ -252,6 +262,11 @@ pub struct PcBootReport {
     /// `CR0` at the end of the run: bit 0 is `PE`, so this says whether the
     /// guest had switched to protected mode before it stopped.
     pub cr0: u64,
+    /// The last vector the firmware's interrupt service refused. Unicorn stops
+    /// the quantum instead of delivering an exception through the guest's own
+    /// IDT, so this number is the whole story of a protected-mode stop that is
+    /// neither a budget tick nor a bus fault.
+    pub unclaimed_interrupt: Option<u8>,
     /// Bytes at the last recorded instruction, so a fault can be disassembled
     /// without a debugger.
     pub last_instruction: Vec<u8>,
@@ -1332,7 +1347,7 @@ fn run_with(
     let Some(boot) = boot else {
         return Err("no boot point".into());
     };
-    let mut engine = UnicornX86::new().map_err(|error| format!("engine: {error:?}"))?;
+    let mut engine = UnicornX86Boot::new().map_err(|error| format!("engine: {error:?}"))?;
     // Conventional RAM, the VGA text window and the BIOS window are all real
     // guest memory: the firmware writes the screen into the same window the
     // guest reads.
@@ -1343,20 +1358,33 @@ fn run_with(
             mosaic_core_types::Permissions::RWX,
         )
         .map_err(|error| format!("ram map: {error:?}"))?;
+    // The whole `A0000h..BFFFFh` aperture, not just the text window: the
+    // firmware and the kernel both read it (the early ACPI scan walks
+    // `E0000h..FFFFFh`, and video probing reads the graphics half).
     engine
         .map_memory(
-            mosaic_core_types::Addr(VGA_TEXT_BASE),
-            VGA_TEXT_SIZE,
+            mosaic_core_types::Addr(VGA_APERTURE_BASE),
+            VGA_APERTURE_SIZE,
             mosaic_core_types::Permissions::RWX,
         )
         .map_err(|error| format!("vga map: {error:?}"))?;
+    // The `C0000h..FFFFFh` ROM window. The BIOS image occupies its top 64 KiB;
+    // the space below it decodes to zeros, which is what a real board does and
+    // what the kernel's RSDP scan at `E0000h` expects to read.
+    engine
+        .map_memory(
+            mosaic_core_types::Addr(ROM_GAP_BASE),
+            ROM_GAP_SIZE,
+            mosaic_core_types::Permissions::RWX,
+        )
+        .map_err(|error| format!("rom map: {error:?}"))?;
     engine
         .map_memory(
             mosaic_core_types::Addr(BIOS_ROM_BASE),
             BIOS_ROM_SIZE,
             mosaic_core_types::Permissions::RWX,
         )
-        .map_err(|error| format!("rom map: {error:?}"))?;
+        .map_err(|error| format!("bios map: {error:?}"))?;
     engine
         .map_memory(
             mosaic_core_types::Addr(0x0010_0000),
@@ -1364,6 +1392,13 @@ fn run_with(
             mosaic_core_types::Permissions::RWX,
         )
         .map_err(|error| format!("extended ram map: {error:?}"))?;
+    engine
+        .map_memory(
+            mosaic_core_types::Addr(LOCAL_APIC_BASE),
+            LOCAL_APIC_SIZE,
+            mosaic_core_types::Permissions::RW,
+        )
+        .map_err(|error| format!("lapic map: {error:?}"))?;
 
     let serial = Arc::new(Mutex::new(Serial16550::default()));
     engine
@@ -1544,10 +1579,13 @@ fn run_with(
         registers: (0..16u32)
             .map(|id: u32| engine.reg_read(RegId(id)).unwrap_or(0))
             .collect(),
+        engine_error: engine.last_error(),
+        unmapped: engine.take_unmapped(),
         bus_fault: engine.take_bus_fault().map(|fault| format!("{fault:?}")),
         cr0: engine
             .reg_read(mosaic_isa_x86::Register::Cr0.into())
             .unwrap_or(0),
+        unclaimed_interrupt: engine.take_unclaimed_interrupt(),
         last_instruction: {
             let mut bytes = [0u8; 16];
             match last_traced {
@@ -1582,7 +1620,7 @@ impl InterruptService for SharedBios {
 
 /// Read-only CPU view used to snapshot the screen after the run.
 struct FirmwareCpuView<'a> {
-    engine: &'a UnicornX86,
+    engine: &'a UnicornX86Boot,
 }
 
 impl SoftwareInterruptCpu for FirmwareCpuView<'_> {

@@ -31,7 +31,7 @@ use mosaic_contract_cpu_engine::{
 use mosaic_core_types::{AccessSize, Addr, BusFault, Permissions};
 use ownership::{Counters, OwnedUnicorn};
 use unicorn_engine::{
-    unicorn_const::{Arch, HookType, Mode, Prot},
+    unicorn_const::{Arch, HookType, MemType, Mode, Prot},
     RegisterARM, RegisterARM64, RegisterX86, Unicorn,
 };
 
@@ -70,6 +70,28 @@ pub struct EngineData {
     /// available; the size lets the caller decode what actually executed
     /// instead of what the file on disk says should be there.
     trace: Option<std::collections::VecDeque<(u64, u32, u64)>>,
+    /// Why the last quantum stopped, when the backend said no in its own
+    /// words. "Fault" is a category; `UC_ERR_WRITE_UNMAPPED` next to the address
+    /// the guest used is a diagnosis.
+    last_error: Option<String>,
+    /// The last vector the interrupt service refused, if any. Unicorn never
+    /// delivers an exception through the guest's own IDT, so a protected-mode
+    /// guest that faults stops the quantum with nothing but this number to say
+    /// why (ADR 0020).
+    unclaimed: Option<u8>,
+    /// The first access since the last quantum that hit unmapped memory, as
+    /// `(is_write, address, size)`. `UC_ERR_READ_UNMAPPED` alone names the
+    /// failure mode but not the pointer that caused it, and on a boot path the
+    /// difference between a stray `0xff7c` and a stray `0x1000ff7c` is the whole
+    /// diagnosis.
+    unmapped: Option<(bool, u64, usize)>,
+    /// Instruction budget for the current quantum on an x86 backend, counted
+    /// by the code hook so the quantum ends on an instruction boundary.
+    budget: Option<u64>,
+    /// Set when the budget — not the guest and not the backend — ended the
+    /// quantum. A `rep` instruction makes the count overshoot, so the stop
+    /// reason cannot be inferred from the count alone.
+    budget_stop: bool,
     /// Watched write regions and the writes seen in them, as
     /// `(guest address, writer pc, size)`. Off unless asked for: the hook runs
     /// on every store.
@@ -136,6 +158,13 @@ enum Backend {
     X86Real,
     /// IA-32 with a 32-bit default operand size; `CR0.PE` stays guest-owned.
     X86Protected,
+    /// IA-32 that *resets* into real mode but runs on the 32-bit mode word.
+    /// `UC_MODE_16`'s `uc_emu_start` converts its `begin` argument into a
+    /// 16-bit IP (`ip = begin - cs * 16`), so a resumed context can never
+    /// address above 64 KiB — which a protected-mode decompressor does on its
+    /// first instruction (ADR 0020). This backend picks the mode word only for
+    /// that reason; the reset state is a real PC's.
+    X86Boot,
     #[cfg(feature = "arch-riscv")]
     RiscV32,
 }
@@ -215,7 +244,9 @@ impl Common {
             Backend::Arm64 => (Arch::ARM64, Mode::LITTLE_ENDIAN),
             Backend::X86_64 => (Arch::X86, Mode::MODE_64),
             Backend::X86Real => (Arch::X86, Mode::MODE_16 | Mode::LITTLE_ENDIAN),
-            Backend::X86Protected => (Arch::X86, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
+            Backend::X86Protected | Backend::X86Boot => {
+                (Arch::X86, Mode::MODE_32 | Mode::LITTLE_ENDIAN)
+            }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
         };
@@ -223,10 +254,77 @@ impl Common {
             .map_err(|_| EngineError::Backend)?;
         // Capture-free: no Rc/host reference can escape the engine through a hook.
         // Native count and MAX_QUANTUM bound the addition below to <= 1_000_000.
-        uc.add_code_hook(1, 0, |uc, _, _| {
-            uc.get_data_mut().counters.instructions += 1;
+        uc.add_code_hook(1, 0, |uc, address, _| {
+            // `emu_start`'s own count can stop inside a repeat-prefixed string
+            // instruction, and a context stopped there cannot be resumed
+            // (ADR 0020). The budget is therefore counted here and the stop is
+            // deferred past any `rep movs`: the string instruction retires, and
+            // the quantum ends on the next instruction boundary.
+            // The hook runs *before* the instruction retires, so the budget is
+            // spent by refusing to enter the (limit + 1)-th instruction: the
+            // count then stays exactly `limit` retired instructions. A `rep`
+            // string instruction at the boundary is let in whole and overshoots
+            // by one, which keeps the trap flag free of half-done copies.
+            let stop = {
+                let rep = x86_is_rep_string(uc, address);
+                let data = uc.get_data_mut();
+                data.counters.instructions += 1;
+                match data.budget {
+                    Some(limit) if data.counters.instructions > limit && !rep => {
+                        data.counters.instructions -= 1;
+                        data.budget = None;
+                        data.budget_stop = true;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if stop {
+                let _ = uc.emu_stop();
+            }
         })
         .map_err(|_| EngineError::Backend)?;
+        // One hook for every backend: the address a faulting access used is
+        // the single most useful number after a stop, and Unicorn's error code
+        // does not carry it.
+        uc.add_mem_hook(
+            HookType::MEM_UNMAPPED,
+            1,
+            0,
+            |uc, kind, address, size, _| {
+                let write = matches!(
+                    kind,
+                    MemType::WRITE | MemType::WRITE_UNMAPPED | MemType::WRITE_PROT
+                );
+                let data = uc.get_data_mut();
+                if data.unmapped.is_none() {
+                    data.unmapped = Some((write, address, size));
+                }
+                // Never handled: let the backend raise its own fault.
+                false
+            },
+        )
+        .map_err(|_| EngineError::Backend)?;
+        if matches!(backend, Backend::X86Boot) {
+            // `MODE_32` exists for guests that are already protected, so it
+            // arms `CR0.PE` and leaves every segment cache zeroed by the
+            // memset. Undo both: `cpu_x86_load_seg` with `PE = 0` recomputes
+            // base = selector * 16, limit 0xFFFF and a 16-bit code segment,
+            // which is exactly what a PC resets into.
+            uc.reg_write(RegisterX86::CR0 as i32, 0)
+                .map_err(|_| EngineError::Backend)?;
+            for segment in [
+                RegisterX86::CS,
+                RegisterX86::DS,
+                RegisterX86::ES,
+                RegisterX86::SS,
+                RegisterX86::FS,
+                RegisterX86::GS,
+            ] {
+                uc.reg_write(segment as i32, 0)
+                    .map_err(|_| EngineError::Backend)?;
+            }
+        }
         if matches!(backend, Backend::ArmMClass) {
             // M-profile reset loads the T bit from the vector table at 0x0
             // (unmapped at construction time), so the core wakes executing
@@ -241,7 +339,10 @@ impl Common {
             uc.reg_write(RegisterARM::PC as i32, 1)
                 .map_err(|_| EngineError::Backend)?;
         }
-        if matches!(backend, Backend::X86Real | Backend::X86Protected) {
+        if matches!(
+            backend,
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot
+        ) {
             // LGDT/LIDT are at least five bytes, so the 16-bit boot stub's
             // short instructions never reach the decoder, and the whole hook
             // switches off once both tables are known.
@@ -289,7 +390,11 @@ impl Common {
                 uc.get_data_mut().interrupts = service;
                 if !handled {
                     // Nothing claimed the vector: stop the quantum so the
-                    // caller can decide instead of silently skipping it.
+                    // caller can decide instead of silently skipping it, and
+                    // keep the vector for the report.
+                    if let Ok(vector) = u8::try_from(vector) {
+                        uc.get_data_mut().unclaimed = Some(vector);
+                    }
                     let _ = uc.emu_stop();
                 }
             })
@@ -575,7 +680,7 @@ impl Common {
                 };
                 Ok(mapped as i32)
             }
-            Backend::X86Real | Backend::X86Protected => match reg.0 {
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot => match reg.0 {
                 // Mosaic ISA order EAX..EDI is the hardware encoding order.
                 0 => Ok(RegisterX86::EAX as i32),
                 1 => Ok(RegisterX86::ECX as i32),
@@ -669,7 +774,7 @@ impl Common {
                 };
                 pc
             }
-            Backend::X86Real | Backend::X86Protected => {
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot => {
                 // External interrupts are taken at the quantum boundary: the
                 // only point where a frame can be pushed without fighting an
                 // in-flight instruction (ADR 0018).
@@ -689,7 +794,9 @@ impl Common {
                     .reg_read(RegisterX86::CR0 as i32)
                     .map(|cr0| cr0 & 1 != 0)
                     .unwrap_or(true);
-                if matches!(self.backend, Backend::X86Real) && !protected {
+                if matches!(self.backend, Backend::X86Real | Backend::X86Boot) && !protected {
+                    // Real mode: EIP is a 16-bit offset inside the segment, and
+                    // both mode words here take `begin` as an offset.
                     pc & 0xFFFF
                 } else {
                     pc
@@ -704,11 +811,29 @@ impl Common {
             }
         };
         self.inner.0.get_data_mut().counters.instructions = 0;
-        let result = self.inner.0.emu_start(begin, u64::MAX, 0, budget as usize);
+        let x86 = matches!(
+            self.backend,
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot
+        );
+        if x86 {
+            let data = self.inner.0.get_data_mut();
+            data.budget = Some(budget);
+            data.budget_stop = false;
+        }
+        // x86 passes no count: the code hook stops the quantum, which keeps the
+        // guest on an instruction boundary even when the instruction is a
+        // multi-megabyte `rep movs`.
+        let count = if x86 { 0 } else { budget as usize };
+        let result = self.inner.0.emu_start(begin, u64::MAX, 0, count);
+        self.inner.0.get_data_mut().budget = None;
         let observed = self.inner.0.get_data().counters.instructions;
+        if let Err(error) = &result {
+            self.inner.0.get_data_mut().last_error = Some(format!("{error:?}"));
+        }
+        let budget_stop = self.inner.0.get_data().budget_stop;
         let reason = if result.is_err() || self.inner.0.get_data().fault.is_some() {
             StopReason::Fault
-        } else if observed == budget {
+        } else if budget_stop || observed == budget {
             StopReason::BudgetExhausted
         } else {
             // A backend early stop is not proof of a precise WFI/halt reason.
@@ -742,7 +867,7 @@ impl Common {
             Backend::X86_64 => 16,
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => 32,
-            Backend::X86Real | Backend::X86Protected => 8,
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot => 8,
         };
         if reg.0 == pc_id {
             let aligned = match self.backend {
@@ -752,7 +877,7 @@ impl Common {
                 #[cfg(feature = "arch-riscv")]
                 Backend::RiscV32 => value % 4 == 0,
                 // x86 instructions are variable length; any EIP is legal.
-                Backend::X86Real | Backend::X86Protected => true,
+                Backend::X86Real | Backend::X86Protected | Backend::X86Boot => true,
             };
             if !aligned {
                 return Err(EngineError::InvalidValue);
@@ -840,7 +965,7 @@ impl Common {
             // IA-32 exposes the maskable INTR request as line 0. The vector is
             // not part of the line on x86; the interrupt controller supplies it
             // through `queue_interrupt` (ADR 0018).
-            Backend::X86Real | Backend::X86Protected => line.0 == 0,
+            Backend::X86Real | Backend::X86Protected | Backend::X86Boot => line.0 == 0,
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => line.0 == 0,
         };
@@ -1287,6 +1412,35 @@ fn x86_modrm_operand(
     Some(offset & 0xFFFF_FFFF)
 }
 
+/// Whether the instruction at `address` is a repeat-prefixed string
+/// instruction, whose iterations all share one `EIP`.
+///
+/// A `rep movs` of a few megabytes is one instruction and millions of budget
+/// slots, and Unicorn cannot resume a context stopped in the middle of one, so
+/// the quantum has to let it retire.
+fn x86_is_rep_string(uc: &Unicorn<'_, EngineData>, address: u64) -> bool {
+    let mut raw = [0u8; 6];
+    if uc.mem_read(address, &mut raw).is_err() {
+        return false;
+    }
+    let mut index = 0;
+    while index < raw.len() {
+        match raw[index] {
+            // Operand/address-size and segment prefixes.
+            0x66 | 0x67 | 0x26 | 0x2E | 0x36 | 0x3E | 0x64 | 0x65 => index += 1,
+            // `rep`/`repe`/`repne`.
+            0xF3 | 0xF2 => {
+                return matches!(
+                    raw.get(index + 1),
+                    Some(0xA4 | 0xA5 | 0xA6 | 0xA7 | 0xAA | 0xAB | 0xAC | 0xAD | 0xAE | 0xAF)
+                );
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
 /// Hardware clears `IF` on entry through an interrupt gate only
 /// (Intel SDM Vol.3 Table 6-2). Kept here so the adapter does not depend on
 /// the ISA vocabulary crate at runtime, matching the register-map convention.
@@ -1459,6 +1613,12 @@ unicorn_wrapper! {
     UnicornX86 => Backend::X86Real
 }
 
+unicorn_wrapper! {
+    /// IA-32 that starts in real mode but is *resumable* across the transition
+    /// into protected mode: a PC-class boot core (ADR 0020).
+    UnicornX86Boot => Backend::X86Boot
+}
+
 impl UnicornX86 {
     /// IA-32 with a 32-bit default operand size. `CR0.PE` is still guest
     /// owned: the guest's `CR0` write is what switches the decoder to
@@ -1466,123 +1626,149 @@ impl UnicornX86 {
     pub fn protected_mode() -> Result<Self, EngineError> {
         Ok(Self(Common::new(Backend::X86Protected)?))
     }
-
-    /// Install the `IN`/`OUT` port. One port serves both directions.
-    pub fn attach_ports(&mut self, ports: Box<dyn PortBus>) -> Result<(), EngineError> {
-        self.0.attach_ports(ports)
-    }
-
-    /// Request delivery of `vector`. The request is taken at the start of the
-    /// next [`CpuEngine::run`] quantum, and only while `EFLAGS.IF` is set.
-    pub fn queue_interrupt(&mut self, vector: u8) {
-        self.0.pending_interrupts.push_back(vector);
-    }
-
-    /// Vectors still waiting for `EFLAGS.IF` to open.
-    pub fn pending_interrupts(&self) -> usize {
-        self.0.pending_interrupts.len()
-    }
-
-    /// `IDTR` as `(base, limit)`; the composition root uses it for diagnostics,
-    /// the adapter itself re-reads it at delivery time.
-    pub fn idtr(&self) -> Result<(u64, u64), EngineError> {
-        self.0.x86_idtr()
-    }
-
-    /// `GDTR` descriptor base for `selector`, resolved through the guest GDT.
-    pub fn segment_base(&self, selector: u16) -> Result<u64, EngineError> {
-        self.0.x86_descriptor_base(selector)
-    }
-
-    /// Record the last `capacity` instruction addresses, retrievable with
-    /// [`UnicornX86::instruction_trace`]. Off by default: the hook doubles the
-    /// cost of every instruction.
-    pub fn trace_instructions(&mut self, capacity: usize) -> Result<(), EngineError> {
-        let data = self.0.inner.0.get_data_mut();
-        data.trace = Some(std::collections::VecDeque::with_capacity(capacity));
-        let capacity = capacity.max(1);
-        self.0
-            .inner
-            .0
-            .add_code_hook(1, 0, move |uc, address, size| {
-                // `CS` is read through the vendor binding, which is the only
-                // place that knows the identifier.
-                let cs = uc.reg_read(RegisterX86::CS as i32).unwrap_or(0);
-                let data = uc.get_data_mut();
-                if let Some(trace) = data.trace.as_mut() {
-                    if trace.len() == capacity {
-                        trace.pop_front();
-                    }
-                    trace.push_back((address, size as u32, cs));
-                }
-            })
-            .map_err(|_| EngineError::Backend)?;
-        Ok(())
-    }
-
-    /// Record every store into `[base, base + length)`, with the address of the
-    /// instruction that made it. This is how an overwritten code page is
-    /// traced back to the writer instead of guessed at.
-    pub fn watch_writes(&mut self, base: u64, length: u64) -> Result<(), EngineError> {
-        self.0.inner.0.get_data_mut().watch.push((base, length));
-        self.0
-            .inner
-            .0
-            .add_mem_hook(
-                HookType::MEM_WRITE,
-                0,
-                u64::MAX,
-                move |uc, _, address, size, _| {
-                    let data = uc.get_data();
-                    let watched = data
-                        .watch
-                        .iter()
-                        .any(|(start, length)| address >= *start && address < start + length);
-                    if !watched {
-                        return true;
-                    }
-                    let pc = uc.reg_read(RegisterX86::EIP as i32).unwrap_or(0);
-                    let data = uc.get_data_mut();
-                    if data.writes.len() < 4096 {
-                        data.writes.push((address, pc, size as u32));
-                    }
-                    true
-                },
-            )
-            .map_err(|_| EngineError::Backend)?;
-        Ok(())
-    }
-
-    /// Stores seen in the watched regions, oldest first.
-    pub fn watched_writes(&self) -> Vec<(u64, u64, u32)> {
-        self.0.inner.0.get_data().writes.clone()
-    }
-
-    /// The recorded instructions as `(address, size, cs)`, oldest first.
-    pub fn instruction_trace(&self) -> Vec<(u64, u32, u64)> {
-        self.0
-            .inner
-            .0
-            .get_data()
-            .trace
-            .as_ref()
-            .map(|trace| trace.iter().copied().collect())
-            .unwrap_or_default()
-    }
-
-    /// Answer software interrupts through `service`, as firmware would.
-    pub fn attach_interrupt_service(
-        &mut self,
-        service: Box<dyn InterruptService>,
-    ) -> Result<(), EngineError> {
-        let data = self.0.inner.0.get_data_mut();
-        if data.interrupts.is_some() {
-            return Err(EngineError::BusAlreadyAttached);
-        }
-        data.interrupts = Some(service);
-        Ok(())
-    }
 }
+
+macro_rules! x86_extensions {
+    ($name:ident) => {
+        impl $name {
+            /// Install the `IN`/`OUT` port. One port serves both directions.
+            pub fn attach_ports(&mut self, ports: Box<dyn PortBus>) -> Result<(), EngineError> {
+                self.0.attach_ports(ports)
+            }
+
+            /// Request delivery of `vector`. The request is taken at the start of the
+            /// next [`CpuEngine::run`] quantum, and only while `EFLAGS.IF` is set.
+            pub fn queue_interrupt(&mut self, vector: u8) {
+                self.0.pending_interrupts.push_back(vector);
+            }
+
+            /// Vectors still waiting for `EFLAGS.IF` to open.
+            pub fn pending_interrupts(&self) -> usize {
+                self.0.pending_interrupts.len()
+            }
+
+            /// `IDTR` as `(base, limit)`; the composition root uses it for diagnostics,
+            /// the adapter itself re-reads it at delivery time.
+            pub fn idtr(&self) -> Result<(u64, u64), EngineError> {
+                self.0.x86_idtr()
+            }
+
+            /// `GDTR` descriptor base for `selector`, resolved through the guest GDT.
+            pub fn segment_base(&self, selector: u16) -> Result<u64, EngineError> {
+                self.0.x86_descriptor_base(selector)
+            }
+
+            /// Record the last `capacity` instruction addresses, retrievable with
+            /// [`UnicornX86::instruction_trace`]. Off by default: the hook doubles the
+            /// cost of every instruction.
+            pub fn trace_instructions(&mut self, capacity: usize) -> Result<(), EngineError> {
+                let data = self.0.inner.0.get_data_mut();
+                data.trace = Some(std::collections::VecDeque::with_capacity(capacity));
+                let capacity = capacity.max(1);
+                self.0
+                    .inner
+                    .0
+                    .add_code_hook(1, 0, move |uc, address, size| {
+                        // `CS` is read through the vendor binding, which is the only
+                        // place that knows the identifier.
+                        let cs = uc.reg_read(RegisterX86::CS as i32).unwrap_or(0);
+                        let data = uc.get_data_mut();
+                        if let Some(trace) = data.trace.as_mut() {
+                            if trace.len() == capacity {
+                                trace.pop_front();
+                            }
+                            trace.push_back((address, size as u32, cs));
+                        }
+                    })
+                    .map_err(|_| EngineError::Backend)?;
+                Ok(())
+            }
+
+            /// The backend's own words for why the last quantum stopped.
+            pub fn last_error(&self) -> Option<String> {
+                self.0.inner.0.get_data().last_error.clone()
+            }
+
+            /// The vector the interrupt service refused since the previous call,
+            /// if any. Cleared on read, like the unmapped access below.
+            pub fn take_unclaimed_interrupt(&mut self) -> Option<u8> {
+                self.0.inner.0.get_data_mut().unclaimed.take()
+            }
+
+            /// The first unmapped access since the previous call, as
+            /// `(is_write, address, size)`. Cleared so the next quantum reports its own
+            /// fault rather than the one already diagnosed.
+            pub fn take_unmapped(&mut self) -> Option<(bool, u64, usize)> {
+                self.0.inner.0.get_data_mut().unmapped.take()
+            }
+
+            /// Record every store into `[base, base + length)`, with the address of the
+            /// instruction that made it. This is how an overwritten code page is
+            /// traced back to the writer instead of guessed at.
+            pub fn watch_writes(&mut self, base: u64, length: u64) -> Result<(), EngineError> {
+                self.0.inner.0.get_data_mut().watch.push((base, length));
+                self.0
+                    .inner
+                    .0
+                    .add_mem_hook(
+                        HookType::MEM_WRITE,
+                        0,
+                        u64::MAX,
+                        move |uc, _, address, size, _| {
+                            let data = uc.get_data();
+                            let watched = data.watch.iter().any(|(start, length)| {
+                                address >= *start && address < start + length
+                            });
+                            if !watched {
+                                return true;
+                            }
+                            let pc = uc.reg_read(RegisterX86::EIP as i32).unwrap_or(0);
+                            let data = uc.get_data_mut();
+                            if data.writes.len() < 4096 {
+                                data.writes.push((address, pc, size as u32));
+                            }
+                            true
+                        },
+                    )
+                    .map_err(|_| EngineError::Backend)?;
+                Ok(())
+            }
+
+            /// Stores seen in the watched regions, oldest first.
+            pub fn watched_writes(&self) -> Vec<(u64, u64, u32)> {
+                self.0.inner.0.get_data().writes.clone()
+            }
+
+            /// The recorded instructions as `(address, size, cs)`, oldest first.
+            pub fn instruction_trace(&self) -> Vec<(u64, u32, u64)> {
+                self.0
+                    .inner
+                    .0
+                    .get_data()
+                    .trace
+                    .as_ref()
+                    .map(|trace| trace.iter().copied().collect())
+                    .unwrap_or_default()
+            }
+
+            /// Answer software interrupts through `service`, as firmware would.
+            pub fn attach_interrupt_service(
+                &mut self,
+                service: Box<dyn InterruptService>,
+            ) -> Result<(), EngineError> {
+                let data = self.0.inner.0.get_data_mut();
+                if data.interrupts.is_some() {
+                    return Err(EngineError::BusAlreadyAttached);
+                }
+                data.interrupts = Some(service);
+                Ok(())
+            }
+        }
+    };
+}
+
+x86_extensions!(UnicornX86);
+x86_extensions!(UnicornX86Boot);
 
 /// [`SoftwareInterruptCpu`] view over the live Unicorn handle.
 ///
@@ -1718,6 +1904,46 @@ mod tests {
             engine.attach_ports(ports).unwrap();
         }
         engine
+    }
+
+    #[test]
+    fn x86_boot_core_resumes_across_a_real_mode_far_jump() {
+        use mosaic_isa_x86::Register;
+        // `MODE_16`'s `uc_emu_start` rewrites the start address as a 16-bit IP
+        // (`ip = begin - cs * 16`), so a context parked anywhere but the
+        // segment base cannot be resumed. The boot core runs on the 32-bit mode
+        // word instead and keeps real-mode semantics, so the same far jump
+        // resumes on the next instruction (ADR 0020).
+        let mut engine = UnicornX86Boot::new().unwrap();
+        engine
+            .map_memory(Addr(0), 0x10_0000, Permissions::RWX)
+            .unwrap();
+        // At 0x500: jmp far 9020:0000.
+        engine
+            .write_memory(Addr(0x500), &[0xEA, 0x00, 0x00, 0x20, 0x90])
+            .unwrap();
+        // Setup entry: jmp +0x6a, then `mov ax,0x1234 ; mov bx,0x5678`.
+        engine.write_memory(Addr(0x90_200), &[0xEB, 0x6A]).unwrap();
+        engine
+            .write_memory(Addr(0x90_26C), &[0xB8, 0x34, 0x12, 0xBB, 0x78, 0x56])
+            .unwrap();
+        engine.reg_write(Register::Cs.into(), 0).unwrap();
+        engine.reg_write(Register::Eip.into(), 0x500).unwrap();
+        let mut eips = Vec::new();
+        for _ in 0..4 {
+            engine.run(NonZeroU64::new(1).unwrap());
+            eips.push((
+                engine.reg_read(Register::Cs.into()).unwrap(),
+                engine.reg_read(Register::Eip.into()).unwrap(),
+            ));
+        }
+        assert_eq!(
+            eips,
+            vec![(0x9020, 0), (0x9020, 0x6C), (0x9020, 0x6F), (0x9020, 0x72)],
+            "each quantum must retire exactly one instruction and resume in the segment"
+        );
+        assert_eq!(engine.reg_read(Register::Eax.into()).unwrap(), 0x1234);
+        assert_eq!(engine.reg_read(Register::Ebx.into()).unwrap(), 0x5678);
     }
 
     #[derive(Default)]
