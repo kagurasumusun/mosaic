@@ -1,6 +1,0 @@
-[1m[32m   Compiling[0m mosaic-apps-vic-thermal v0.1.0 (/home/runner/work/mosaic/mosaic/apps/vic-thermal)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
-[1m[32m     Running[0m `target/debug/mosaic-apps-vic-thermal`
-console="t=00001900 v=00001400 k=00BEEF00 c=00001000\n"
-hooks=2048 events=5 irq_edges=1
-elapsed_us=5334 instr_per_s=383952

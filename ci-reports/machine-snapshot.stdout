@@ -1,3 +1,0 @@
-checkpoint schema=2 graph=cceb2093e846413a ram=16 devices=1 time=0 state=f91c3c4f6f39be46
-restored ram=aa bb value=41 ticks=0 pending=1 time=0
-replay value=41 ticks=7 time=10 state=62fff9fab914be76
