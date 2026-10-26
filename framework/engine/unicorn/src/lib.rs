@@ -74,11 +74,16 @@ pub struct EngineData {
     /// words. "Fault" is a category; `UC_ERR_WRITE_UNMAPPED` next to the address
     /// the guest used is a diagnosis.
     last_error: Option<String>,
-    /// The last vector the interrupt service refused, if any. Unicorn never
-    /// delivers an exception through the guest's own IDT, so a protected-mode
-    /// guest that faults stops the quantum with nothing but this number to say
-    /// why (ADR 0020).
+    /// The last vector the interrupt service refused *and* the guest had no
+    /// gate for, if any. The adapter delivers refused vectors through the
+    /// guest's own IDT/IVT; this records the ones it could not place, which
+    /// stop the quantum (ADR 0020).
     unclaimed: Option<u8>,
+    /// The last CPU exception the adapter delivered itself, as
+    /// `(vector, eip, cr2)`. The return address and `CR2` are the only record
+    /// of *where* a guest faulted, and a boot that stops inside its own fault
+    /// handler needs both to be diagnosable.
+    exception: Option<(u8, u64, u64)>,
     /// The first access since the last quantum that hit unmapped memory, as
     /// `(is_write, address, size)`. `UC_ERR_READ_UNMAPPED` alone names the
     /// failure mode but not the pointer that caused it, and on a boot path the
@@ -92,6 +97,12 @@ pub struct EngineData {
     /// quantum. A `rep` instruction makes the count overshoot, so the stop
     /// reason cannot be inferred from the count alone.
     budget_stop: bool,
+    /// Address of the instruction the core is about to execute, recorded by the
+    /// budget hook. Unicorn raises a software `INT n`'s `UC_HOOK_INTR` *after*
+    /// folding the return address past the `INT`, and an exception's *before*
+    /// touching `EIP` at all; comparing this with `EIP` in the hook is what
+    /// tells the two apart without disassembling the instruction stream.
+    executing: Option<u64>,
     /// Watched write regions and the writes seen in them, as
     /// `(guest address, writer pc, size)`. Off unless asked for: the hook runs
     /// on every store.
@@ -252,6 +263,22 @@ impl Common {
         };
         let mut uc = Unicorn::new_with_data(arch, mode, EngineData::default())
             .map_err(|_| EngineError::Backend)?;
+        // Unicorn registers `emu_start`'s `until` address as an exit and, at the
+        // end of every quantum, invalidates the translation block covering
+        // `until - 1` (`tcg_cpu_exec` -> `uc_invalidate_tb`). This adapter never
+        // stops on an address, so it passes `u64::MAX`, and the invalidation then
+        // asks `get_page_addr_code` to translate `0xfffffffffffffffe`: with guest
+        // paging on, that address-space walk faults, `raise_interrupt2` runs
+        // `check_exception` — latching `old_exception = #PF` — and the exception
+        // is swallowed by the invalidation's own `setjmp`, so nothing ever clears
+        // it. The second quantum latches `#DF`, and from then on
+        // `check_exception` turns every guest exception into a triple fault
+        // (`EXCP_HLT`) before the adapter's `UC_HOOK_INTR` callback is reached:
+        // the guest freezes mid-instruction and each quantum retires one
+        // instruction. `UC_CTL_UC_USE_EXITS` removes the mechanism: `until` is
+        // ignored and only addresses registered through `ctl_set_exits` are
+        // invalidated, of which this adapter registers none.
+        uc.ctl_exits_enable().map_err(|_| EngineError::Backend)?;
         // Capture-free: no Rc/host reference can escape the engine through a hook.
         // Native count and MAX_QUANTUM bound the addition below to <= 1_000_000.
         uc.add_code_hook(1, 0, |uc, address, _| {
@@ -268,6 +295,7 @@ impl Common {
             let stop = {
                 let rep = x86_is_rep_string(uc, address);
                 let data = uc.get_data_mut();
+                data.executing = Some(address);
                 data.counters.instructions += 1;
                 match data.budget {
                     Some(limit) if data.counters.instructions > limit && !rep => {
@@ -347,14 +375,14 @@ impl Common {
             // short instructions never reach the decoder, and the whole hook
             // switches off once both tables are known.
             uc.add_code_hook(1, 0, |uc, address, size| {
-                if size < 5 {
-                    return;
+                // `LGDT`/`LIDT` are `0F 01` plus a ModRM byte at minimum, so a
+                // shorter instruction cannot be one. The tables are observed for
+                // the whole run rather than until they are first seen: a kernel
+                // loads `GDTR` several times and `IDTR` again after the early
+                // stubs, and a stale base delivers faults into the wrong table.
+                if size >= 3 {
+                    x86_observe_descriptor_load(uc, address);
                 }
-                let tables = uc.get_data().tables;
-                if tables.gdt.is_some() && tables.idt.is_some() {
-                    return;
-                }
-                x86_observe_descriptor_load(uc, address);
             })
             .map_err(|_| EngineError::Backend)?;
             // Port I/O is the only way a PC reaches its PIC/PIT/RTC/UART. Both
@@ -389,13 +417,15 @@ impl Common {
                 }
                 uc.get_data_mut().interrupts = service;
                 if !handled {
-                    // Nothing claimed the vector: stop the quantum so the
-                    // caller can decide instead of silently skipping it, and
-                    // keep the vector for the report.
+                    // Nothing claimed the vector. A software interrupt belongs
+                    // to the firmware service; anything it declines is a CPU
+                    // exception or a guest-installed handler's vector, and
+                    // Unicorn never enters either gate on its own.
                     if let Ok(vector) = u8::try_from(vector) {
-                        uc.get_data_mut().unclaimed = Some(vector);
+                        x86_take_exception(uc, vector);
+                    } else {
+                        let _ = uc.emu_stop();
                     }
-                    let _ = uc.emu_stop();
                 }
             })
             .map_err(|_| EngineError::Backend)?;
@@ -977,7 +1007,7 @@ impl Common {
     }
 }
 
-/// IA-32 architectural interrupt delivery.
+/// IA-32 architectural interrupt and exception entry.
 ///
 /// Unicorn 2.1.x exposes no INTR/IRQ injection for any ISA, so the adapter
 /// performs the sequence the hardware would perform (Intel SDM Vol.3 §6.12)
@@ -992,219 +1022,566 @@ impl Common {
 ///   rejects absent and task gates, pushes a frame whose width follows the
 ///   gate type, clears `IF`/`TF` for interrupt gates only, and loads the
 ///   handler selector through the CPU's own segment load;
+/// * a vector that pushes an error code (Intel SDM Vol.3 Table 6-1) pushes it
+///   below the return frame, where `iret` expects to find it;
 /// * a ring change through a conforming gate is not modelled yet, and
 ///   long-mode (64-bit) gates are rejected rather than half-implemented.
 ///
+/// Two callers share the path. [`Common::queue_interrupt`] uses it for external
+/// interrupts at a quantum boundary, and the `UC_HOOK_INTR` hook uses it for
+/// exceptions — because Unicorn 2.1.x reports a CPU exception to that hook and
+/// then *discards* it: `cpu_handle_exception` (`accel/tcg/cpu-exec.c`) never
+/// reaches the i386 `do_interrupt`, so without this a faulting guest would
+/// resume on the faulting instruction with no handler entered (ADR 0020).
+/// Everything the CPU computed before the hook is read out of the register
+/// state: `handle_mmu_fault` (`target/i386/excp_helper.c`) writes `CR2` and the
+/// error code itself, so both survive into the hook.
+///
 /// Instruction accounting is untouched: entry costs no guest instruction,
 /// which matches the existing "budget = instructions executed" contract.
+fn x86_reg(uc: &Unicorn<'_, EngineData>, reg: RegisterX86) -> Result<u64, EngineError> {
+    uc.reg_read(reg as i32).map_err(|_| EngineError::Backend)
+}
+
+fn x86_read_u16(uc: &Unicorn<'_, EngineData>, address: u64) -> Result<u16, EngineError> {
+    let mut buf = [0u8; 2];
+    x86_read_bytes(uc, address, &mut buf)?;
+    Ok(u16::from_le_bytes(buf))
+}
+
+/// Read `buf` from the guest's *linear* `address`.
+///
+/// Unicorn 2.1.x's `uc_mem_read`/`uc_mem_write` are physical on i386:
+/// `cpu_memory_rw_debug` ends in `address_space_read` and never consults the
+/// guest's page tables. Every address this adapter reads on the guest's behalf
+/// is linear — an `IDT` entry, a `GDT` descriptor, a stack slot, an
+/// instruction — so the translation happens here, one page at a time, with the
+/// same tables the CPU is walking.
+fn x86_read_bytes(
+    uc: &Unicorn<'_, EngineData>,
+    address: u64,
+    buf: &mut [u8],
+) -> Result<(), EngineError> {
+    let mut done = 0;
+    while done < buf.len() {
+        let at = address + done as u64;
+        let physical = x86_translate(uc, at)?;
+        let chunk = ((0x1000 - (at & 0xFFF)) as usize).min(buf.len() - done);
+        uc.mem_read(physical, &mut buf[done..done + chunk])
+            .map_err(|_| EngineError::Unmapped)?;
+        done += chunk;
+    }
+    Ok(())
+}
+
+fn x86_write_bytes(
+    uc: &mut Unicorn<'_, EngineData>,
+    address: u64,
+    buf: &[u8],
+) -> Result<(), EngineError> {
+    let mut done = 0;
+    while done < buf.len() {
+        let at = address + done as u64;
+        let physical = x86_translate(uc, at)?;
+        let chunk = ((0x1000 - (at & 0xFFF)) as usize).min(buf.len() - done);
+        uc.mem_write(physical, &buf[done..done + chunk])
+            .map_err(|_| EngineError::Unmapped)?;
+        done += chunk;
+    }
+    // The frame lives in ordinary RAM, but a stale translation block that
+    // cached the old stack contents must not survive the write.
+    let end = address + buf.len() as u64;
+    uc.ctl_remove_cache(address, end)
+        .map_err(|_| EngineError::Backend)
+}
+
+/// Read straight from a *physical* address, for the tables a walk consults.
+fn x86_read_physical(
+    uc: &Unicorn<'_, EngineData>,
+    address: u64,
+    buf: &mut [u8],
+) -> Result<(), EngineError> {
+    uc.mem_read(address, buf).map_err(|_| EngineError::Unmapped)
+}
+
+/// Physical address backing the guest's linear `address`.
+fn x86_translate(uc: &Unicorn<'_, EngineData>, address: u64) -> Result<u64, EngineError> {
+    let (physical, present) = x86_page_walk(uc, address)?;
+    if !present {
+        return Err(EngineError::Unmapped);
+    }
+    Ok(physical)
+}
+
+/// One page-table walk, shared by the linear-to-physical translation above and
+/// by the `P` bit of a `#PF` error code.
+///
+/// Returns the physical address the linear address resolves to and whether the
+/// mapping is present. A walk that cannot read a table reports "present": an
+/// unreadable table is not a missing page, and the protection-fault path is the
+/// more informative answer. Paging off is an identity mapping.
+fn x86_page_walk(uc: &Unicorn<'_, EngineData>, linear: u64) -> Result<(u64, bool), EngineError> {
+    /// Intel SDM Vol.3 Fig.4-4 and 4-9: present, size, address.
+    const CR0_PG: u64 = 1 << 31;
+    const CR4_PAE: u64 = 1 << 5;
+    const PRESENT: u64 = 1;
+    const PAGE_SIZE: u64 = 1 << 7;
+    const PAGE_4K: u64 = !0xFFF;
+    /// PAE/64-bit entries carry a physical address in bits 51:12.
+    const PAGE_PAE: u64 = 0x000F_FFFF_FFFF_F000;
+
+    let linear = linear & 0xFFFF_FFFF;
+    if x86_reg(uc, RegisterX86::CR0)? & CR0_PG == 0 {
+        return Ok((linear, true));
+    }
+    let cr3 = x86_reg(uc, RegisterX86::CR3)?;
+    if x86_reg(uc, RegisterX86::CR4)? & CR4_PAE == 0 {
+        let mut raw = [0u8; 4];
+        // 32-bit paging: one page directory, 4 KiB or 4 MiB pages.
+        let at = (cr3 & PAGE_4K) + ((linear >> 22) & 0x3FF) * 4;
+        x86_read_physical(uc, at, &mut raw).map_err(|_| EngineError::Unmapped)?;
+        let pde = u64::from(u32::from_le_bytes(raw));
+        if pde & PRESENT == 0 {
+            return Ok((linear, false));
+        }
+        if pde & PAGE_SIZE != 0 {
+            return Ok(((pde & 0xFFC0_0000) | (linear & 0x3F_FFFF), true));
+        }
+        let at = (pde & PAGE_4K) + ((linear >> 12) & 0x3FF) * 4;
+        x86_read_physical(uc, at, &mut raw).map_err(|_| EngineError::Unmapped)?;
+        let pte = u64::from(u32::from_le_bytes(raw));
+        return Ok(((pte & PAGE_4K) | (linear & 0xFFF), pte & PRESENT != 0));
+    }
+    // PAE: page directory pointer table, page directory, page table.
+    let mut raw = [0u8; 8];
+    let at = (cr3 & !0x1F) + ((linear >> 30) & 3) * 8;
+    x86_read_physical(uc, at, &mut raw).map_err(|_| EngineError::Unmapped)?;
+    let pdpe = u64::from_le_bytes(raw);
+    if pdpe & PRESENT == 0 {
+        return Ok((linear, false));
+    }
+    let at = (pdpe & PAGE_PAE) + ((linear >> 21) & 0x1FF) * 8;
+    x86_read_physical(uc, at, &mut raw).map_err(|_| EngineError::Unmapped)?;
+    let pde = u64::from_le_bytes(raw);
+    if pde & PRESENT == 0 {
+        return Ok((linear, false));
+    }
+    if pde & PAGE_SIZE != 0 {
+        return Ok(((pde & 0x000F_FFFF_FFE0_0000) | (linear & 0x1F_FFFF), true));
+    }
+    let at = (pde & PAGE_PAE) + ((linear >> 12) & 0x1FF) * 8;
+    x86_read_physical(uc, at, &mut raw).map_err(|_| EngineError::Unmapped)?;
+    let pte = u64::from_le_bytes(raw);
+    Ok(((pte & PAGE_PAE) | (linear & 0xFFF), pte & PRESENT != 0))
+}
+
+/// Linear address of `offset` inside segment `selector`.
+///
+/// Real mode scales the selector by 16; everything else resolves the base
+/// through the guest's own `GDT`, so a small-model guest is followed rather
+/// than assumed flat (ADR 0018).
+fn x86_linear(
+    uc: &Unicorn<'_, EngineData>,
+    selector: u16,
+    offset: u64,
+) -> Result<u64, EngineError> {
+    if x86_reg(uc, RegisterX86::CR0)? & 1 == 0 {
+        return Ok(u64::from(selector & 0xFFFC) * 16 + (offset & 0xFFFF));
+    }
+    Ok(x86_descriptor_base(uc, selector)? + offset)
+}
+
+/// Linear base of a segment selector's descriptor in the current GDT.
+///
+/// Flat-model guests (every catalog PC target) use base 0 descriptors, but the
+/// value is read from the guest table rather than assumed, so a small-model
+/// guest fails loudly instead of silently pushing its frame to the wrong
+/// address. An unobserved `GDTR` is a capability gap, not a guess.
+fn x86_descriptor_base(uc: &Unicorn<'_, EngineData>, selector: u16) -> Result<u64, EngineError> {
+    if selector & 0x0004 != 0 {
+        return Err(EngineError::CapabilityMissing);
+    }
+    let index = u64::from(selector >> 3);
+    if index == 0 {
+        return Ok(0);
+    }
+    let (base, limit) = uc
+        .get_data()
+        .tables
+        .gdt
+        .ok_or(EngineError::CapabilityMissing)?;
+    let offset = index * 8;
+    if offset + 7 > limit {
+        return Err(EngineError::CapabilityMissing);
+    }
+    let mut raw = [0u8; 8];
+    x86_read_bytes(uc, base + offset, &mut raw)?;
+    // Intel SDM Vol.3 Fig.3-8: base is split across three fields.
+    let segment_base = u64::from(raw[2])
+        | (u64::from(raw[3]) << 8)
+        | (u64::from(raw[4]) << 16)
+        | (u64::from(raw[7]) << 24);
+    Ok(segment_base & 0xFFFF_FFFF)
+}
+
+/// `IDTR` as `(base, limit)`, as observed at the guest's `LIDT`.
+fn x86_idtr(uc: &Unicorn<'_, EngineData>) -> Result<(u64, u64), EngineError> {
+    uc.get_data()
+        .tables
+        .idt
+        .ok_or(EngineError::CapabilityMissing)
+}
+
+/// The return frame an interrupt entry will push.
+struct X86Entry {
+    /// `CS` the handler returns to.
+    cs: u64,
+    /// `EIP` the handler returns to: the faulting instruction for a CPU
+    /// exception, the instruction *after* the `INT` for a software interrupt.
+    eip: u64,
+    /// Pushed below the return frame when the vector carries one.
+    error_code: Option<u32>,
+}
+
+/// Enter `vector`'s gate and push `entry`'s frame. `Ok(false)` means the guest
+/// has no usable gate for the vector (an all-zero real-mode slot, an absent
+/// protected-mode descriptor), which the caller must not mistake for delivery.
+fn x86_enter_gate(
+    uc: &mut Unicorn<'_, EngineData>,
+    vector: u8,
+    entry: X86Entry,
+) -> Result<bool, EngineError> {
+    const IF: u64 = 1 << 9;
+    const TF: u64 = 1 << 8;
+    let flags = x86_reg(uc, RegisterX86::EFLAGS)?;
+    let cr0 = x86_reg(uc, RegisterX86::CR0)?;
+    let ss = u16::try_from(x86_reg(uc, RegisterX86::SS)?).unwrap_or(0);
+    let esp = x86_reg(uc, RegisterX86::ESP)? & 0xFFFF_FFFF;
+
+    if cr0 & 1 == 0 {
+        let at = u64::from(vector) * 4;
+        let handler_ip = u64::from(x86_read_u16(uc, at)?);
+        let handler_cs = x86_read_u16(uc, at + 2)?;
+        if handler_cs == 0 && handler_ip == 0 {
+            // An empty IVT slot is memory, not a handler: entering `0:0` would
+            // execute the interrupt table itself.
+            return Ok(false);
+        }
+        let base = u64::from(ss) * 16;
+        let mut sp = u32::from(esp as u16);
+        // Real-mode frames are always 16-bit and never carry an error code.
+        for value in [flags as u16, entry.cs as u16, entry.eip as u16] {
+            sp = sp.wrapping_sub(2) & 0xFFFF;
+            x86_write_bytes(uc, base + u64::from(sp), &value.to_le_bytes())?;
+        }
+        uc.reg_write(RegisterX86::ESP as i32, u64::from(sp))
+            .map_err(|_| EngineError::Backend)?;
+        // Real-mode interrupt entry clears IF and TF unconditionally.
+        uc.reg_write(RegisterX86::EFLAGS as i32, flags & !(IF | TF))
+            .map_err(|_| EngineError::Backend)?;
+        uc.reg_write(RegisterX86::CS as i32, u64::from(handler_cs))
+            .map_err(|_| EngineError::Backend)?;
+        uc.reg_write(RegisterX86::EIP as i32, u64::from(handler_ip))
+            .map_err(|_| EngineError::Backend)?;
+        return Ok(true);
+    }
+
+    let (idtr_base, idtr_limit) = x86_idtr(uc)?;
+    let gate_at = u64::from(vector) * 8;
+    if gate_at + 7 > idtr_limit {
+        return Err(EngineError::CapabilityMissing);
+    }
+    let mut raw = [0u8; 8];
+    x86_read_bytes(uc, idtr_base + gate_at, &mut raw)?;
+    let low = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+    // Intel SDM Vol.3 Fig.6-2: byte 5 is P(1) DPL(2) S(1) Type(4).
+    let present = raw[5] & 0x80 != 0;
+    let gate_type = raw[5] & 0x0F;
+    if !present {
+        uc.get_data_mut().last_error = Some(format!(
+            "gate {vector:#04x} absent: {raw:02x?} at {:#x}",
+            idtr_base + gate_at
+        ));
+        return Ok(false);
+    }
+    if gate_type == 0x5 {
+        // Task gates switch the whole task; out of scope for this slice.
+        return Err(EngineError::CapabilityMissing);
+    }
+    let selector = (low >> 16) as u16;
+    let offset_low = low & 0xFFFF;
+    let offset_high = u32::from(u16::from_le_bytes([raw[6], raw[7]]));
+    let handler = u64::from(offset_low) | (u64::from(offset_high) << 16);
+    let wide = matches!(gate_type, 0xE | 0xF);
+    let ss_base = if ss == 0 {
+        0
+    } else {
+        x86_descriptor_base(uc, ss)?
+    };
+    let mut sp = esp;
+    if wide {
+        for value in [flags as u32, u32::from(entry.cs as u16), entry.eip as u32] {
+            sp = sp.wrapping_sub(4);
+            x86_write_bytes(uc, ss_base + u64::from(sp), &value.to_le_bytes())?;
+        }
+    } else {
+        for value in [flags as u16, entry.cs as u16, entry.eip as u16] {
+            sp = sp.wrapping_sub(2);
+            x86_write_bytes(uc, ss_base + u64::from(sp), &value.to_le_bytes())?;
+        }
+    }
+    if let Some(error_code) = entry.error_code {
+        // Intel SDM Vol.3 §6.13: the error code is pushed last, so it sits at
+        // the top of the frame and `iret` pops past it.
+        sp = sp.wrapping_sub(4);
+        x86_write_bytes(uc, ss_base + u64::from(sp), &error_code.to_le_bytes())?;
+    }
+    uc.reg_write(RegisterX86::ESP as i32, u64::from(sp))
+        .map_err(|_| EngineError::Backend)?;
+    if x86_gate_clears_if(gate_type) {
+        uc.reg_write(RegisterX86::EFLAGS as i32, flags & !(IF | TF))
+            .map_err(|_| EngineError::Backend)?;
+    }
+    uc.reg_write(RegisterX86::CS as i32, u64::from(selector))
+        .map_err(|_| EngineError::Backend)?;
+    uc.reg_write(RegisterX86::EIP as i32, handler)
+        .map_err(|_| EngineError::Backend)?;
+    Ok(true)
+}
+
+/// Vectors that push an error code in real hardware (Intel SDM Vol.3 Table
+/// 6-1). The list is literal so a guest handler and its `iret` agree on the
+/// frame width; `#DF` is on it even though this adapter cannot enter a
+/// double-fault handler usefully.
+const fn x86_vector_pushes_error_code(vector: u8) -> bool {
+    matches!(vector, 8 | 10 | 11 | 12 | 13 | 14 | 17 | 21 | 29 | 30)
+}
+
+/// Length of the software-interrupt instruction at `CS:EIP`, or `None` when
+/// the byte there is not one.
+///
+/// Unicorn reports a software `INT n` through the same `UC_HOOK_INTR` hook as a
+/// CPU exception. This build folds `EIP` past the `INT` before the hook runs
+/// (verified on 2.1.5), which `Common::x86_deliver_exception` detects through
+/// the recorded instruction address; the encoding check here covers the other
+/// case, so the frame is correct for either behaviour.
+fn x86_software_interrupt_length(uc: &Unicorn<'_, EngineData>, cs: u16, eip: u64) -> Option<u64> {
+    let linear = x86_linear(uc, cs, eip).ok()?;
+    let mut opcode = [0u8; 1];
+    x86_read_bytes(uc, linear, &mut opcode).ok()?;
+    match opcode[0] {
+        // INT3 (`CC`), INTO (`CE`) and INT imm8 (`CD ib`); `F1` (ICEBP) raises
+        // #DB instead of entering a gate, so it is not in this list.
+        0xCC | 0xCE => Some(1),
+        0xCD => Some(2),
+        _ => None,
+    }
+}
+
+/// Deliver a vector the interrupt service declined to the guest's own gate.
+///
+/// `Ok(true)` means a handler was entered and the quantum continues inside it;
+/// `Ok(false)` means the guest has no gate to take the vector through.
+fn x86_deliver_exception(
+    uc: &mut Unicorn<'_, EngineData>,
+    vector: u8,
+) -> Result<bool, EngineError> {
+    let cs = u16::try_from(x86_reg(uc, RegisterX86::CS)?).unwrap_or(0);
+    let eip = x86_reg(uc, RegisterX86::EIP)? & 0xFFFF_FFFF;
+    // A software `INT` has already had its return address folded; an exception
+    // has not, and `EIP` still names the instruction that faulted.
+    let linear = x86_linear(uc, cs, eip).ok();
+    let executing = uc.get_data().executing;
+    let folded = executing.is_some() && executing != Some(eip) && executing != linear;
+    let (return_eip, error_code) = if folded {
+        (eip, None)
+    } else if let Some(length) = x86_software_interrupt_length(uc, cs, eip) {
+        (eip + length, None)
+    } else {
+        (
+            eip,
+            x86_vector_pushes_error_code(vector).then(|| x86_error_code(uc, vector, cs, eip)),
+        )
+    };
+    // Keep the fault for the report: the vector alone does not say where it
+    // happened, and `CR2` is the only record of which address the guest wanted.
+    let cr2 = x86_reg(uc, RegisterX86::CR2).unwrap_or(0);
+    uc.get_data_mut().exception = Some((vector, eip, cr2));
+    x86_enter_gate(
+        uc,
+        vector,
+        X86Entry {
+            cs: u64::from(cs),
+            eip: return_eip,
+            error_code,
+        },
+    )
+}
+
+/// The error code the CPU would have pushed for `vector`.
+///
+/// Unicorn computes the real one — `handle_mmu_fault` writes `env->error_code`
+/// and `CR2` immediately before raising `#PF` — but exposes neither through any
+/// register or hook, so the adapter reconstructs it from what it *can* see:
+/// `CR2` names the faulting address, the guest's page tables answer the present
+/// bit, and the faulting instruction's opcode answers read-versus-write. Only
+/// `#PF` carries information this way; the other error-code vectors push zero,
+/// which is what `#DE` and (absent a selector) `#GP` push anyway.
+fn x86_error_code(uc: &Unicorn<'_, EngineData>, vector: u8, cs: u16, eip: u64) -> u32 {
+    /// Intel SDM Vol.3 Table 6-2: present, write, user, reserved, I/D.
+    const PRESENT: u32 = 1 << 0;
+    const WRITE: u32 = 1 << 1;
+    const USER: u32 = 1 << 2;
+    const INSTRUCTION: u32 = 1 << 4;
+    const CR4_SMEP: u64 = 1 << 20;
+
+    if vector != 14 {
+        return 0;
+    }
+    let Ok(cr2) = x86_reg(uc, RegisterX86::CR2) else {
+        return 0;
+    };
+    let mut code = 0;
+    if x86_page_present(uc, cr2) {
+        code |= PRESENT;
+    }
+    let fetch = x86_linear(uc, cs, eip).map(|at| at == cr2).unwrap_or(false);
+    if fetch {
+        // Without PAE there is no `EFER.NXE`, so only SMEP makes a fetch fault
+        // distinguishable from a data access in the error code.
+        if x86_reg(uc, RegisterX86::CR4).map(|cr4| cr4 & CR4_SMEP != 0) == Ok(true) {
+            code |= INSTRUCTION;
+        }
+    } else if x86_faulting_access_is_write(uc, cs, eip) {
+        code |= WRITE;
+    }
+    if cs & 3 == 3 {
+        code |= USER;
+    }
+    code
+}
+
+/// Whether the guest's own page tables map `linear` — the present bit of a
+/// `#PF` error code. A walk that cannot read a table reports "present", because
+/// an unreadable table means the fault was not a plain missing page and the
+/// protection path is the more informative answer.
+fn x86_page_present(uc: &Unicorn<'_, EngineData>, linear: u64) -> bool {
+    x86_page_walk(uc, linear)
+        .map(|(_, present)| present)
+        .unwrap_or(true)
+}
+
+/// Whether the instruction at `CS:EIP` stores to memory.
+///
+/// `#PF`'s write bit is the one bit the adapter cannot read back from anywhere,
+/// so it is classified from the opcode byte. The classification only steers a
+/// diagnostic bit and the kernel's read-only retry path: it can never change
+/// which instruction the guest resumes on, because the return address is the
+/// faulting instruction either way. Unknown encodings are reported as reads,
+/// which is the safe direction — a spurious "read fault" is retried, a spurious
+/// "write fault" would be treated as a protection violation.
+fn x86_faulting_access_is_write(uc: &Unicorn<'_, EngineData>, cs: u16, eip: u64) -> bool {
+    let Ok(linear) = x86_linear(uc, cs, eip) else {
+        return false;
+    };
+    let mut code = [0u8; 16];
+    if x86_read_bytes(uc, linear, &mut code).is_err() {
+        return false;
+    }
+    x86_stores_to_memory(&code)
+}
+
+/// Classify one instruction encoding: `true` when its destination is memory.
+///
+/// The tables below cover the general-purpose store forms — including the
+/// `ModRM.reg`-selected groups — plus the SSE stores. Everything else, from
+/// arithmetic on registers to string loads, reports a read.
+fn x86_stores_to_memory(code: &[u8]) -> bool {
+    // Legacy prefixes only: `40..=4F` are `INC`/`DEC` outside long mode.
+    let mut at = 0;
+    while matches!(
+        code.get(at),
+        Some(0x26 | 0x2E | 0x36 | 0x3E | 0x64 | 0x65 | 0x66 | 0x67 | 0xF0 | 0xF2 | 0xF3)
+    ) {
+        at += 1;
+    }
+    let reg_field = |offset: usize| code.get(offset).map(|byte| (byte >> 3) & 7);
+    match code.get(at) {
+        // `r/m <- r` forms of the ALU and move groups.
+        Some(
+            0x00 | 0x01 | 0x08 | 0x09 | 0x10 | 0x11 | 0x18 | 0x19 | 0x20 | 0x21 | 0x28 | 0x29
+            | 0x30 | 0x31 | 0x38 | 0x39,
+        ) => true,
+        // `ARPL r/m16, r16`.
+        Some(0x63) => true,
+        Some(0x0F) => {
+            let second = code.get(at + 1);
+            match second {
+                // BTS/BTR/BTC with a register source, CMPXCHG8B, and the SSE
+                // stores (`MOVLPS`/`MOVHPS`/`MOVNTPS`/`MOVD`-family).
+                Some(0xAB | 0xB3 | 0xBB | 0x11 | 0x13 | 0x17 | 0x29 | 0x2B | 0x7F | 0xD6) => true,
+                Some(0xBA) => matches!(reg_field(at + 2), Some(5 | 6 | 7)),
+                Some(0xC7) => matches!(reg_field(at + 2), Some(1)),
+                _ => false,
+            }
+        }
+        // ALU `r/m, imm`, `XCHG`, `MOV r/m, r`, `POP r/m`, the shift groups and
+        // the byte-string stores.
+        Some(
+            0x80 | 0x81 | 0x82 | 0x83 | 0x86 | 0x87 | 0x88 | 0x89 | 0x8F | 0xA2 | 0xA3 | 0xA4
+            | 0xA5 | 0xAA | 0xAB | 0xC0 | 0xC1 | 0xC6 | 0xC7 | 0xD0 | 0xD1 | 0xD2 | 0xD3,
+        ) => true,
+        // `NOT`/`NEG` are the only storing members of group 3.
+        Some(0xF6 | 0xF7) => matches!(reg_field(at + 1), Some(2 | 3)),
+        // `INC`/`DEC r/m` store; the calls and jumps in group 5 only read.
+        Some(0xFE | 0xFF) => matches!(reg_field(at + 1), Some(0 | 1)),
+        _ => false,
+    }
+}
+
+/// Take a vector the interrupt service declined, or stop the quantum when the
+/// guest has nowhere to take it.
+fn x86_take_exception(uc: &mut Unicorn<'_, EngineData>, vector: u8) {
+    let delivered = match x86_deliver_exception(uc, vector) {
+        Ok(delivered) => delivered,
+        Err(error) => {
+            // The gate table itself refused the vector: that is a diagnosis,
+            // not just a stop, so it goes next to the backend's own words.
+            uc.get_data_mut().last_error =
+                Some(format!("exception {vector:#04x} undeliverable: {error:?}"));
+            false
+        }
+    };
+    if delivered {
+        return;
+    }
+    // Nothing claimed the vector and the guest has no gate for it: stop so the
+    // caller decides instead of silently skipping the fault.
+    uc.get_data_mut().unclaimed = Some(vector);
+    let _ = uc.emu_stop();
+}
+
 impl Common {
-    fn x86_read_u16(&self, address: u64) -> Result<u16, EngineError> {
-        let mut buf = [0u8; 2];
-        self.inner
-            .0
-            .mem_read(address, &mut buf)
-            .map_err(|_| EngineError::Backend)?;
-        Ok(u16::from_le_bytes(buf))
-    }
-
-    fn x86_read_bytes(&self, address: u64, buf: &mut [u8]) -> Result<(), EngineError> {
-        self.inner
-            .0
-            .mem_read(address, buf)
-            .map_err(|_| EngineError::Backend)
-    }
-
-    fn x86_write_bytes(&mut self, address: u64, buf: &[u8]) -> Result<(), EngineError> {
-        self.inner
-            .0
-            .mem_write(address, buf)
-            .map_err(|_| EngineError::Backend)?;
-        // The frame lives in ordinary RAM, but a stale translation block that
-        // cached the old stack contents must not survive the write.
-        let end = address + buf.len() as u64;
-        self.inner
-            .0
-            .ctl_remove_cache(address, end)
-            .map_err(|_| EngineError::Backend)
-    }
-
-    /// Linear base of a segment selector's descriptor in the current GDT.
-    ///
-    /// Flat-model guests (every catalog PC target) use base 0 descriptors, but
-    /// the value is read from the guest table rather than assumed, so a
-    /// small-model guest fails loudly instead of silently pushing its frame to
-    /// the wrong address. An unobserved `GDTR` is a capability gap, not a guess.
-    fn x86_descriptor_base(&self, selector: u16) -> Result<u64, EngineError> {
-        if selector & 0x0004 != 0 {
-            return Err(EngineError::CapabilityMissing);
-        }
-        let index = u64::from(selector >> 3);
-        if index == 0 {
-            return Ok(0);
-        }
-        let (base, limit) = self
-            .inner
-            .0
-            .get_data()
-            .tables
-            .gdt
-            .ok_or(EngineError::CapabilityMissing)?;
-        let offset = index * 8;
-        if offset + 7 > limit {
-            return Err(EngineError::CapabilityMissing);
-        }
-        let mut raw = [0u8; 8];
-        self.x86_read_bytes(base + offset, &mut raw)?;
-        // Intel SDM Vol.3 Fig.3-8: base is split across three fields.
-        let segment_base = u64::from(raw[2])
-            | (u64::from(raw[3]) << 8)
-            | (u64::from(raw[4]) << 16)
-            | (u64::from(raw[7]) << 24);
-        Ok(segment_base & 0xFFFF_FFFF)
-    }
-
-    /// `IDTR` as `(base, limit)`, as observed at the guest's `LIDT`.
-    fn x86_idtr(&self) -> Result<(u64, u64), EngineError> {
-        self.inner
-            .0
-            .get_data()
-            .tables
-            .idt
-            .ok_or(EngineError::CapabilityMissing)
-    }
-
     /// Deliver one pending vector if the guest can take it. `Ok(false)` means
     /// interrupts are disabled and the vector stays queued.
     fn x86_deliver_one(&mut self, vector: u8) -> Result<bool, EngineError> {
-        let flags = self
-            .inner
-            .0
-            .reg_read(RegisterX86::EFLAGS as i32)
-            .map_err(|_| EngineError::Backend)? as u32;
+        let flags = x86_reg(&self.inner.0, RegisterX86::EFLAGS)? as u32;
         // IF gates INTR only; the queued request must survive until it is set.
         const IF: u32 = 1 << 9;
-        const TF: u32 = 1 << 8;
         if flags & IF == 0 {
             return Ok(false);
         }
-        let cr0 = self
-            .inner
-            .0
-            .reg_read(RegisterX86::CR0 as i32)
-            .map_err(|_| EngineError::Backend)? as u32;
-        let cs = self
-            .inner
-            .0
-            .reg_read(RegisterX86::CS as i32)
-            .map_err(|_| EngineError::Backend)? as u16;
-        let eip = self
-            .inner
-            .0
-            .reg_read(RegisterX86::EIP as i32)
-            .map_err(|_| EngineError::Backend)? as u32;
-        let ss = self
-            .inner
-            .0
-            .reg_read(RegisterX86::SS as i32)
-            .map_err(|_| EngineError::Backend)? as u16;
-        let esp = self
-            .inner
-            .0
-            .reg_read(RegisterX86::ESP as i32)
-            .map_err(|_| EngineError::Backend)? as u32;
-
-        if cr0 & 1 == 0 {
-            // Real mode: the interrupt table is the 256-entry IVT at 0x0 and
-            // the pushed frame is always 16-bit wide.
-            let entry = u64::from(vector) * 4;
-            let handler_ip = self.x86_read_u16(entry)?;
-            let handler_cs = self.x86_read_u16(entry + 2)?;
-            let base = u64::from(ss) * 16;
-            let mut sp = u32::from(esp as u16);
-            for value in [flags as u16, cs, eip as u16] {
-                sp = sp.wrapping_sub(2) & 0xFFFF;
-                self.x86_write_bytes(base + u64::from(sp), &value.to_le_bytes())?;
-            }
-            self.inner
-                .0
-                .reg_write(RegisterX86::ESP as i32, u64::from(sp))
-                .map_err(|_| EngineError::Backend)?;
-            // Real-mode interrupt entry clears IF and TF unconditionally.
-            self.inner
-                .0
-                .reg_write(RegisterX86::EFLAGS as i32, u64::from(flags & !(IF | TF)))
-                .map_err(|_| EngineError::Backend)?;
-            self.inner
-                .0
-                .reg_write(RegisterX86::CS as i32, u64::from(handler_cs))
-                .map_err(|_| EngineError::Backend)?;
-            self.inner
-                .0
-                .reg_write(RegisterX86::EIP as i32, u64::from(handler_ip))
-                .map_err(|_| EngineError::Backend)?;
-            return Ok(true);
-        }
-
-        let (idtr_base, idtr_limit) = self.x86_idtr()?;
-        let gate_at = u64::from(vector) * 8;
-        if gate_at + 7 > idtr_limit {
-            return Err(EngineError::CapabilityMissing);
-        }
-        let mut raw = [0u8; 8];
-        self.x86_read_bytes(idtr_base + gate_at, &mut raw)?;
-        let low = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
-        let _high = u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);
-        // Intel SDM Vol.3 Fig.6-2: byte 5 is P(1) DPL(2) S(1) Type(4).
-        let present = raw[5] & 0x80 != 0;
-        let gate_type = raw[5] & 0x0F;
-        if !present {
-            return Err(EngineError::CapabilityMissing);
-        }
-        if gate_type == 0x5 {
-            // Task gates switch the whole task; out of scope for this slice.
-            return Err(EngineError::CapabilityMissing);
-        }
-        let selector = (low >> 16) as u16;
-        let offset_low = low & 0xFFFF;
-        let offset_high = u32::from(u16::from_le_bytes([raw[6], raw[7]]));
-        let handler = u64::from(offset_low) | (u64::from(offset_high) << 16);
-        let wide = matches!(gate_type, 0xE | 0xF);
-        let ss_base = if ss == 0 {
-            0
-        } else {
-            self.x86_descriptor_base(ss)?
-        };
-        let mut sp = esp;
-        if wide {
-            for value in [flags, u32::from(cs), eip] {
-                sp = sp.wrapping_sub(4);
-                self.x86_write_bytes(ss_base + u64::from(sp), &value.to_le_bytes())?;
-            }
-        } else {
-            for value in [flags as u16, cs, eip as u16] {
-                sp = sp.wrapping_sub(2);
-                self.x86_write_bytes(ss_base + u64::from(sp), &value.to_le_bytes())?;
-            }
-        }
-        self.inner
-            .0
-            .reg_write(RegisterX86::ESP as i32, u64::from(sp))
-            .map_err(|_| EngineError::Backend)?;
-        if crate::x86_gate_clears_if(gate_type) {
-            self.inner
-                .0
-                .reg_write(RegisterX86::EFLAGS as i32, u64::from(flags & !(IF | TF)))
-                .map_err(|_| EngineError::Backend)?;
-        }
-        self.inner
-            .0
-            .reg_write(RegisterX86::CS as i32, u64::from(selector))
-            .map_err(|_| EngineError::Backend)?;
-        self.inner
-            .0
-            .reg_write(RegisterX86::EIP as i32, handler)
-            .map_err(|_| EngineError::Backend)?;
-        Ok(true)
+        let cs = u16::try_from(x86_reg(&self.inner.0, RegisterX86::CS)?).unwrap_or(0);
+        let eip = x86_reg(&self.inner.0, RegisterX86::EIP)? & 0xFFFF_FFFF;
+        x86_enter_gate(
+            &mut self.inner.0,
+            vector,
+            X86Entry {
+                cs: u64::from(cs),
+                eip,
+                error_code: None,
+            },
+        )
     }
 
     /// Drain queued vectors in request order until one cannot be taken.
@@ -1229,7 +1606,10 @@ impl Common {
 /// stays undelivered rather than landing somewhere plausible.
 fn x86_observe_descriptor_load(uc: &mut Unicorn<'_, EngineData>, address: u64) {
     let mut opcode = [0u8; 3];
-    if uc.mem_read(address, &mut opcode).is_err() || opcode[0] != 0x0F || opcode[1] != 0x01 {
+    if x86_read_bytes(uc, address, &mut opcode).is_err() {
+        return;
+    }
+    if opcode[0] != 0x0F || opcode[1] != 0x01 {
         return;
     }
     let modrm = opcode[2];
@@ -1245,7 +1625,7 @@ fn x86_observe_descriptor_load(uc: &mut Unicorn<'_, EngineData>, address: u64) {
         return;
     };
     let mut descriptor = [0u8; 6];
-    if uc.mem_read(operand, &mut descriptor).is_err() {
+    if x86_read_bytes(uc, operand, &mut descriptor).is_err() {
         return;
     }
     let limit = u64::from(u16::from_le_bytes([descriptor[0], descriptor[1]]));
@@ -1287,7 +1667,7 @@ fn x86_modrm_operand(
         let ds = u64::from(uc.reg_read(RegisterX86::DS as i32).ok()? as u16) * 16;
         if mode == 0b00 && rm == 0b110 {
             let mut disp = [0u8; 2];
-            uc.mem_read(at, &mut disp).ok()?;
+            x86_read_bytes(uc, at, &mut disp).ok()?;
             return Some(ds + u64::from(u16::from_le_bytes(disp)));
         }
         let mut base = 0u64;
@@ -1317,12 +1697,12 @@ fn x86_modrm_operand(
             0b00 => {}
             0b01 => {
                 let mut disp = [0u8; 1];
-                uc.mem_read(at, &mut disp).ok()?;
+                x86_read_bytes(uc, at, &mut disp).ok()?;
                 base = base.wrapping_add(disp[0] as i8 as i64 as u64);
             }
             _ => {
                 let mut disp = [0u8; 2];
-                uc.mem_read(at, &mut disp).ok()?;
+                x86_read_bytes(uc, at, &mut disp).ok()?;
                 base = base.wrapping_add(u64::from(u16::from_le_bytes(disp)));
             }
         }
@@ -1333,12 +1713,12 @@ fn x86_modrm_operand(
     let mut at = modrm_at + 1;
     if rm == 0b101 && mode == 0b00 {
         let mut disp = [0u8; 4];
-        uc.mem_read(at, &mut disp).ok()?;
+        x86_read_bytes(uc, at, &mut disp).ok()?;
         return Some(u64::from(u32::from_le_bytes(disp)));
     }
     if rm == 0b100 {
         let mut sib = [0u8; 1];
-        uc.mem_read(at, &mut sib).ok()?;
+        x86_read_bytes(uc, at, &mut sib).ok()?;
         at += 1;
         let base_field = sib[0] & 0x07;
         let base = match base_field {
@@ -1377,7 +1757,7 @@ fn x86_modrm_operand(
                 + ((index & 0xFFFF_FFFF) << shift)
                 + if base_field == 0b101 && mode == 0b00 {
                     let mut disp = [0u8; 4];
-                    uc.mem_read(at, &mut disp).ok()?;
+                    x86_read_bytes(uc, at, &mut disp).ok()?;
                     at += 4;
                     u64::from(u32::from_le_bytes(disp))
                 } else {
@@ -1400,12 +1780,12 @@ fn x86_modrm_operand(
         0b00 => {}
         0b01 => {
             let mut disp = [0u8; 1];
-            uc.mem_read(at, &mut disp).ok()?;
+            x86_read_bytes(uc, at, &mut disp).ok()?;
             offset = offset.wrapping_add(disp[0] as i8 as i64 as u64);
         }
         _ => {
             let mut disp = [0u8; 4];
-            uc.mem_read(at, &mut disp).ok()?;
+            x86_read_bytes(uc, at, &mut disp).ok()?;
             offset = offset.wrapping_add(u64::from(u32::from_le_bytes(disp)));
         }
     }
@@ -1420,7 +1800,7 @@ fn x86_modrm_operand(
 /// the quantum has to let it retire.
 fn x86_is_rep_string(uc: &Unicorn<'_, EngineData>, address: u64) -> bool {
     let mut raw = [0u8; 6];
-    if uc.mem_read(address, &mut raw).is_err() {
+    if x86_read_bytes(uc, address, &mut raw).is_err() {
         return false;
     }
     let mut index = 0;
@@ -1650,12 +2030,12 @@ macro_rules! x86_extensions {
             /// `IDTR` as `(base, limit)`; the composition root uses it for diagnostics,
             /// the adapter itself re-reads it at delivery time.
             pub fn idtr(&self) -> Result<(u64, u64), EngineError> {
-                self.0.x86_idtr()
+                x86_idtr(&self.0.inner.0)
             }
 
             /// `GDTR` descriptor base for `selector`, resolved through the guest GDT.
             pub fn segment_base(&self, selector: u16) -> Result<u64, EngineError> {
-                self.0.x86_descriptor_base(selector)
+                x86_descriptor_base(&self.0.inner.0, selector)
             }
 
             /// Record the last `capacity` instruction addresses, retrievable with
@@ -1689,10 +2069,19 @@ macro_rules! x86_extensions {
                 self.0.inner.0.get_data().last_error.clone()
             }
 
-            /// The vector the interrupt service refused since the previous call,
-            /// if any. Cleared on read, like the unmapped access below.
+            /// The vector neither the interrupt service nor the guest's gate
+            /// table could take since the previous call, if any. Cleared on
+            /// read, like the unmapped access below.
             pub fn take_unclaimed_interrupt(&mut self) -> Option<u8> {
                 self.0.inner.0.get_data_mut().unclaimed.take()
+            }
+
+            /// The last CPU exception this adapter delivered through the
+            /// guest's gate table, as `(vector, eip, cr2)` — the faulting
+            /// instruction and, for `#PF`, the address the guest wanted.
+            /// Cleared on read.
+            pub fn take_exception(&mut self) -> Option<(u8, u64, u64)> {
+                self.0.inner.0.get_data_mut().exception.take()
             }
 
             /// The first unmapped access since the previous call, as
@@ -1924,11 +2313,11 @@ mod tests {
             .reg_write(mosaic_isa_x86::Register::Eip.into(), 0x500)
             .unwrap();
         let outcome = engine.run(NonZeroU64::new(4).unwrap());
-        println!(
-            "{:?} unclaimed {:?}",
-            outcome.reason,
-            engine.take_unclaimed_interrupt()
-        );
+        assert_eq!(outcome.reason, StopReason::CapabilityMissing);
+        // No gate table exists yet, so there is nowhere to deliver `#DE`: the
+        // quantum stops and names the vector instead of skipping the fault.
+        assert_eq!(engine.take_unclaimed_interrupt(), Some(0));
+        assert_eq!(engine.take_exception(), Some((0, 0x502, 0)));
     }
 
     #[test]
@@ -2071,6 +2460,183 @@ mod tests {
             0,
             "real-mode entry clears IF"
         );
+    }
+
+    #[test]
+    fn x86_exception_enters_the_real_mode_ivt_handler() {
+        use mosaic_isa_x86::Register;
+        // Unicorn reports `#DE` to `UC_HOOK_INTR` and then continues without
+        // entering any handler, so a real-mode guest's own IVT vector is the
+        // adapter's job. The frame must be the one `iret` expects.
+        let mut engine = x86_engine(None);
+        // 0000:1000 -> `mov bx,0xDEAD ; hlt`.
+        engine
+            .write_memory(Addr(0x1000), &[0xBB, 0xAD, 0xDE, 0xF4])
+            .unwrap();
+        let mut entry = Vec::new();
+        entry.extend_from_slice(&0x1000u16.to_le_bytes());
+        entry.extend_from_slice(&0x0000u16.to_le_bytes());
+        engine.write_memory(Addr(0), &entry).unwrap();
+        // xor ecx,ecx ; div ecx -> #DE at 0000:0502.
+        engine
+            .write_memory(Addr(0x500), &[0x31, 0xC9, 0xF7, 0xF1])
+            .unwrap();
+        engine.reg_write(Register::Cs.into(), 0).unwrap();
+        engine.reg_write(Register::Eip.into(), 0x500).unwrap();
+        engine.reg_write(Register::Ss.into(), 0).unwrap();
+        engine.reg_write(Register::Esp.into(), 0x8000).unwrap();
+        engine.run(NonZeroU64::new(4).unwrap());
+
+        assert_eq!(
+            engine.take_exception(),
+            Some((0, 0x502, 0)),
+            "the fault is reported where it happened"
+        );
+        assert_eq!(engine.take_unclaimed_interrupt(), None);
+        let handler_eip = engine.reg_read(Register::Eip.into()).unwrap();
+        assert!(
+            (0x1000..0x1010).contains(&handler_eip),
+            "the IVT handler runs, EIP {handler_eip:#x}"
+        );
+        assert_eq!(engine.reg_read(Register::Cs.into()).unwrap(), 0);
+        assert_eq!(
+            engine.reg_read(Register::Esp.into()).unwrap(),
+            0x8000 - 6,
+            "a real-mode frame is three 16-bit words"
+        );
+        let mut frame = [0u8; 6];
+        engine.read_memory(Addr(0x8000 - 6), &mut frame).unwrap();
+        assert_eq!(
+            u16::from_le_bytes([frame[0], frame[1]]),
+            0x502,
+            "IP points at the faulting division"
+        );
+        assert_eq!(u16::from_le_bytes([frame[2], frame[3]]), 0);
+        // The handler runs inside the same quantum: `mov bx,0xDEAD`.
+        assert_eq!(engine.reg_read(Register::Ebx.into()).unwrap(), 0xDEAD);
+    }
+
+    #[test]
+    fn x86_page_fault_enters_the_idt_gate_with_an_error_code() {
+        use mosaic_isa_x86::Register;
+        // The WP-bit probe every Linux x86 kernel runs is a deliberately
+        // read-only page: it proves the CPU honours `CR0.WP` by faulting on a
+        // supervisor write. The kernel expects the hardware to push
+        // `error code / EIP / CS / EFLAGS` and vector through `IDT[14]`, and
+        // the error code has to say "present, write" or the handler takes the
+        // wrong branch.
+        let mut engine = UnicornX86Boot::new().unwrap();
+        engine
+            .map_memory(Addr(0), 0x10_0000, Permissions::RWX)
+            .unwrap();
+
+        // GDT: null, 0x08 flat 32-bit code, 0x10 flat 32-bit data.
+        let mut gdt = Vec::new();
+        gdt.extend_from_slice(&[0u8; 8]);
+        gdt.extend_from_slice(&[0xFF, 0xFF, 0x00, 0x00, 0x00, 0x9A, 0xCF, 0x00]);
+        gdt.extend_from_slice(&[0xFF, 0xFF, 0x00, 0x00, 0x00, 0x92, 0xCF, 0x00]);
+        engine.write_memory(Addr(0x2000), &gdt).unwrap();
+        let mut gdtr = Vec::new();
+        gdtr.extend_from_slice(&((gdt.len() - 1) as u16).to_le_bytes());
+        gdtr.extend_from_slice(&0x2000u32.to_le_bytes());
+        engine.write_memory(Addr(0x2100), &gdtr).unwrap();
+
+        // IDT with one gate: vector 14 -> 0x08:0x6000, 32-bit interrupt gate.
+        let mut idt = vec![0u8; 14 * 8];
+        idt.extend_from_slice(&[0x00, 0x60, 0x08, 0x00, 0x00, 0x8E, 0x00, 0x00]);
+        engine.write_memory(Addr(0x2200), &idt).unwrap();
+        let mut idtr = Vec::new();
+        idtr.extend_from_slice(&((idt.len() - 1) as u16).to_le_bytes());
+        idtr.extend_from_slice(&0x2200u32.to_le_bytes());
+        engine.write_memory(Addr(0x2110), &idtr).unwrap();
+
+        // Identity map the first 4 MiB through 4 KiB pages; page 0x90 is
+        // present but read-only, which is the page the guest will write.
+        let mut page_table = Vec::with_capacity(4096);
+        for index in 0..1024u32 {
+            let entry = if index == 0x90 {
+                0x90_0001u32
+            } else {
+                (index << 12) | 3
+            };
+            page_table.extend_from_slice(&entry.to_le_bytes());
+        }
+        engine.write_memory(Addr(0x4000), &page_table).unwrap();
+        engine
+            .write_memory(Addr(0x3000), &(0x4000u32 | 3).to_le_bytes())
+            .unwrap();
+
+        // Handler at 0x6000: `mov eax,0x0BAD ; hlt`. It must not share a page
+        // with anything else the test patches: a handler written over the page
+        // tables silently rewrites the identity map.
+        engine
+            .write_memory(Addr(0x6000), &[0xB8, 0xAD, 0x0B, 0x00, 0x00, 0xF4])
+            .unwrap();
+
+        // Real-mode prologue: the default operand size is 16 bits until a
+        // 32-bit code segment is loaded, so the `CR0` write is spelled with an
+        // operand-size prefix and the far jump with a 32-bit offset.
+        let mut code = Vec::new();
+        // lgdt [0x2100]
+        code.extend_from_slice(&[0x0F, 0x01, 0x16, 0x00, 0x21]);
+        // or eax, CR0.PG | CR0.WP | CR0.PE
+        code.extend_from_slice(&[0x66, 0x0D, 0x01, 0x00, 0x01, 0x80]);
+        // mov cr0, eax
+        code.extend_from_slice(&[0x0F, 0x22, 0xC0]);
+        let far_jump_at = code.len();
+        code.extend_from_slice(&[0x66, 0xEA, 0, 0, 0, 0, 0x08, 0x00]);
+        let entry_at = code.len();
+        let entry = 0x1000u32 + entry_at as u32;
+        code[far_jump_at + 2..far_jump_at + 6].copy_from_slice(&entry.to_le_bytes());
+        // mov ax,0x10 ; mov ds,ax ; mov ss,ax ; mov esp,0x80000 ;
+        // lidt [0x2110] ; mov byte [0x90000],1 ; hlt
+        code.extend_from_slice(&[0x66, 0xB8, 0x10, 0x00]);
+        code.extend_from_slice(&[0x8E, 0xD8]);
+        code.extend_from_slice(&[0x8E, 0xD0]);
+        code.extend_from_slice(&[0xBC, 0x00, 0x00, 0x08, 0x00]);
+        code.extend_from_slice(&[0x0F, 0x01, 0x1D, 0x10, 0x21, 0x00, 0x00]);
+        let store_at = 0x1000u32 + code.len() as u32;
+        code.extend_from_slice(&[0xC6, 0x05, 0x00, 0x00, 0x09, 0x00, 0x01]);
+        code.extend_from_slice(&[0xF4]);
+        engine.write_memory(Addr(0x1000), &code).unwrap();
+
+        // CR3 lives at the ISA's register 18; the page directory is above the
+        // low page tables so a mistake shows up as a fault, not a silent pass.
+        // Unicorn leaves `CR4.PAE` set on this backend; a 32-bit guest that
+        // installs two-level tables has to clear it, exactly as a non-PAE
+        // kernel does in its own `CR4` write.
+        engine.reg_write(RegId(19), 0).unwrap();
+        engine.reg_write(RegId(18), 0x3000).unwrap();
+        engine.reg_write(Register::Cs.into(), 0).unwrap();
+        engine.reg_write(Register::Eip.into(), 0x1000).unwrap();
+        engine.run(NonZeroU64::new(64).unwrap());
+
+        assert_eq!(
+            engine.take_exception(),
+            Some((14, u64::from(store_at), 0x9_0000)),
+            "#PF is reported with the faulting instruction and CR2"
+        );
+        let handler_eip = engine.reg_read(Register::Eip.into()).unwrap();
+        assert!(
+            (0x6000..0x6010).contains(&handler_eip),
+            "the guest's own #PF handler runs, EIP {handler_eip:#x}"
+        );
+        assert_eq!(engine.reg_read(Register::Cs.into()).unwrap(), 0x08);
+        assert_eq!(
+            engine.reg_read(Register::Esp.into()).unwrap(),
+            0x80000 - 16,
+            "error code + three word frame"
+        );
+        let mut frame = [0u8; 16];
+        engine.read_memory(Addr(0x80000 - 16), &mut frame).unwrap();
+        let word = |at: usize| {
+            u32::from_le_bytes([frame[at], frame[at + 1], frame[at + 2], frame[at + 3]])
+        };
+        assert_eq!(word(0), 3, "error code: present | write");
+        assert_eq!(word(4), store_at, "EIP points at the faulting store");
+        assert_eq!(word(8), 0x08, "CS of the faulting context");
+        assert_ne!(word(12) & 0x2, 0, "the frame carries a real EFLAGS image");
+        assert_eq!(engine.reg_read(Register::Eax.into()).unwrap(), 0x0BAD);
     }
 
     #[test]

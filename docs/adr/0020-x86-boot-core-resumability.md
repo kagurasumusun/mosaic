@@ -1,7 +1,8 @@
 # 0020: x86 ブートコアと再開可能性の限界
 
 状態: 暫定採用。PC クラスのゲストは `UnicornX86Boot` で実行する。
-例外の IDT 配送、ページング下のデバイス、コンソールは未対応（下記「残る穴」）。
+例外の IDT 配送は実装済み（下記「更新: 例外配送」）。ページング下のデバイスと
+コンソールは未対応（下記「残る穴」）。
 
 根拠: ADR 0018、ADR 0019。実測は `framework/engine/unicorn/src/lib.rs` の
 `x86_boot_core_resumes_across_a_real_mode_far_jump` と `apps/vm-runner`
@@ -80,11 +81,6 @@ Unicorn 2.1.5 のモード語は 3 つしかなく、うち `UC_MODE_32` は初�
 
 ## 残る穴
 
-- **Unicorn は例外をゲストの IDT で配送しない。** `UC_HOOK_INTR` が無い場合は
-  halt、あっても Unicorn 自身は `IDT` を引かない。今はサービスが答えない
-  ベクタで量子を止め、`PcBootReport::unclaimed_interrupt` に番号を残す。
-  保護モードのゲストが自分の IDT でページフォルトを処理するには、フレームを
-  積んでゲートへ飛ぶ配送をエンジン側で実装する必要がある。
 - コンソール。`boot_params.screen_info` を埋めていないので `vgacon` は
   名乗り出ず、シリアルも 8250 が見つからず、カーネルの `printk` はどこにも
   出ない。次はここ。
@@ -122,3 +118,60 @@ Unicorn 2.1.5 のモード語は 3 つしかなく、うち `UC_MODE_32` は初�
    （`3B4h`–`3DAh`）を読めるようにしてから確認する。シリアルは
    8250 が PNP/ACPI 無しでは見つからないので、`earlyprintk` は
    `CONFIG_EARLY_PRINTK` 依存だと分かった（このカーネルでは出ない）。
+
+## 更新: 例外配送（実装済み）と、その手前にあった 2 つの穴
+
+`UC_HOOK_INTR` の中でサービスが答えなかったベクタを、ゲスト自身のゲートへ
+配送する（実モードは `IVT`、保護モードは 32 ビットゲート）。エラーコードを
+持つベクタ（8/10–14/17/21/29/30）はフレームの下に積む。`#PF` のエラーコードは
+Unicorn が露出しないので、`CR2` とゲストのページテーブル（`P` ビット）と
+故障命令のオペコード（`W` ビット）から再構成する。
+
+これが動くまでに、**無関係に見える 2 つの穴**を先に塞ぐ必要があった。どちらも
+「`#PF` が起きているのに配送されない」という同じ症状を別の場所で作っていた。
+
+### 穴 1: `emu_start` の `until` を毎量子で無効化すると幽霊 `#PF` が立つ
+
+`uc_emu_start(uc, begin, until, ...)` の `until` は「終了アドレス」であり、
+このアダプタはアドレスで止まらないので `u64::MAX` を渡していた。Unicorn は
+量子の終わりに `tcg_cpu_exec` から `uc_invalidate_tb(uc, until - 1, 1)` を呼ぶ。
+つまり**毎量子ごとに `FFFFFFFFFFFFFFFEh` の TB を捨てようとし**、
+`get_page_addr_code` がそのアドレスをゲストのページテーブルで引く。ページング
+が有効なカーネルではこれは必ず `#PF`（`CR2 = FFFFFFFEh`）になり、
+`raise_interrupt2` の中の `check_exception` が `old_exception = 14` を記録して
+から、例外そのものは無効化側の `setjmp` に飲み込まれる。`old_exception` を
+戻す経路は無いので、2 量子目で `#DF`、3 量子目で triple fault になり、
+以降は `check_exception` が**すべての本物の例外を `EXCP_HLT` に変換**して
+フックにすら届かない。症状は「同じ EIP で 1 命令ずつ消費して予算を使い切る」。
+
+修正は `uc_ctl_exits_enable()`。`until` が無視され、`ctl_set_exits` で登録した
+アドレスだけが無効化対象になる（登録はゼロ）。
+
+### 穴 2: Unicorn の `uc_mem_read`/`uc_mem_write` は i386 では物理アドレス
+
+`cpu_memory_rw_debug` は `cpu_get_phys_page_attrs_debug` ではなく
+`address_space_read` に落ちる。つまり**ゲストのページテーブルを一切引かない**。
+アダプタが読むもの（`IDT` エントリ、`GDT` 記述子、スタック、命令バイト）は
+すべて線形アドレスなので、`c0000000h` 以上のカーネルが動き出すと全部
+`UNMAPPED` になる。実測では `LGDT`/`LIDT` の観測（`0F 01` のデコード）が
+ずっと失敗し、`tables.idt = None` のままだった。
+
+修正は `x86_translate()`（2 レベル/PAE のページウォーク）を挟み、
+`x86_read_bytes`/`x86_write_bytes`/`x86_modrm_operand`/`rep` 判定/記述子観測を
+すべて線形アドレスとして扱うこと。ページウォークは `#PF` エラーコードの
+`P` ビットと共通化した。
+
+### 実測（Tiny Core 15 / Linux 6.6.8-tinycore, 4 億命令）
+
+- `Checking if this processor honours the WP bit even in supervisor mode...Ok.`
+  — 読み取り専用ページへの書き込みで起きた `#PF` がカーネルの
+  `asm_exc_page_fault` に届き、例外テーブルのフィックスアップから
+  故障命令へ戻った
+- 続けて `Memory: 46060K/65144K available`、`SLUB`、`rcu:`、
+  `Console: colour *CGA 80x25`、`printk: console [tty0] enabled`、
+  `APIC: Switch to virtual wire mode`、`Calibrating delay loop...` まで到達
+- `PcBootReport::exception` に `Some((14, 0xC021D0CD, 0xFFD38000))` が残り、
+  `unclaimed_interrupt` は `None`（＝ゲストが引き取った）
+
+次は `Calibrating delay loop` を越えるためのタイマー（PIT → PIC → IRQ0）と、
+`vgacon` のための VGA レジスタ（`3B4h`–`3DAh`）応答。

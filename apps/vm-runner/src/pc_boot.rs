@@ -262,11 +262,15 @@ pub struct PcBootReport {
     /// `CR0` at the end of the run: bit 0 is `PE`, so this says whether the
     /// guest had switched to protected mode before it stopped.
     pub cr0: u64,
-    /// The last vector the firmware's interrupt service refused. Unicorn stops
-    /// the quantum instead of delivering an exception through the guest's own
-    /// IDT, so this number is the whole story of a protected-mode stop that is
-    /// neither a budget tick nor a bus fault.
+    /// The last vector neither the firmware's interrupt service nor the
+    /// guest's own gate table could take. The engine delivers refused vectors
+    /// through the guest's IDT/IVT itself, so this only fires when the guest
+    /// has no handler for the vector.
     pub unclaimed_interrupt: Option<u8>,
+    /// The last exception the engine delivered through the guest's gate table,
+    /// as `(vector, eip, cr2)`. A kernel that faults and recovers leaves no
+    /// other trace: the handler's own `printk` may not be visible yet.
+    pub exception: Option<(u8, u64, u64)>,
     /// Bytes at the last recorded instruction, so a fault can be disassembled
     /// without a debugger.
     pub last_instruction: Vec<u8>,
@@ -1142,18 +1146,22 @@ impl InterruptService for PcBios {
             }
             0x17 => Self::set_ax(cpu, 0x0000),
             0x1A => self.clock_service(cpu),
-            // Timer tick, IRQ proxies and anything else: acknowledged, with
-            // no hardware behind them yet.
-            0x08 | 0x1B | 0x1C | 0x4A | 0x70 | 0x71 | 0x75 => {}
+            // IRQ proxies and the firmware's other no-op vectors: acknowledged,
+            // with no hardware behind them yet. Vector 8 is deliberately *not*
+            // in this list even though it is IRQ0: the same vector is `#DF`,
+            // and every vector below 32 belongs to the CPU, which the engine
+            // delivers through the guest's own gate table.
+            0x1B | 0x1C | 0x4A | 0x70 | 0x71 | 0x75 => {}
             // INT 19h is the firmware's own bootstrap; the runner performs it
             // before the first quantum, so a guest reaching it means the boot
             // image gave up.
             0x19 => {
                 return false;
             }
-            // A vector nobody claims — including every CPU exception, which
-            // the interrupt hook also reports — stops the quantum so the run
-            // reports the vector instead of spinning silently.
+            // Everything else — every CPU exception (0..32), and any firmware
+            // call this machine does not implement — is left to the guest's own
+            // gate table. The engine delivers it; only a vector with no usable
+            // gate stops the quantum.
             _ => {
                 self.unhandled = Some(vector);
                 return false;
@@ -1704,6 +1712,7 @@ fn run_with(
             .reg_read(mosaic_isa_x86::Register::Cr0.into())
             .unwrap_or(0),
         unclaimed_interrupt: engine.take_unclaimed_interrupt(),
+        exception: engine.take_exception(),
         last_instruction: {
             let mut bytes = [0u8; 16];
             match last_traced {

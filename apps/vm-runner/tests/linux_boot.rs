@@ -107,6 +107,14 @@ fn boot_a_real_linux_kernel() {
         "the kernel's setup code did not run: {} instructions",
         report.instructions
     );
+    // ... and the decompressor wrote its own progress into the VGA window.
+    // Only a boot that stops before the kernel console takes the screen over
+    // can assert this: `tty0` scrolls it away once the kernel is running.
+    assert!(
+        report.screen.join("\n").contains("Decompressing Linux"),
+        "the decompressor never ran: {:?}",
+        report.screen
+    );
 }
 
 /// The kernel's printk ring buffer lives in its own `.data`, and every message
@@ -143,7 +151,9 @@ fn the_kernel_decompresses_and_starts_its_own_init() {
         // of the kernel's own early init.
         instruction_limit: 400_000_000,
         // The kernel's data/bss, where `prb` (the printk ring buffer) lives.
-        dumps: vec![(0xb5_0000, 0x2_0000)],
+        // The window starts a little below .data because the ring buffer is
+        // static and the kernel's own early setup moves `_end`.
+        dumps: vec![(0xb2_0000, 0x6_0000)],
         ..PcBootOptions::default()
     };
     let report = run_linux_boot(
@@ -163,15 +173,30 @@ fn the_kernel_decompresses_and_starts_its_own_init() {
     for line in log.iter().filter(|line| !line.is_empty()) {
         println!("log: {line}");
     }
-
-    // The decompressor's own progress, written straight into the VGA window.
-    assert!(
-        screen.contains("Decompressing Linux"),
-        "the decompressor never ran: {screen:?}"
+    println!(
+        "stop: reason {} instructions {} exception {:?} unclaimed {:?} unmapped {:?} cr0 {:#x} engine {:?} eip {:#x} cs {:#x}",
+        report.stop_reason,
+        report.instructions,
+        report.exception,
+        report.unclaimed_interrupt,
+        report.unmapped,
+        report.cr0,
+        report.engine_error,
+        report.registers[8],
+        report.registers[10],
     );
+
+    // `console=tty0` makes the kernel's own `vgacon` console the owner of the
+    // VGA window, so the screen is the kernel's output, not the decompressor's.
+    // By the time the boot stops the earliest banner has scrolled past, so the
+    // screen assertion below is the one message a correct boot always shows.
+    // The WP test is the one place where the kernel takes a deliberate `#PF`
+    // from its own code and relies on the IDT gate the adapter has to enter on
+    // Unicorn's behalf. "Ok." is only reachable if the fault reached the
+    // kernel's handler *and* its fixup returned to the faulting instruction.
     assert!(
-        screen.contains("Booting the kernel"),
-        "the kernel was never entered: {screen:?}"
+        screen.contains("honours the WP bit even in supervisor mode...Ok."),
+        "the kernel's deliberate page fault was never delivered: {screen:?}"
     );
     // And the kernel's own view of the machine, from its log buffer.
     assert!(
@@ -182,6 +207,11 @@ fn the_kernel_decompresses_and_starts_its_own_init() {
     assert!(
         log.iter().any(|line| line.contains("BIOS-e820")),
         "the kernel did not accept the firmware's memory map"
+    );
+    assert!(
+        log.iter()
+            .any(|line| { line.contains("honours the WP bit even in supervisor mode...Ok.") }),
+        "the kernel's deliberate page fault was never delivered"
     );
     assert!(
         log.iter().any(|line| line.contains("RAMDISK")),
