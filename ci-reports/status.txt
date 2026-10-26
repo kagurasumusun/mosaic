@@ -1,7 +1,7 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40249870481
-commit: 0b53255b83d58c8fe4363fec86fcc7e89fed32aa
-ref: refs/heads/master
-started: 2026-10-26T00:33:03Z
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40261774956
+commit: 9f876bd407fad1bc324d5e9d39ea852176986b2b
+ref: refs/heads/feat/vm-runner-and-iso-support-15648239428055009750
+started: 2026-10-26T02:59:35Z
 formatting: ok
 xtask: ok
 clippy: fail (code=101)
@@ -16,4 +16,4 @@ sensorbus: ok
 multicore: ok
 vic-thermal: ok
 doctor: ok
-finished: 2026-10-26T00:35:03Z
+finished: 2026-10-26T03:01:13Z
