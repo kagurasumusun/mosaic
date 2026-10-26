@@ -98,37 +98,19 @@ jobs:
             | head -120 > ci-reports/test-summary.txt || true
           exit 0
 
-      - name: Runtime trace and snapshot replay smoke test
+      # ゴールデン出力の diff は旧 tests/ 削除（2c93146）で失ったため、
+      # 実行時クラッシュだけを検出する。出力の正本は cargo test 側にある。
+      - name: Runtime examples execute
         if: always()
         run: |
           set +e
-          cargo run --locked --package mosaic-core-runtime --example events > ci-reports/runtime-events.stdout 2> ci-reports/runtime-events.log
-          code=$?
-          diff -u tests/runtime-events.stdout ci-reports/runtime-events.stdout >> ci-reports/runtime-events.log 2>&1
-          dcode=$?
-          echo "smoke-events: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: Machine MMIO dispatch smoke test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-core-runtime --example machine > ci-reports/machine-mmio.stdout 2> ci-reports/machine-mmio.log
-          code=$?
-          diff -u tests/machine-mmio.stdout ci-reports/machine-mmio.stdout >> ci-reports/machine-mmio.log 2>&1
-          dcode=$?
-          echo "smoke-machine: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: Runtime machine snapshot and replay smoke test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-core-runtime --example snapshot > ci-reports/machine-snapshot.stdout 2> ci-reports/machine-snapshot.log
-          code=$?
-          diff -u tests/machine-snapshot.stdout ci-reports/machine-snapshot.stdout >> ci-reports/machine-snapshot.log 2>&1
-          dcode=$?
-          echo "smoke-snapshot: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          ok=0
+          for example in events machine snapshot; do
+            cargo run --locked --package mosaic-core-runtime --example $example > ci-reports/runtime-$example.stdout 2> ci-reports/runtime-$example.log
+            code=$?
+            [ $code -eq 0 ] || ok=1
+            echo "runtime-$example: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          done
           exit 0
 
       - name: Unicorn ARM execution smoke test
@@ -137,9 +119,23 @@ jobs:
           set +e
           cargo run --locked --package mosaic-apps-cli --features unicorn -- unicorn-smoke > ci-reports/unicorn-arm.stdout 2> ci-reports/unicorn-arm.log
           code=$?
-          diff -u tests/unicorn-arm.stdout ci-reports/unicorn-arm.stdout >> ci-reports/unicorn-arm.log 2>&1
-          dcode=$?
-          echo "smoke-unicorn: $([ $code -eq 0 ] && [ $dcode -eq 0 ] && echo ok || echo "fail (run=$code diff=$dcode)")" >> ci-reports/status.txt
+          echo "smoke-unicorn: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
+          exit 0
+
+      # ADR 0021/0022: 実行の入り口が実イメージを起動できることを
+      # コマンドライン経由で検証する（CD から ISOLINUX バナーまで）。
+      - name: System front-end boots a real CD
+        if: always()
+        run: |
+          set +e
+          cargo run --locked --package mosaic-apps-system --features unicorn -- \
+            -cdrom tests/assets/tinycore-16-core.iso -m 64M \
+            --instruction-limit 8000000 --report ci-reports/front-end.json \
+            -q > ci-reports/front-end.stdout 2> ci-reports/front-end.log
+          code=$?
+          grep -q "ISOLINUX" ci-reports/front-end.json
+          gcode=$?
+          echo "front-end: $([ $code -eq 0 ] && [ $gcode -eq 0 ] && echo ok || echo "fail (run=$code report=$gcode)")" >> ci-reports/status.txt
           exit 0
 
       - name: P1 bring-up golden test

@@ -67,7 +67,8 @@ members = [
     "apps/cli",
     "apps/sensorbus",
     "apps/multicore",
-    "apps/vm-runner",
+    "apps/system",
+    "tests",
     "xtask",
 ]
 

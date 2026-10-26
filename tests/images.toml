@@ -1,0 +1,506 @@
+# Mosaic boot-test image catalog.
+#
+# One [[image]] block per real guest image. The harness (tests/src/lib.rs)
+# boots each image on the named machine and asserts the `expect` patterns —
+# the same generic loop for every OS, exactly like selecting a CD in a system
+# emulator. No entry here is a synthetic image, and no test anywhere in this
+# repository fabricates boot output.
+#
+# Provisioning kinds (`source`):
+#   committed — the file lives in tests/assets/ inside the repository.
+#   download  — `cargo xtask images fetch` downloads it (url) into
+#               test-images/ and verifies sha256. Never committed. A download
+#               entry without sha256 is a catalog error.
+#   manual    — the operator supplies the file in test-images/ themselves
+#               (redistribution-restricted media or local builds). sha256 is
+#               optional: recorded once a specific build is known.
+#
+# Boot plans (`boot`):
+#   cdrom          — boot the image as a CD-ROM (`-cdrom`).
+#   floppy         — boot the image as a floppy (`-fda`, boot order `a`).
+#   harddisk       — boot the image as a hard disk (`-hda`, boot order `c`).
+#   kernel-from-iso — extract kernel/initrd from the entry's own ISO and
+#                    boot directly (`-kernel`/`-initrd`/`-append`).
+#   kernel-files   — the entry's `file` IS the kernel (bzImage); an optional
+#                    `initrd-file` (+`initrd-url`/`initrd-sha256` for
+#                    fetching) rides along.
+#   deferred       — no boot plan expressible against the machines that
+#                    exist today; the entry is a ledger row until it is.
+#
+# Status (`status`):
+#   asserted        — the expectation patterns are a complete contract.
+#   bring-up        — real image, real boot; the patterns are the milestone
+#                     this machine has already reached on it. Move the
+#                     milestone forward as the machine grows; never delete
+#                     the entry.
+#   machine-pending — the machine or boot plan this image needs is not
+#                     implemented yet; the harness skips with the reason.
+#
+# `budget` is the instruction budget; `expect` patterns are searched in the
+# joined screen + serial output the guest actually produced.
+
+# ---------------------------------------------------------------------------
+# Linux — the owner's list, one entry per real image, per architecture.
+# ---------------------------------------------------------------------------
+
+[[image]]
+id = "linux/tinycore-16-core"
+os = "linux"
+distro = "Tiny Core Linux 16 Core (i386)"
+machine = "pc"
+arch = "x86"
+source = "committed"
+file = "tinycore-16-core.iso"
+sha256 = "e2d98595cf62133df71516602c12aa685c6b4da19db3068d150e4946415d0d86"
+boot = "cdrom"
+budget = 20_000_000
+expect = ["ISOLINUX"]
+status = "bring-up"
+note = "ISOLINUX banner and CD reads; the kernel hand-off is the next milestone"
+
+[[image]]
+id = "linux/tinycore-16-kernel"
+os = "linux"
+distro = "Tiny Core Linux 16 kernel + initramfs (i386 bzImage)"
+machine = "pc"
+arch = "x86"
+source = "committed"
+file = "tinycore-16-core.iso"
+sha256 = "e2d98595cf62133df71516602c12aa685c6b4da19db3068d150e4946415d0d86"
+boot = "kernel-from-iso"
+kernel = "boot/vmlinuz"
+initrd = "boot/core.gz"
+append = "console=ttyS0,115200 console=tty0"
+budget = 400_000_000
+expect = [
+    "Linux version",
+    "honours the WP bit even in supervisor mode...Ok.",
+    "Memory: ",
+]
+status = "bring-up"
+note = "the kernel decompresses, runs its own early init on the serial console and survives its deliberate page fault; the stop after TSC calibration needs timer IRQ injection"
+
+[[image]]
+id = "linux/tinycore-16-corepure64"
+os = "linux"
+distro = "Tiny Core Linux 16 CorePure64 (x86_64)"
+machine = "pc"
+arch = "x86_64"
+source = "download"
+file = "CorePure64-16.2.iso"
+url = "http://tinycorelinux.net/16.x/x86_64/release/CorePure64-16.2.iso"
+sha256 = "c954b2900fbbd38c2da156525819de8c80c4cc7a7ffde61a89b10f4a99985ebc"
+size = 24434688
+boot = "cdrom"
+budget = 20_000_000
+expect = ["ISOLINUX"]
+status = "bring-up"
+note = "64-bit kernel through the same 16-bit BIOS entry"
+
+[[image]]
+id = "linux/alpine-virt-x86_64"
+os = "linux"
+distro = "Alpine Linux 3.21 virt (x86_64)"
+machine = "pc"
+arch = "x86_64"
+source = "download"
+file = "alpine-virt-3.21.3-x86_64.iso"
+url = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.3-x86_64.iso"
+sha256 = "f28171c35bbf623aa3cbaec4b8b29297f13095b892c1a283b15970f7eb490f2d"
+size = 66060288
+boot = "cdrom"
+budget = 20000000_000_000
+expect = ["ISOLINUX"]
+status = "bring-up"
+note = "isolinux boot menu; GRUB/kernel milestones follow"
+
+[[image]]
+id = "linux/alpine-virt-x86"
+os = "linux"
+distro = "Alpine Linux 3.21 virt (x86)"
+machine = "pc"
+arch = "x86"
+source = "download"
+file = "alpine-virt-3.21.3-x86.iso"
+url = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86/alpine-virt-3.21.3-x86.iso"
+sha256 = "e837d1d67aced3157652a51f2c22bee582a95ad03863a6a25b5c1c1bbc9a3d84"
+size = 50331648
+boot = "cdrom"
+budget = 20000000_000_000
+expect = ["ISOLINUX"]
+status = "bring-up"
+note = "32-bit Alpine, same PC machine"
+
+[[image]]
+id = "linux/alpine-virt-aarch64"
+os = "linux"
+distro = "Alpine Linux 3.21 virt (aarch64)"
+machine = "virt-64"
+arch = "aarch64"
+source = "download"
+file = "alpine-virt-3.21.3-aarch64.iso"
+url = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-virt-3.21.3-aarch64.iso"
+sha256 = "693b5d99d00b27688617d3c64a12848d8961a9b4240d1472c3fe66a327c31c0b"
+boot = "cdrom"
+budget = 50_000_000
+expect = []
+status = "machine-pending"
+note = "needs the virt-64 machine: pl011 + GICv2 + a device tree"
+
+[[image]]
+id = "linux/alpine-virt-armv7"
+os = "linux"
+distro = "Alpine Linux 3.21 virt (armv7)"
+machine = "versatile-pb"
+arch = "arm"
+source = "download"
+file = "alpine-virt-3.21.3-armv7.iso"
+url = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/armv7/alpine-virt-3.21.3-armv7.iso"
+sha256 = "024da65015a090bb5f37a5c3b9ccae92c7e20d8183cb37544d6670f83f407478"
+boot = "cdrom"
+budget = 50_000_000
+expect = []
+status = "machine-pending"
+note = "needs the versatile-pb machine (ARM926EJ-S catalog core)"
+
+[[image]]
+id = "linux/slitaz-rolling"
+os = "linux"
+distro = "SliTaz GNU/Linux rolling core"
+machine = "pc"
+arch = "x86"
+source = "download"
+file = "slitaz-rolling-core.iso"
+url = "http://mirror.slitaz.org/iso/rolling/slitaz-rolling-core.iso"
+sha256 = "12f696bdcfdfa36fa4c04cd80cc38eebf112994f0ed78f5c057b52f28eaed3e0"
+size = 61528064
+boot = "cdrom"
+budget = 20000000_000_000
+expect = ["ISOLINUX"]
+status = "bring-up"
+note = "SliTaz ISOLINUX entry"
+
+[[image]]
+id = "linux/debian-netboot-amd64"
+os = "linux"
+distro = "Debian stable installer netboot kernel (amd64)"
+machine = "pc"
+arch = "x86_64"
+source = "download"
+file = "debian-netboot-linux"
+url = "https://deb.debian.org/debian/dists/stable/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux"
+sha256 = "2b2358b37674d2505350528875bb17afae2a36522a9e8a9417eaca65a7da0e08"
+size = 12142528
+initrd-file = "debian-netboot-initrd.gz"
+initrd-url = "https://deb.debian.org/debian/dists/stable/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz"
+initrd-sha256 = "57303d157cffce3fa402301667fbc9b2280aa7372082b081e777375ae49da5f2"
+boot = "kernel-files"
+append = "console=ttyS0,115200 console=tty0"
+budget = 20000000_000_000
+ram-mib = 256
+expect = ["Probing EDD"]
+status = "bring-up"
+note = "the 6.12 amd64 kernel runs its real-mode setup, relocates the decompressor and enters the 64-bit entry (needs the Haswell-class core); reaching the serial banner needs a longer budget plus timer IRQs"
+
+[[image]]
+id = "linux/dsl-2024"
+os = "linux"
+distro = "Damn Small Linux 2024 (antiX-based)"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "dsl-2024.iso"
+boot = "cdrom"
+budget = 50_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied; the boot loader milestone is recorded on first run"
+
+[[image]]
+id = "linux/puppy-fossapup64"
+os = "linux"
+distro = "Puppy Linux FossaPup64 9.5"
+machine = "pc"
+arch = "x86_64"
+source = "manual"
+file = "fossapup64-9.5.iso"
+boot = "cdrom"
+budget = 50_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied"
+
+[[image]]
+id = "linux/archlinux"
+os = "linux"
+distro = "Arch Linux install medium (x86_64)"
+machine = "pc"
+arch = "x86_64"
+source = "manual"
+file = "archlinux-x86_64.iso"
+boot = "cdrom"
+budget = 50_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied; syslinux + mkinitcpio boot path"
+
+[[image]]
+id = "linux/buildroot-qemu-x86"
+os = "linux"
+distro = "Buildroot qemu_x86_defconfig output"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "buildroot-bzImage"
+initrd-file = "buildroot-rootfs.ext2"
+boot = "kernel-files"
+append = "console=ttyS0 root=/dev/sda"
+budget = 100_000_000
+expect = []
+status = "machine-pending"
+note = "buildroot ships no binaries; build qemu_x86_defconfig, place bzImage/rootfs in test-images/. Needs a drive the kernel can mount for -kernel boots"
+
+# ---------------------------------------------------------------------------
+# Windows family — real media only. Microsoft's own images are
+# redistribution-restricted, so those entries are `manual` by policy;
+# ReactOS is free software and downloads directly.
+# ---------------------------------------------------------------------------
+
+[[image]]
+id = "windows/reactos-0.4.16-cd"
+os = "windows"
+distro = "ReactOS 0.4.16 install CD"
+machine = "pc"
+arch = "x86"
+source = "download"
+file = "ReactOS-0.4.16-i386.iso"
+url = "https://sourceforge.net/projects/reactos/files/latest/download"
+archive-member = "ReactOS-0.4.16-i386.iso"
+archive-sha256 = "e5851510cf5b79ef51a76b8155dd5ef7faca1155f44d0a1d41c35b77ece4ce2a"
+sha256 = "6f15ca6e1edf5527b8489958d16c54f0da0e7948c305d7c89e74687c6cbf6855"
+size = 198087895
+boot = "cdrom"
+budget = 60000000_000_000
+expect = ["Starting FreeLoader"]
+status = "bring-up"
+note = "the CD's boot sector hands off to FreeLoader, which prints its banner and then needs more of the INT 13h/BIOS surface than the machine answers today"
+
+[[image]]
+id = "windows/win95"
+os = "windows"
+distro = "Windows 95 boot floppy"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "win95-boot.img"
+boot = "floppy"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied retail floppy image; the machine already numbers floppies"
+
+[[image]]
+id = "windows/win98"
+os = "windows"
+distro = "Windows 98 boot floppy"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "win98-boot.img"
+boot = "floppy"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied retail floppy image"
+
+[[image]]
+id = "windows/win2000"
+os = "windows"
+distro = "Windows 2000 setup CD"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "win2000-sp4.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied retail CD"
+
+[[image]]
+id = "windows/winxp"
+os = "windows"
+distro = "Windows XP setup CD"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "winxpsp3.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied retail CD"
+
+[[image]]
+id = "windows/server2008"
+os = "windows"
+distro = "Windows Server 2008 setup DVD"
+machine = "pc"
+arch = "x86_64"
+source = "manual"
+file = "win2008-r2.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "operator-supplied retail DVD"
+
+[[image]]
+id = "windows/winpe"
+os = "windows"
+distro = "Windows PE (from the Windows ADK)"
+machine = "pc"
+arch = "x86_64"
+source = "manual"
+file = "winpe.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "build with the ADK's MakeWinPEMedia; the license permits this use"
+
+[[image]]
+id = "windows/validation-os"
+os = "windows"
+distro = "Windows Validation OS"
+machine = "pc"
+arch = "x86_64"
+source = "manual"
+file = "validation-os.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "Microsoft's minimal test OS image, from the Validation OS download"
+
+[[image]]
+id = "windows/wince"
+os = "windows"
+distro = "Windows CE (Platform Builder image)"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "wince-nk.bin"
+boot = "deferred"
+budget = 100_000_000
+expect = []
+status = "machine-pending"
+note = "needs a loadlinux-style NK.bin loader; bring up the DOS path first"
+
+# ---------------------------------------------------------------------------
+# Android — 1.6..4.4 per the owner's list. Real x86 ports exist from 4.4
+# (Android-x86); 1.x..3.x shipped ARM-only (goldfish), which needs the
+# future goldfish machine.
+# ---------------------------------------------------------------------------
+
+[[image]]
+id = "android/android-x86-4.4-r5"
+os = "android"
+distro = "Android-x86 4.4-r5 (KitKat)"
+machine = "pc"
+arch = "x86"
+source = "download"
+file = "android-x86-4.4-r5.iso"
+url = "https://sourceforge.net/projects/android-x86/files/Release%204.4/android-x86-4.4-r5.iso/download"
+sha256 = "d481150d8de1161e1a1d6f270e535b55fc2ecd94c43d9459c9cfe913e000f7c1"
+size = 462422016
+boot = "cdrom"
+budget = 30000000_000_000
+expect = ["ISOLINUX 4.04"]
+status = "bring-up"
+note = "Android-x86's ISOLINUX loads its banner; the kernel hand-off is the next milestone"
+
+[[image]]
+id = "android/android-4.4-arm-goldfish"
+os = "android"
+distro = "Android 4.4 (AOSP) goldfish ARM image"
+machine = "goldfish-arm"
+arch = "arm"
+source = "manual"
+file = "goldfish-arm"
+boot = "deferred"
+budget = 100_000_000
+expect = []
+status = "machine-pending"
+note = "needs the goldfish machine (ARMv7 + goldfish devices) for Android 1.6..4.4 ARM"
+
+# ---------------------------------------------------------------------------
+# RTOS — images are built, not redistributed, so entries are manual with
+# build instructions in the note until a boot plan can express them.
+# ---------------------------------------------------------------------------
+
+[[image]]
+id = "rtos/freertos-qemu-x86"
+os = "rtos"
+distro = "FreeRTOS x86 QEMU full demo"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "freertos-qemu-x86"
+boot = "deferred"
+budget = 100_000_000
+expect = []
+status = "machine-pending"
+note = "build FreeRTOS/Demo/x86_64_qemu; needs a direct-ELF boot plan"
+
+[[image]]
+id = "rtos/zephyr-pc"
+os = "rtos"
+distro = "Zephyr x86 (qemu_x86 board build)"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "zephyr-qemu-x86"
+boot = "deferred"
+budget = 100_000_000
+expect = []
+status = "machine-pending"
+note = "west build -b qemu_x86; needs a direct-ELF boot plan"
+
+# ---------------------------------------------------------------------------
+# Other real operating systems that share the PC machine — DOS descendants
+# and KolibriOS are the strictest BIOS-conformance boot tests available.
+# ---------------------------------------------------------------------------
+
+[[image]]
+id = "other/freedos-1.3-boot-floppy"
+os = "other"
+distro = "FreeDOS 1.3 boot floppy (1.44M)"
+machine = "pc"
+arch = "x86"
+source = "download"
+file = "freedos-1.3-boot.img"
+url = "https://archive.org/download/freedos-1.3/FD13-FloppyEdition.zip"
+archive-member = "144m/x86BOOT.img"
+archive-sha256 = "75a4e11a7fce6f124e20927b3022b4b715a2a3f7324c5f5bfea42d90d80eb072"
+sha256 = "3f7834ea4575ba05d106e4b8f59f886da7bfb1979ee386be2a2deba8df518925"
+size = 21691247
+boot = "floppy"
+budget = 80000000_000_000
+expect = ["Kernel compatibility 7.10", "FreeDOS 1.3 Floppy Edition"]
+status = "bring-up"
+note = "the FAT12 boot sector loads the real KERNEL.SYS and the DOS language menu runs; the DOS prompt needs keyboard input the machine cannot inject yet"
+
+[[image]]
+id = "other/kolibrios-latest"
+os = "other"
+distro = "KolibriOS (latest build)"
+machine = "pc"
+arch = "x86"
+source = "manual"
+file = "kolibri.iso"
+boot = "cdrom"
+budget = 100_000_000
+expect = []
+status = "bring-up"
+note = "fetch kolibri.iso from builds.kolibrios.org (IPv6-only host); its loader is the most BIOS-call-dense boot there is"

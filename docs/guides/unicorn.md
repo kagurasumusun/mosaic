@@ -119,10 +119,10 @@ Send の不変条件と 1 箇所の unsafe impl については [ADR 0007](../ad
 - `MODE_16` のインスタンスに `CR0` を書く経路は失敗する。モード遷移は
   ゲストの `CR0` 書き込みに任せる。
 
-PC のスライスは `apps/vm-runner` にあり、実 ISO で駆動する。
+PC マシンは `apps/system` にあり、実 ISO で駆動する（ADR 0021/0022）。
 
 ```sh
-cargo test -p mosaic-apps-vm-runner --features unicorn -- --nocapture
+cargo test -p mosaic-tests-boot --features unicorn -- --nocapture boot_matrix
 ```
 
 `pc_boot` は低メモリ（IVT・BDA・ベクタごとの `INT n; IRET` トランポリン）、

@@ -32,8 +32,9 @@ pub const ENTRY_64_OFFSET: u64 = 0x200;
 /// `screen_info.orig_video_isVGA` for a VGA in text mode, which is what the
 /// machine's text window at `B8000h` is.
 pub const VIDEO_TYPE_VGAC: u8 = 0x22;
-/// Size of the RAM above 1 MiB the machine reports, in KiB.
-const EXTENDED_KIB: u64 = 63 * 1024;
+/// Size of the RAM above 1 MiB a default machine reports, in KiB. A machine
+/// configured with `-m` passes its own number through to `prepare_setup`.
+pub const DEFAULT_EXTENDED_KIB: u64 = 63 * 1024;
 
 /// One file inside an ISO9660 image, located but not copied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -116,7 +117,7 @@ pub fn iso_file(iso: &[u8], path: &str) -> Option<IsoFile> {
 }
 
 /// Every record of a directory, with its decoded name.
-fn directory_records<'a>(iso: &'a [u8], lba: u32, size: u32) -> Vec<(&'a [u8], String)> {
+fn directory_records(iso: &[u8], lba: u32, size: u32) -> Vec<(&[u8], String)> {
     let mut records = Vec::new();
     let start = lba as usize * 2048;
     let end = (start + size as usize).min(iso.len());
@@ -230,21 +231,12 @@ impl BzImage {
 
 /// Edits a boot loader must make inside `boot_params` (the setup area) before
 /// handing control to the kernel.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BootParams {
     /// Kernel command line.
     pub cmdline: String,
     /// Already-loaded initramfs: `(address, size)`.
     pub initrd: Option<(u64, u64)>,
-}
-
-impl Default for BootParams {
-    fn default() -> Self {
-        Self {
-            cmdline: String::new(),
-            initrd: None,
-        }
-    }
 }
 
 /// Rewrite the header fields a boot loader owns, and write the command line and
@@ -261,6 +253,7 @@ pub fn prepare_setup(
     setup: &mut [u8],
     kernel: &BzImage,
     params: &BootParams,
+    extended_kib: u64,
 ) -> Result<Vec<u8>, String> {
     if setup.len() < 0x1000 {
         return Err("setup area is shorter than one page".into());
@@ -299,7 +292,7 @@ pub fn prepare_setup(
     // font, cursor at the top left.
     setup[0x00] = 0; // orig_x
     setup[0x01] = 0; // orig_y
-    setup[0x02..0x04].copy_from_slice(&(EXTENDED_KIB as u16).to_le_bytes()); // ext_mem_k
+    setup[0x02..0x04].copy_from_slice(&(extended_kib.min(0xFFFF) as u16).to_le_bytes()); // ext_mem_k
     setup[0x04..0x06].copy_from_slice(&0u16.to_le_bytes()); // orig_video_page
     setup[0x06] = 3; // orig_video_mode: 80x25 colour text
     setup[0x07] = 80; // orig_video_cols

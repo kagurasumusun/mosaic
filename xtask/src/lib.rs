@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod catalog;
+pub mod images;
 mod policy;
 pub use policy::{
     dependency_allowed, external_dependency_allowed, forbidden_name, kebab_case, lint_layers,
@@ -132,7 +133,7 @@ pub fn lint_names(root: &Path, packages: &[Package]) -> CheckResult<Vec<String>>
         }
         if matches!(
             parts[0].as_str(),
-            "framework" | "catalog" | "apps" | "xtask"
+            "framework" | "catalog" | "apps" | "tests" | "xtask"
         ) && !kebab_case(name)
         {
             errors.push(format!(
@@ -157,10 +158,16 @@ pub fn lint_names(root: &Path, packages: &[Package]) -> CheckResult<Vec<String>>
             .to_string_lossy();
         let expected = if path == "xtask" {
             "mosaic-xtask".into()
+        } else if path == "tests" {
+            // The machine-level boot-test package: the design document's
+            // `tests/` root (§6), one crate, not a per-test crate tree.
+            "mosaic-tests-boot".into()
         } else if let Some(rest) = path.strip_prefix("framework/") {
             format!("mosaic-{}", rest.replace('/', "-"))
         } else if let Some(rest) = path.strip_prefix("apps/") {
             format!("mosaic-apps-{}", rest.replace('/', "-"))
+        } else if let Some(rest) = path.strip_prefix("tests/") {
+            format!("mosaic-tests-{}", rest.replace('/', "-"))
         } else {
             let rest = path
                 .strip_prefix("catalog/")

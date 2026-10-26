@@ -1,5 +1,5 @@
-//! Real-mode PC bring-up: a firmware interim, an El Torito loader and a
-//! running machine.
+//! The `pc` machine: a firmware interim, an El Torito loader, a BIOS drive
+//! table and a running machine, assembled by the system front-end.
 //!
 //! The design document puts firmware where a PC actually has it: nowhere in
 //! the CPU engine. A PC's firmware interface *is* the software-interrupt table,
@@ -9,14 +9,14 @@
 //! reaches the PIC/PIT/RTC/UART through the engine's port port. Nothing here
 //! emulates a CPU: the guest's own 16-bit code drives everything.
 //!
-//! Scope of this slice, stated so it is not mistaken for a BIOS ROM:
+//! Scope of this machine, stated so it is not mistaken for a BIOS ROM:
 //!
 //! * the boot device is an ISO9660 image with an El Torito no-emulation entry
-//!   (the layout every Linux/Windows CD uses) or a raw disk image whose first
-//!   sector is a boot sector;
-//! * `INT 13h` serves CHS and LBA reads from the attached image only;
+//!   (the layout every Linux/Windows CD uses) or a raw disk/floppy image whose
+//!   first sector is a boot sector;
+//! * `INT 13h` serves CHS and LBA reads from the attached images only;
 //! * there is no option ROM scan, no PCI enumeration at the firmware level and
-//!   no VGA mode beyond 80x25 text. A guest that needs those stops, and the
+//! * no VGA mode beyond 80x25 text. A guest that needs those stops, and the
 //!   report says where.
 
 use std::collections::BTreeMap;
@@ -27,6 +27,8 @@ use mosaic_contract_mmio::MmioTarget;
 use mosaic_contract_model::{ContextError, Ctx};
 use mosaic_core_types::{AccessSize, Attr, BusFault, EventId, RegId, SignalId, VDelta, VTime};
 use mosaic_engine_unicorn::{InterruptService, PortBus, SoftwareInterruptCpu, UnicornX86Boot};
+
+pub use crate::DirectKernel;
 
 use crate::linux_boot::SETUP_BASE;
 use mosaic_ip_x86_pic_8259::Pic8259;
@@ -41,8 +43,12 @@ pub const VGA_TEXT_SIZE: u64 = 0x8000;
 /// BIOS ROM window: mapped so a guest that reads it does not fault.
 pub const BIOS_ROM_BASE: u64 = 0x000F_0000;
 pub const BIOS_ROM_SIZE: u64 = 0x0001_0000;
-/// Size of the RAM the machine has above 1 MiB.
+/// Size of the RAM the machine has above 1 MiB, as a default machine of
+/// 64 MiB reports it. The configuration's `-m` overrides this everywhere.
 pub const EXTENDED_RAM: u64 = 63 * 1024 * 1024;
+/// Largest extended RAM the machine maps, in KiB: just under 4 GiB, keeping
+/// the top of the 32-bit space for MMIO the way a PC does.
+pub const MAX_EXTENDED_KIB: u64 = 0xFFFC00;
 /// Top of conventional RAM, and of the address space the firmware describes.
 pub const CONVENTIONAL_TOP: u64 = 0x0009_FC00;
 /// The VGA aperture (`A0000h..BFFFFh`), including the text window.
@@ -59,7 +65,8 @@ pub const LOCAL_APIC_SIZE: u64 = 0x0000_1000;
 
 /// Where an El Torito no-emulation image is conventionally loaded.
 pub const DEFAULT_LOAD_SEGMENT: u16 = 0x07C0;
-/// Extended memory reported through `INT 15h`, in KiB.
+/// Extended memory reported through `INT 15h`, in KiB, for the default
+/// machine size.
 pub const EXTENDED_KIB: u64 = EXTENDED_RAM / 1024;
 /// `F000h`-relative offset of the interrupt trampolines (see [`firmware_image`]).
 pub const BIOS_STUB_OFFSET: u64 = 0x1000;
@@ -91,6 +98,15 @@ const REG_ES: RegId = RegId(12);
 const FLAG_CF: u64 = 1 << 0;
 const FLAG_ZF: u64 = 1 << 6;
 
+/// The media a BIOS drive holds. The geometry a `CHS` read decodes with and
+/// the drive number the machine assigns both depend on this.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DriveMedia {
+    Floppy,
+    HardDisk,
+    Cdrom,
+}
+
 /// One attached BIOS disk.
 #[derive(Clone, Debug)]
 pub struct DiskImage {
@@ -98,6 +114,7 @@ pub struct DiskImage {
     pub drive: u8,
     /// Logical block size the firmware reports to the guest.
     pub block_size: u32,
+    pub media: DriveMedia,
     pub data: Vec<u8>,
 }
 
@@ -108,6 +125,7 @@ impl DiskImage {
         Self {
             drive,
             block_size: 2048,
+            media: DriveMedia::Cdrom,
             data,
         }
     }
@@ -116,6 +134,16 @@ impl DiskImage {
         Self {
             drive,
             block_size: 512,
+            media: DriveMedia::HardDisk,
+            data,
+        }
+    }
+
+    pub fn floppy(drive: u8, data: Vec<u8>) -> Self {
+        Self {
+            drive,
+            block_size: 512,
+            media: DriveMedia::Floppy,
             data,
         }
     }
@@ -124,7 +152,161 @@ impl DiskImage {
         let block = u64::from(self.block_size);
         (self.data.len() as u64) / block
     }
+
+    /// Geometry a `CHS` address on this media decodes with:
+    /// `(heads, sectors per track)`. Floppies are 2 heads / 18 sectors (the
+    /// 1.44 MiB format), hard disks 16 heads / 63 sectors — the numbers
+    /// `INT 13h AH=08h` reports for them.
+    fn geometry(&self) -> (u64, u64) {
+        match self.media {
+            DriveMedia::Floppy => (2, 18),
+            _ => (16, 63),
+        }
+    }
 }
+
+/// How the PC picks what to execute first.
+#[derive(Clone, Debug)]
+enum PcBootPlan {
+    /// An El Torito no-emulation boot image from an attached CD.
+    ElTorito { image: ElToritoImage, drive: u8 },
+    /// The first sector of a floppy or hard disk, at `0000:7C00h`.
+    BootSector { drive: u8 },
+    /// A `bzImage` placed by the documented i386 boot protocol.
+    Linux(DirectKernel),
+}
+
+/// A PC as the front-end named it: RAM size, drive images in attachment
+/// order, a boot order over media, and an optional direct kernel.
+///
+/// Drive numbers are assigned the way a PC BIOS assigns them: floppies from
+/// `0x00`, hard disks from `0x80`, and the CD-ROM at `0x9F` — the number the
+/// El Torito specification calls the conventional CD boot drive.
+#[derive(Clone, Debug)]
+pub struct PcMachineConfig {
+    /// Total machine RAM in KiB, including the low megabyte. The machine
+    /// splits it into conventional memory (fixed by the PC memory map) and
+    /// extended memory above 1 MiB.
+    pub ram_kib: u64,
+    /// The microarchitecture the CPU impersonates (QEMU `-cpu`). The backend
+    /// default predates BMI2, which every `x86-64-v2` kernel uses.
+    pub cpu_model: mosaic_engine_unicorn::X86CpuModel,
+    pub floppies: Vec<Vec<u8>>,
+    pub hard_disks: Vec<Vec<u8>>,
+    pub cdrom: Option<Vec<u8>>,
+    /// QEMU `-boot` order: each character names a media — `'a'` first floppy,
+    /// `'c'` first hard disk, `'d'` the CD-ROM. The first media with an image
+    /// that has a boot record wins.
+    pub boot_order: String,
+    /// A direct kernel boot, which wins over any boot order.
+    pub kernel: Option<DirectKernel>,
+}
+
+impl PcMachineConfig {
+    pub fn new(ram_kib: u64) -> Self {
+        Self {
+            ram_kib,
+            cpu_model: mosaic_engine_unicorn::X86CpuModel::Haswell,
+            floppies: Vec::new(),
+            hard_disks: Vec::new(),
+            cdrom: None,
+            boot_order: "dca".into(),
+            kernel: None,
+        }
+    }
+
+    /// QEMU `-cpu`: which microarchitecture the core impersonates.
+    pub fn with_cpu_model(&mut self, model: mosaic_engine_unicorn::X86CpuModel) -> &mut Self {
+        self.cpu_model = model;
+        self
+    }
+
+    pub fn attach_floppy(&mut self, data: Vec<u8>) -> &mut Self {
+        self.floppies.push(data);
+        self
+    }
+
+    pub fn attach_hard_disk(&mut self, data: Vec<u8>) -> &mut Self {
+        self.hard_disks.push(data);
+        self
+    }
+
+    pub fn attach_cdrom(&mut self, data: Vec<u8>) -> Result<&mut Self, String> {
+        // Refuse at configuration time, not mid-boot: an image without a boot
+        // record is an operator error and the message should say so.
+        el_torito_image(&data)?;
+        self.cdrom = Some(data);
+        Ok(self)
+    }
+
+    pub fn with_boot_order(&mut self, order: String) -> &mut Self {
+        self.boot_order = order;
+        self
+    }
+
+    pub fn with_kernel(&mut self, kernel: DirectKernel) -> &mut Self {
+        self.kernel = Some(kernel);
+        self
+    }
+
+    /// Assign BIOS drive numbers and pick the boot plan.
+    fn resolve(&self) -> Result<(Vec<DiskImage>, PcBootPlan), String> {
+        let mut disks = Vec::new();
+        for (index, floppy) in self.floppies.iter().enumerate() {
+            let drive = u8::try_from(index).map_err(|_| "too many floppies".to_string())?;
+            disks.push(DiskImage::floppy(drive, floppy.clone()));
+        }
+        for (index, disk) in self.hard_disks.iter().enumerate() {
+            let drive =
+                0x80 + u8::try_from(index).map_err(|_| "too many hard disks".to_string())?;
+            disks.push(DiskImage::fixed(drive, disk.clone()));
+        }
+        if let Some(cdrom) = &self.cdrom {
+            disks.push(DiskImage::cdrom(CD_DRIVE, cdrom.clone()));
+        }
+        if let Some(kernel) = &self.kernel {
+            return Ok((disks, PcBootPlan::Linux(kernel.clone())));
+        }
+        for character in self.boot_order.chars() {
+            let plan: Result<Option<PcBootPlan>, String> = match character {
+                'a' => Ok(self
+                    .floppies
+                    .first()
+                    .map(|_| PcBootPlan::BootSector { drive: 0x00 })),
+                'c' => Ok(self
+                    .hard_disks
+                    .first()
+                    .map(|_| PcBootPlan::BootSector { drive: 0x80 })),
+                'd' => match &self.cdrom {
+                    Some(cdrom) => Ok(Some(PcBootPlan::ElTorito {
+                        image: el_torito_image(cdrom)?,
+                        drive: CD_DRIVE,
+                    })),
+                    None => Ok(None),
+                },
+                _ => {
+                    return Err(format!(
+                        "boot order '{}': '{}' is not one of a/c/d",
+                        self.boot_order, character
+                    ))
+                }
+            };
+            if let Some(plan) = plan? {
+                return Ok((disks, plan));
+            }
+        }
+        Err(format!(
+            "no bootable image in boot order '{}' (floppies {}, hard disks {}, cdrom {})",
+            self.boot_order,
+            self.floppies.len(),
+            self.hard_disks.len(),
+            usize::from(self.cdrom.is_some())
+        ))
+    }
+}
+
+/// The BIOS drive number an El Torito boot CD is conventionally given.
+pub const CD_DRIVE: u8 = 0x9F;
 
 /// Where the machine starts executing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,8 +344,6 @@ pub struct PcBootOptions {
     pub quantum: u64,
     /// Total instruction budget for the whole run.
     pub instruction_limit: u64,
-    /// Drive number handed to the boot image in `DL`.
-    pub boot_drive: u8,
     /// How many recent instruction addresses to record, for diagnosis. Zero
     /// records nothing; the hook is expensive, so it stays off by default.
     pub trace_instructions: usize,
@@ -180,9 +360,6 @@ impl Default for PcBootOptions {
         Self {
             quantum: 50_000,
             instruction_limit: 200_000_000,
-            // `0x9F` is what ATAPI-CD firmware conventionally passes; a guest
-            // that disagrees probes the drive table instead.
-            boot_drive: 0x9F,
             trace_instructions: 0,
             dumps: Vec::new(),
             watch_writes: Vec::new(),
@@ -599,6 +776,9 @@ struct PcBios {
     interrupts: BTreeMap<u8, u32>,
     disk_reads: Vec<DiskRead>,
     boot_drive: u8,
+    /// Extended RAM above 1 MiB, in KiB: what `INT 15h AH=88h`, `E801h` and
+    /// the `E820h` map report. The machine's own mapping, not a constant.
+    extended_kib: u64,
     /// The El Torito boot image the machine booted from, if it booted a CD.
     eltorito: Option<ElToritoImage>,
     /// First vector the firmware could not answer.
@@ -608,7 +788,12 @@ struct PcBios {
 }
 
 impl PcBios {
-    fn new(disks: Vec<DiskImage>, boot_drive: u8, eltorito: Option<ElToritoImage>) -> Self {
+    fn new(
+        disks: Vec<DiskImage>,
+        boot_drive: u8,
+        extended_kib: u64,
+        eltorito: Option<ElToritoImage>,
+    ) -> Self {
         Self {
             disks,
             cursor_row: 0,
@@ -616,6 +801,7 @@ impl PcBios {
             interrupts: BTreeMap::new(),
             disk_reads: Vec::new(),
             boot_drive,
+            extended_kib,
             eltorito,
             unhandled: None,
             log: Vec::new(),
@@ -760,18 +946,22 @@ impl PcBios {
         let drive = cpu.reg_read(REG_EDX).unwrap_or(0) as u8;
         match function {
             0x00 => {
-                Self::set_ax(cpu, (ax & 0xFF00) | 0x00);
+                Self::set_ax(cpu, ax & 0xFF00);
                 Self::set_flag(cpu, FLAG_CF, false);
             }
             0x02 => self.chs_read(cpu, drive),
             0x08 => {
                 // Geometry. A bootloader divides by these numbers, so every
-                // one of them must be non-zero: DL = drive count, DH = last
+                // one of them must match the media: DL = drive count, DH = last
                 // head index, CL = last sector, CH = last cylinder.
-                if let Some(_disk) = self.disk(drive) {
-                    let _ = cpu.reg_write(REG_ECX, 0xFF3Fu64);
-                    Self::set_ax(cpu, (ax & 0xFF00) | 0x00);
-                    let _ = cpu.reg_write(REG_EDX, 0x0100u64);
+                if let Some(disk) = self.disk(drive) {
+                    let (heads, sectors) = disk.geometry();
+                    let cylinders = (disk.blocks() / (heads * sectors)).min(1023);
+                    let cl = 0xC0 & (cylinders >> 2) as u8 | sectors as u8;
+                    let ch = (cylinders & 0xFF) as u8;
+                    let _ = cpu.reg_write(REG_ECX, (u64::from(ch) << 8) | u64::from(cl));
+                    Self::set_ax(cpu, ax & 0xFF00);
+                    let _ = cpu.reg_write(REG_EDX, ((heads - 1) << 8) | 0x01);
                 } else {
                     Self::set_ax(cpu, (ax & 0xFF00) | 0x01);
                     Self::set_flag(cpu, FLAG_CF, true);
@@ -853,8 +1043,8 @@ impl PcBios {
             Self::set_flag(cpu, FLAG_CF, true);
             return;
         };
-        let sectors_per_track = 18u64;
-        let heads = 2u64;
+        let sectors_per_track = disk.geometry().1;
+        let heads = disk.geometry().0;
         let lba = ((cylinder * heads + head) * sectors_per_track) + sector - 1;
         let block = u64::from(disk.block_size);
         // CHS reads name 512-byte sectors; a CD's 2048-byte sector covers four.
@@ -974,13 +1164,13 @@ impl PcBios {
                 // Extended memory in KiB. The interface caps at 15 MiB, so a
                 // machine with more reports the cap and leaves the rest to
                 // `E801h` and `E820h`, which is what real firmware does.
-                Self::set_ax(cpu, (EXTENDED_KIB).min(0x3C00) as u16);
+                Self::set_ax(cpu, (self.extended_kib).min(0x3C00) as u16);
                 Self::set_flag(cpu, FLAG_CF, false);
             }
             0xE801 => {
                 // 1 MiB..16 MiB in KiB, then 16 MiB..4 GiB in 64 KiB pages.
-                let below = EXTENDED_KIB.min(0x3C00);
-                let above = (EXTENDED_KIB.saturating_sub(0x3C00)) / 64;
+                let below = self.extended_kib.min(0x3C00);
+                let above = (self.extended_kib.saturating_sub(0x3C00)) / 64;
                 let _ = cpu.reg_write(REG_EAX, below);
                 let _ = cpu.reg_write(REG_EBX, above);
                 let _ = cpu.reg_write(REG_ECX, below);
@@ -1002,7 +1192,7 @@ impl PcBios {
         let mut entries: Vec<(u64, u64, u32)> = vec![
             (0, CONVENTIONAL_TOP, 1),
             (CONVENTIONAL_TOP, 0x10_0000 - CONVENTIONAL_TOP, 2),
-            (0x0010_0000, EXTENDED_RAM, 1),
+            (0x0010_0000, self.extended_kib * 1024, 1),
         ];
         let mut ebx = cpu.reg_read(REG_EBX).unwrap_or(0) as u32;
         if ebx as usize >= entries.len() {
@@ -1133,8 +1323,20 @@ impl InterruptService for PcBios {
         match vector {
             0x10 => self.video_service(cpu),
             0x11 => {
-                // Equipment word: one 80x25 colour display, one floppy.
-                Self::set_ax(cpu, 0x0021);
+                // Equipment word: initial video mode 80x25 colour (bit 5),
+                // and the floppy count the machine actually has: bit 0 says
+                // any, bits 7..6 hold the count minus one.
+                let floppies = self
+                    .disks
+                    .iter()
+                    .filter(|disk| disk.media == DriveMedia::Floppy)
+                    .count()
+                    .min(4) as u16;
+                let mut word = 0x0020u16;
+                if floppies > 0 {
+                    word |= 1 | ((floppies - 1) << 6);
+                }
+                Self::set_ax(cpu, word);
             }
             0x12 => Self::set_ax(cpu, CONVENTIONAL_KIB as u16),
             0x13 => self.disk_service(cpu),
@@ -1342,98 +1544,86 @@ pub fn el_torito_image(iso: &[u8]) -> Result<ElToritoImage, String> {
     })
 }
 
-/// Boot a machine from an attached CD (El Torito) or disk image and run it.
-pub fn run_pc_boot(
-    iso: Option<Vec<u8>>,
-    disk: Option<Vec<u8>>,
+/// Boot the configured PC and run it. This is the machine's whole
+/// front-facing surface: RAM size, drives, boot order, an optional direct
+/// kernel — the same facts QEMU's own command line names.
+pub fn run_pc_machine(
+    config: &PcMachineConfig,
     options: &PcBootOptions,
 ) -> Result<PcBootReport, String> {
-    let mut disks = Vec::new();
-    if let Some(iso) = iso {
-        let image = el_torito_image(&iso)?;
-        let drive = options.boot_drive;
-        disks.push(DiskImage::cdrom(drive, iso));
-        let boot = BootPoint {
-            cs: image.load_segment,
-            ip: 0,
-            drive,
-            data_segment: 0,
-            stack_pointer: 0x7C00,
-            interrupts: true,
-        };
-        return run_with(disks, Some(boot), options, Some(image), None);
+    let (disks, plan) = config.resolve()?;
+    // Extended RAM is everything `-m` bought above the low megabyte, and the
+    // machine maps exactly as much as it reports through `INT 15h`.
+    let extended_kib = config
+        .ram_kib
+        .saturating_sub(1024)
+        .clamp(0, MAX_EXTENDED_KIB);
+    match plan {
+        PcBootPlan::ElTorito { image, drive } => {
+            let boot = BootPoint {
+                cs: image.load_segment,
+                ip: 0,
+                drive,
+                data_segment: 0,
+                stack_pointer: 0x7C00,
+                interrupts: true,
+            };
+            run_with(
+                disks,
+                boot,
+                options,
+                Some(image),
+                None,
+                extended_kib,
+                config.cpu_model,
+            )
+        }
+        PcBootPlan::BootSector { drive } => {
+            let boot = BootPoint::boot_sector(drive);
+            run_with(
+                disks,
+                boot,
+                options,
+                None,
+                None,
+                extended_kib,
+                config.cpu_model,
+            )
+        }
+        PcBootPlan::Linux(kernel) => {
+            run_linux_machine(&disks, &kernel, options, extended_kib, config.cpu_model)
+        }
     }
-    if let Some(disk) = disk {
-        let drive = 0x80;
-        disks.push(DiskImage::fixed(drive, disk));
-        let boot = BootPoint::boot_sector(drive);
-        return run_with(disks, Some(boot), options, None, None);
-    }
-    Err("a boot source (ISO or disk image) is required".into())
 }
 
-/// Where a Linux kernel's two halves go.
-pub struct KernelPlacement {
-    pub setup: Vec<u8>,
-    pub payload: Vec<u8>,
-    pub payload_base: u64,
-    /// Extra images at fixed addresses, such as an initramfs.
-    pub blobs: Vec<(u64, Vec<u8>)>,
-}
-
-/// Boot a Linux kernel taken from an ISO image or from a kernel file.
-///
-/// The boot loader work is ours: find the kernel (and an optional initramfs) in
-/// the ISO, place both halves where the boot protocol says, fill in the fields
-/// the protocol says the loader owns, and jump to the kernel's real-mode entry
-/// with `DS=ES=SS` at the setup segment and interrupts off. Everything after
-/// that is the kernel's own code.
-pub fn run_linux_boot(
-    iso: Option<&[u8]>,
-    kernel: Option<&[u8]>,
-    kernel_path: &str,
-    initrd_path: Option<&str>,
-    cmdline: &str,
-    disk: Option<Vec<u8>>,
+/// Direct kernel boot: place the `bzImage` the way the i386 boot protocol
+/// documents, and hand control to the kernel's own real-mode entry.
+fn run_linux_machine(
+    disks: &[DiskImage],
+    kernel: &DirectKernel,
     options: &PcBootOptions,
+    extended_kib: u64,
+    cpu_model: mosaic_engine_unicorn::X86CpuModel,
 ) -> Result<PcBootReport, String> {
-    let image = match (iso, kernel) {
-        (Some(iso), _) => {
-            let file = crate::linux_boot::iso_file(iso, kernel_path)
-                .ok_or_else(|| format!("{kernel_path} is not in the ISO image"))?;
-            file.read(iso).ok_or("kernel file is outside the image")?
-        }
-        (None, Some(kernel)) => kernel.to_vec(),
-        (None, None) => return Err("a kernel image or an ISO is required".into()),
-    };
-    let parsed = crate::linux_boot::BzImage::parse(&image)?;
-    let initrd = match (iso, initrd_path) {
-        (Some(iso), Some(path)) => {
-            let file = crate::linux_boot::iso_file(iso, path)
-                .ok_or_else(|| format!("{path} is not in the ISO image"))?;
-            let bytes = file.read(iso).ok_or("initramfs is outside the image")?;
-            // Above the kernel, page aligned: the kernel relocates nothing
-            // that a loader put there.
-            let base = (parsed.payload_base() + parsed.payload.len() as u64 + 0xFFFF) & !0xFFFF;
-            Some((base, bytes))
-        }
-        _ => None,
-    };
+    let parsed = crate::linux_boot::BzImage::parse(&kernel.image)?;
+    let initrd = kernel.initrd.as_ref().map(|bytes| {
+        // Above the kernel, page aligned: the kernel relocates nothing that a
+        // loader put there.
+        let base = (parsed.payload_base() + parsed.payload.len() as u64 + 0xFFFF) & !0xFFFF;
+        (base, bytes.clone())
+    });
     let mut setup = parsed.setup.clone();
     let command = crate::linux_boot::prepare_setup(
         &mut setup,
         &parsed,
         &crate::linux_boot::BootParams {
-            cmdline: cmdline.to_string(),
+            cmdline: kernel.cmdline.clone(),
             initrd: initrd
                 .as_ref()
                 .map(|(base, bytes)| (*base, bytes.len() as u64)),
         },
+        extended_kib,
     )?;
-    let mut disks = Vec::new();
-    if let Some(disk) = disk {
-        disks.push(DiskImage::fixed(0x80, disk));
-    }
     let mut blobs: Vec<(u64, Vec<u8>)> = initrd.iter().cloned().collect();
     blobs.push((crate::linux_boot::command_line_address(), command));
     let placement = KernelPlacement {
@@ -1450,7 +1640,15 @@ pub fn run_linux_boot(
         stack_pointer: crate::linux_boot::HEAP_END,
         interrupts: false,
     };
-    let mut report = run_with(disks, Some(boot), options, None, Some(placement))?;
+    let mut report = run_with(
+        disks.to_vec(),
+        boot,
+        options,
+        None,
+        Some(placement),
+        extended_kib,
+        cpu_model,
+    )?;
     report.kernel = Some(KernelSummary {
         version: parsed.version.clone(),
         protocol: format!("{:#06x}", parsed.protocol),
@@ -1462,17 +1660,26 @@ pub fn run_linux_boot(
     Ok(report)
 }
 
+/// Where a Linux kernel's two halves go.
+pub struct KernelPlacement {
+    pub setup: Vec<u8>,
+    pub payload: Vec<u8>,
+    pub payload_base: u64,
+    /// Extra images at fixed addresses, such as an initramfs.
+    pub blobs: Vec<(u64, Vec<u8>)>,
+}
+
 fn run_with(
     disks: Vec<DiskImage>,
-    boot: Option<BootPoint>,
+    boot: BootPoint,
     options: &PcBootOptions,
     image: Option<ElToritoImage>,
     kernel: Option<KernelPlacement>,
+    extended_kib: u64,
+    cpu_model: mosaic_engine_unicorn::X86CpuModel,
 ) -> Result<PcBootReport, String> {
-    let Some(boot) = boot else {
-        return Err("no boot point".into());
-    };
-    let mut engine = UnicornX86Boot::new().map_err(|error| format!("engine: {error:?}"))?;
+    let mut engine = UnicornX86Boot::new_as(cpu_model)
+        .map_err(|error| format!("engine (cpu model {cpu_model:?}): {error:?}"))?;
     // Conventional RAM, the VGA text window and the BIOS window are all real
     // guest memory: the firmware writes the screen into the same window the
     // guest reads.
@@ -1513,7 +1720,7 @@ fn run_with(
     engine
         .map_memory(
             mosaic_core_types::Addr(0x0010_0000),
-            EXTENDED_RAM,
+            extended_kib * 1024,
             mosaic_core_types::Permissions::RWX,
         )
         .map_err(|error| format!("extended ram map: {error:?}"))?;
@@ -1537,9 +1744,13 @@ fn run_with(
         .map_err(|error| format!("ports: {error:?}"))?;
 
     // A raw disk contributes its first sector to `7C00h`, which is where the
-    // firmware's own bootstrap would have copied it.
+    // firmware's own bootstrap would have copied it. The sector belongs to
+    // the drive the boot plan named, not to whichever drive is first.
     let boot_sector = if image.is_none() && kernel.is_none() {
-        let disk = disks.first().ok_or("boot disk missing")?;
+        let disk = disks
+            .iter()
+            .find(|disk| disk.drive == boot.drive)
+            .ok_or("boot disk missing")?;
         let size = (disk.block_size as usize).min(512);
         Some(
             disk.data
@@ -1561,7 +1772,12 @@ fn run_with(
         .write_memory(mosaic_core_types::Addr(BIOS_ROM_BASE), firmware.rom())
         .map_err(|error| format!("firmware rom: {error:?}"))?;
 
-    let bios = Arc::new(Mutex::new(PcBios::new(disks, boot.drive, image.clone())));
+    let bios = Arc::new(Mutex::new(PcBios::new(
+        disks,
+        boot.drive,
+        extended_kib,
+        image.clone(),
+    )));
     engine
         .attach_interrupt_service(Box::new(SharedBios {
             inner: Arc::clone(&bios),

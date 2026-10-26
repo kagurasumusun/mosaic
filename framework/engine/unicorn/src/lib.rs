@@ -225,6 +225,8 @@ pub struct UnicornContext(pub(crate) unicorn_engine::Context);
 /// created by [`unicorn_wrapper`].
 struct Common {
     backend: Backend,
+    /// Backend CPU model pinned at construction, if any (x86).
+    cpu_model: Option<i32>,
     inner: OwnedUnicorn,
     /// Native RAM/ROM pages eligible for loader access.
     mappings: Vec<(u64, u64)>,
@@ -247,6 +249,14 @@ struct Common {
 
 impl Common {
     fn new(backend: Backend) -> Result<Self, EngineError> {
+        Self::new_inner(backend, None)
+    }
+
+    fn new_with_model(backend: Backend, cpu_model: i32) -> Result<Self, EngineError> {
+        Self::new_inner(backend, Some(cpu_model))
+    }
+
+    fn new_inner(backend: Backend, cpu_model: Option<i32>) -> Result<Self, EngineError> {
         let (arch, mode) = match backend {
             Backend::Arm => (Arch::ARM, Mode::ARM | Mode::LITTLE_ENDIAN),
             // MCLASS selects the Cortex-M3 CPU model, which is Thumb-only and
@@ -263,6 +273,15 @@ impl Common {
         };
         let mut uc = Unicorn::new_with_data(arch, mode, EngineData::default())
             .map_err(|_| EngineError::Backend)?;
+        // The model must be pinned before the first hook: the backend refuses
+        // `UC_CTL_CPU_MODEL` once any hook exists (measured), and every
+        // adapter installs its counting hook right below.
+        if let Some(model) = cpu_model {
+            let applied = uc.ctl_set_cpu_model(model);
+            if applied.is_err() {
+                return Err(EngineError::CapabilityMissing);
+            }
+        }
         // Unicorn registers `emu_start`'s `until` address as an exit and, at the
         // end of every quantum, invalidates the translation block covering
         // `until - 1` (`tcg_cpu_exec` -> `uc_invalidate_tb`). This adapter never
@@ -448,6 +467,7 @@ impl Common {
         }
         Ok(Self {
             backend,
+            cpu_model,
             inner: OwnedUnicorn(uc),
             mappings: Vec::new(),
             mmio: Vec::new(),
@@ -1281,7 +1301,7 @@ fn x86_enter_gate(
             .map_err(|_| EngineError::Backend)?;
         uc.reg_write(RegisterX86::CS as i32, u64::from(handler_cs))
             .map_err(|_| EngineError::Backend)?;
-        uc.reg_write(RegisterX86::EIP as i32, u64::from(handler_ip))
+        uc.reg_write(RegisterX86::EIP as i32, handler_ip)
             .map_err(|_| EngineError::Backend)?;
         return Ok(true);
     }
@@ -1322,21 +1342,21 @@ fn x86_enter_gate(
     if wide {
         for value in [flags as u32, u32::from(entry.cs as u16), entry.eip as u32] {
             sp = sp.wrapping_sub(4);
-            x86_write_bytes(uc, ss_base + u64::from(sp), &value.to_le_bytes())?;
+            x86_write_bytes(uc, ss_base + sp, &value.to_le_bytes())?;
         }
     } else {
         for value in [flags as u16, entry.cs as u16, entry.eip as u16] {
             sp = sp.wrapping_sub(2);
-            x86_write_bytes(uc, ss_base + u64::from(sp), &value.to_le_bytes())?;
+            x86_write_bytes(uc, ss_base + sp, &value.to_le_bytes())?;
         }
     }
     if let Some(error_code) = entry.error_code {
         // Intel SDM Vol.3 §6.13: the error code is pushed last, so it sits at
         // the top of the frame and `iret` pops past it.
         sp = sp.wrapping_sub(4);
-        x86_write_bytes(uc, ss_base + u64::from(sp), &error_code.to_le_bytes())?;
+        x86_write_bytes(uc, ss_base + sp, &error_code.to_le_bytes())?;
     }
-    uc.reg_write(RegisterX86::ESP as i32, u64::from(sp))
+    uc.reg_write(RegisterX86::ESP as i32, sp)
         .map_err(|_| EngineError::Backend)?;
     if x86_gate_clears_if(gate_type) {
         uc.reg_write(RegisterX86::EFLAGS as i32, flags & !(IF | TF))
@@ -1520,7 +1540,7 @@ fn x86_stores_to_memory(code: &[u8]) -> bool {
                 // BTS/BTR/BTC with a register source, CMPXCHG8B, and the SSE
                 // stores (`MOVLPS`/`MOVHPS`/`MOVNTPS`/`MOVD`-family).
                 Some(0xAB | 0xB3 | 0xBB | 0x11 | 0x13 | 0x17 | 0x29 | 0x2B | 0x7F | 0xD6) => true,
-                Some(0xBA) => matches!(reg_field(at + 2), Some(5 | 6 | 7)),
+                Some(0xBA) => matches!(reg_field(at + 2), Some(5..=7)),
                 Some(0xC7) => matches!(reg_field(at + 2), Some(1)),
                 _ => false,
             }
@@ -1753,7 +1773,7 @@ fn x86_modrm_operand(
         };
         let shift = sib[0] >> 6;
         offset = base
-            & 0xFFFF_FFFF
+            & (0xFFFF_FFFF
                 + ((index & 0xFFFF_FFFF) << shift)
                 + if base_field == 0b101 && mode == 0b00 {
                     let mut disp = [0u8; 4];
@@ -1762,7 +1782,7 @@ fn x86_modrm_operand(
                     u64::from(u32::from_le_bytes(disp))
                 } else {
                     0
-                };
+                });
         offset &= 0xFFFF_FFFF;
     } else {
         let base = match rm {
@@ -1852,6 +1872,14 @@ macro_rules! unicorn_wrapper {
         impl $name {
             pub fn new() -> Result<Self, EngineError> {
                 Ok(Self(Common::new($backend)?))
+            }
+
+            /// Construct with an explicit backend CPU model. Must be a
+            /// constructor and not a setter: the backend refuses to change
+            /// the model once any hook exists, and every adapter installs its
+            /// counting hook during construction.
+            pub fn with_cpu_model(model: i32) -> Result<Self, EngineError> {
+                Ok(Self(Common::new_with_model($backend, model)?))
             }
 
             pub fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
@@ -2152,8 +2180,65 @@ macro_rules! x86_extensions {
                 data.interrupts = Some(service);
                 Ok(())
             }
+
+            /// Construct a core impersonating `model`. The backend's default
+            /// (`qemu64`) predates BMI2/AVX2, so a guest kernel built for
+            /// `x86-64-v2` or newer faults on its first `SHLX` until this
+            /// names a core that has the extension set.
+            pub fn new_as(model: X86CpuModel) -> Result<Self, EngineError> {
+                Self::with_cpu_model(model as i32)
+            }
+
+            /// The microarchitecture this core impersonates, if it was pinned
+            /// at construction time (see [`UnicornX86Boot::new_as`]). The
+            /// backend refuses to change the model once any hook exists, so
+            /// there is deliberately no setter.
+            pub fn cpu_model(&self) -> Option<X86CpuModel> {
+                self.0.cpu_model.and_then(X86CpuModel::from_ordinal)
+            }
         }
     };
+}
+
+impl X86CpuModel {
+    /// The backend ordinal this named model was pinned with, if it was.
+    fn from_ordinal(ordinal: i32) -> Option<Self> {
+        Some(match ordinal {
+            0 => Self::Qemu64,
+            3 => Self::Kvm64,
+            14 => Self::Nehalem,
+            16 => Self::SandyBridge,
+            17 => Self::IvyBridge,
+            18 => Self::Haswell,
+            19 => Self::Broadwell,
+            20 => Self::SkylakeClient,
+            21 => Self::SkylakeServer,
+            27 => Self::IcelakeClient,
+            _ => return None,
+        })
+    }
+}
+
+/// x86 microarchitectures the backend can impersonate, named the way a
+/// `-cpu` command line names them. Mirrors the backend's own model list by
+/// ordinal; only models a guest can actually distinguish are exposed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(i32)]
+pub enum X86CpuModel {
+    /// The backend default: a generic 64-bit core without BMI2/AVX2.
+    Qemu64 = 0,
+    /// Generic virtualization model: most server extension sets.
+    Kvm64 = 3,
+    /// 45 nm Core: SSE4.2, no BMI2.
+    Nehalem = 14,
+    SandyBridge = 16,
+    IvyBridge = 17,
+    /// First core with BMI2/AVX2 — the baseline for `x86-64-v2` guests.
+    Haswell = 18,
+    Broadwell = 19,
+    SkylakeClient = 20,
+    SkylakeServer = 21,
+    IcelakeClient = 27,
 }
 
 x86_extensions!(UnicornX86);

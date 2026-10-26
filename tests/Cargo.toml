@@ -1,0 +1,30 @@
+[package]
+name = "mosaic-tests-boot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "tests"
+kind = "machine"
+level = 6
+
+[lints]
+workspace = true
+
+[lib]
+name = "mosaic_tests_boot"
+path = "src/lib.rs"
+
+[dependencies]
+mosaic-apps-system = { path = "../apps/system" }
+
+[dependencies.toml]
+version = "0.8"
+default-features = false
+features = ["parse", "display"]
+
+[features]
+default = []
+unicorn = ["mosaic-apps-system/unicorn"]

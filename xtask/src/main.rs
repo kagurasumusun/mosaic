@@ -1,14 +1,44 @@
 #![forbid(unsafe_code)]
 
 use mosaic_xtask::{
-    lint_catalog, lint_layers, lint_names, load_packages, workspace_root, CheckResult,
+    images, lint_catalog, lint_layers, lint_names, load_packages, workspace_root, CheckResult,
 };
 
 fn run() -> CheckResult<()> {
     let command = std::env::args().nth(1).unwrap_or_else(|| "help".into());
     if matches!(command.as_str(), "help" | "--help" | "-h") {
-        println!("cargo xtask <check | lint-layers | lint-names | lint-catalog | doctor>\n\ncheck runs layer, naming, and catalog validation. doctor reports the workspace status.");
+        println!(
+            "cargo xtask <check | lint-layers | lint-names | lint-catalog | images … | doctor>\n\
+             \n\
+             check runs layer, naming, and catalog validation. doctor reports the workspace status.\n\
+             \n\
+             images list                     show the boot-test image catalog and its local state\n\
+             images fetch [--id ID]…         download `download` entries into test-images/ and verify digests\n\
+             images verify                   verify the digests of images that are present"
+        );
         return Ok(());
+    }
+    if command == "images" {
+        let root = workspace_root()?;
+        let mut arguments = std::env::args().skip(2).peekable();
+        let subcommand = arguments.next().unwrap_or_else(|| "list".into());
+        let mut only = Vec::new();
+        while let Some(argument) = arguments.next() {
+            match argument.as_str() {
+                "--id" => {
+                    if let Some(id) = arguments.next() {
+                        only.push(id);
+                    }
+                }
+                other => return Err(format!("unknown images argument {other}")),
+            }
+        }
+        return match subcommand.as_str() {
+            "list" => images::list(&root),
+            "fetch" => images::fetch(&root, &only),
+            "verify" => images::verify(&root),
+            other => Err(format!("unknown images subcommand: {other}")),
+        };
     }
     if !matches!(
         command.as_str(),

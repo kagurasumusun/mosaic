@@ -1,9 +1,13 @@
 [package]
-name = "mosaic-apps-vm-runner"
+name = "mosaic-apps-system"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+
+[[bin]]
+name = "mosaic-system"
+path = "src/main.rs"
 
 [package.metadata.layer]
 domain = "apps"
@@ -29,10 +33,8 @@ mosaic-engine-unicorn = { path = "../../framework/engine/unicorn", optional = tr
 mosaic-ip-x86-pic-8259 = { path = "../../catalog/ip/x86/pic-8259" }
 mosaic-ip-x86-pit-8254 = { path = "../../catalog/ip/x86/pit-8254" }
 mosaic-ip-x86-rtc-mc146818 = { path = "../../catalog/ip/x86/rtc-mc146818" }
-mosaic-ip-pci-pci-host = { path = "../../catalog/ip/pci/pci-host" }
-mosaic-ip-pci-pci-ide = { path = "../../catalog/ip/pci/pci-ide" }
-mosaic-ip-virtio-virtio-blk = { path = "../../catalog/ip/virtio/virtio-blk" }
-mosaic-ip-arm-gic-v2 = { path = "../../catalog/ip/arm/gic-v2" }
+mosaic-ip-x86-ioapic = { path = "../../catalog/ip/x86/ioapic" }
+mosaic-ip-x86-fw-cfg = { path = "../../catalog/ip/x86/fw-cfg" }
 mosaic-ip-arm-pl011 = { path = "../../catalog/ip/arm/pl011" }
 
 [features]

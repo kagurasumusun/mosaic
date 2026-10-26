@@ -277,6 +277,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic-apps-system"
+version = "0.1.0"
+dependencies = [
+ "mosaic-assemble",
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-runtime",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-ip-arm-pl011",
+ "mosaic-ip-x86-fw-cfg",
+ "mosaic-ip-x86-ioapic",
+ "mosaic-ip-x86-pic-8259",
+ "mosaic-ip-x86-pit-8254",
+ "mosaic-ip-x86-rtc-mc146818",
+ "mosaic-isa-aarch64",
+ "mosaic-isa-arm",
+ "mosaic-isa-x86",
+ "mosaic-isa-x86-64",
+]
+
+[[package]]
 name = "mosaic-apps-vic-thermal"
 version = "0.1.0"
 dependencies = [
@@ -295,31 +318,6 @@ dependencies = [
  "mosaic-ip-synopsys-dw-apb-i2c",
  "mosaic-isa-arm",
  "mosaic-part-nxp-lm75a",
-]
-
-[[package]]
-name = "mosaic-apps-vm-runner"
-version = "0.1.0"
-dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-engine-unicorn",
- "mosaic-ip-arm-gic-v2",
- "mosaic-ip-arm-pl011",
- "mosaic-ip-pci-pci-host",
- "mosaic-ip-pci-pci-ide",
- "mosaic-ip-virtio-virtio-blk",
- "mosaic-ip-x86-pic-8259",
- "mosaic-ip-x86-pit-8254",
- "mosaic-ip-x86-rtc-mc146818",
- "mosaic-isa-aarch64",
- "mosaic-isa-arm",
- "mosaic-isa-x86",
- "mosaic-isa-x86-64",
 ]
 
 [[package]]
@@ -837,6 +835,14 @@ dependencies = [
 [[package]]
 name = "mosaic-prim-bits"
 version = "0.1.0"
+
+[[package]]
+name = "mosaic-tests-boot"
+version = "0.1.0"
+dependencies = [
+ "mosaic-apps-system",
+ "toml",
+]
 
 [[package]]
 name = "mosaic-xtask"

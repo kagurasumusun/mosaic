@@ -3,3 +3,4 @@
 /catalog/firmware/*.bin
 /catalog/firmware/*.elf
 /tmp/
+test-images/

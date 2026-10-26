@@ -5,7 +5,7 @@
 コンソールは未対応（下記「残る穴」）。
 
 根拠: ADR 0018、ADR 0019。実測は `framework/engine/unicorn/src/lib.rs` の
-`x86_boot_core_resumes_across_a_real_mode_far_jump` と `apps/vm-runner`
+`x86_boot_core_resumes_across_a_real_mode_far_jump` と `apps/system`（`mosaic-system -cdrom`）
 の Tiny Core 起動。Unicorn 2.1.5 のソース（`uc.c`、`qemu/target/i386/unicorn.c`）
 を直接読んで確定させた。
 

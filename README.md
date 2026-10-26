@@ -6,6 +6,43 @@ Rust 主体の仮想マシン基盤。リポジトリ名を暫定のプロジェ
 P4 は全 catalog モデル・CPU engine・signal sink・永続形式までは未完です。
 `bringup`・`sensorbus`・`multicore` の各アプリケーションが Unicorn 上で実ファームウェアを起動し、期待 UART 出力を検証します。
 
+## システムエミュレータとして使う
+
+`mosaic-system` が実行の入り口である（ADR 0021）。QEMU と同じ語彙で
+マシンを選び、実イメージを付けて起動する。
+
+```sh
+# 実 CD イメージからブートする（ISOLINUX が画面にバナーを出すまで実行）:
+cargo run --locked -p mosaic-apps-system --features unicorn -- \
+    -M pc -cdrom tests/assets/tinycore-16-core.iso -m 64M -display text
+
+# カーネルだけを ISO から取り出して直接起動する（-kernel/-initrd/-append）:
+cargo run --locked -p mosaic-apps-system --features unicorn -- \
+    -kernel tests/assets/tinycore-16-core.iso\!boot/vmlinuz \
+    -initrd tests/assets/tinycore-16-core.iso\!boot/core.gz \
+    -append "console=ttyS0,115200 console=tty0" -serial stdio
+
+# フロッピイメージからブートする（FreeDOS の KERNEL.SYS まで実行）:
+cargo run --locked -p mosaic-apps-system --features unicorn -- \
+    -fda test-images/freedos-1.3-boot.img -boot a -display text
+```
+
+`-M help`、`-cpu help` で選択肢一覧。`--report -` は JSON の実行報告書を
+出す（停止理由・命令数・画面・シリアル・未処理割込み・例外）。
+
+## ゲスト OS のテスト
+
+実イメージだけを扱う（ADR 0022）。台帳は `tests/images.toml`、
+ハーネスは OS を知らない 1 本のループ:
+
+```sh
+cargo xtask images fetch        # 実イメージ（Alpine/SliTaz/Debian/ReactOS/Android-x86…）を取得
+cargo test --locked -p mosaic-tests-boot --features unicorn -- --nocapture
+```
+
+目標の網羅表（Linux 全アーキ / Android 1.6-4.4 / Windows 系 / RTOS）は
+[docs/os-targets.md](docs/os-targets.md) を参照。
+
 ## 開発を始める
 
 Rust 1.85.0（`rust-toolchain.toml`）、rustfmt、Clippy が必要です。
@@ -19,7 +56,7 @@ cargo test --locked --workspace --all-features
 cargo xtask doctor
 ```
 
-通常の CLI は開発用ヘルプを表示します。Unicorn を使用する場合だけ明示的に opt-in します。
+開発用 CLI（`apps/cli`）は Unicorn の FlatView 結合 smoke test を持つ:
 
 ```sh
 cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
@@ -34,7 +71,9 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 - `catalog/`: 種別 → 出自で配置するモデルと宣言。ARM IP（pl011 / sp804 / pl022 / pl061 / mhu /
   dw-apb-i2c）、ARM926EJ-S・SiFive E31 の CPU 宣言、Bosch / TI の部品、
   SoC・ボード宣言を登録済みです。
-- `apps/`: 実行アプリケーション。
+- `apps/`: 実行アプリケーション。`apps/system`（`mosaic-system`）が VM の
+  実行入り口。`bringup`・`sensorbus`・`multicore` は縦スライスの実証アプリ。
+- `tests/`: 機械レベルのブートテスト（実イメージの台帳と汎用ハーネス）。
 - `xtask/`: Cargo の依存宣言に基づく層・命名の検査。
 - `docs/adr/`: 初日の設計判断と未決事項。
 

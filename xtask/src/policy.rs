@@ -65,6 +65,12 @@ pub fn validate_layer(path: &str, layer: &Layer) -> bool {
                 && (!COMPOSITE_KINDS.contains(&kind) || path.ends_with("/glue"))
         }
         "apps" => kind == "app" && layer.level == 6 && path.starts_with("apps/"),
+        // Machine-level guest tests: the design document's `tests/` directory
+        // (§6), holding real-image boot tests. Same rights as apps, because a
+        // boot test assembles a whole machine the same way an app does.
+        "tests" => {
+            kind == "machine" && layer.level == 6 && (path == "tests" || path.starts_with("tests/"))
+        }
         "tooling" => kind == "tooling" && layer.level == 7 && path == "xtask",
         _ => false,
     }
@@ -75,7 +81,7 @@ pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
     let f = from.kind.as_str();
     let t = to.kind.as_str();
     match from.domain.as_str() {
-        "tooling" | "apps" => true,
+        "tooling" | "apps" | "tests" => true,
         "catalog" => {
             if to.domain == "catalog" {
                 return !COMPOSITE_KINDS.contains(&f) && t == "ip-lib";
@@ -107,7 +113,7 @@ pub fn external_dependency_allowed(path: &str, layer: &Layer, dependency: &str) 
             && layer.level == 3
             && dependency == "unicorn-engine";
     }
-    matches!(layer.domain.as_str(), "tooling" | "apps")
+    matches!(layer.domain.as_str(), "tooling" | "apps" | "tests")
 }
 
 pub fn lint_layers(packages: &[Package]) -> Vec<String> {
