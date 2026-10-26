@@ -1,0 +1,1 @@
+{"machine":"pc","instructions":8003705,"stop_reason":"BudgetExhausted","eip":41469,"cs":0,"cr0":16,"screen":["","ISOLINUX 4.05 0x4f92e181 ETCD"],"serial":"","disk_reads":[{"drive":159,"lba":38,"blocks":11,"buffer":34816}],"interrupts":{"0x10":31,"0x13":2,"0x15":186907}}
