@@ -45,6 +45,7 @@ pub struct GenericVmReport {
     pub ide_storage_ready: bool,
     pub virtio_storage_ready: bool,
     pub iso_volume_id: Option<String>,
+    pub snapshot_supported: bool,
 }
 
 fn leaf(base: u64, size: u64, node: NodeId, kind: MemoryKind, perms: Permissions) -> Region {
@@ -143,32 +144,32 @@ pub fn run_generic_pc_vm(
     virtio.attach_disk(vec![0u8; 10 * 1024 * 1024]); // 10MB virtual disk
 
     machine
-        .register_device(PIC, Box::new(pic))
+        .register_snapshot_device(PIC, pic)
         .map_err(|e| format!("pic: {e:?}"))?;
     machine
-        .register_device(PIT, Box::new(pit))
+        .register_snapshot_device(PIT, pit)
         .map_err(|e| format!("pit: {e:?}"))?;
     machine
-        .register_device(RTC, Box::new(rtc))
+        .register_snapshot_device(RTC, rtc)
         .map_err(|e| format!("rtc: {e:?}"))?;
     machine
-        .register_device(PCI, Box::new(pci))
+        .register_snapshot_device(PCI, pci)
         .map_err(|e| format!("pci: {e:?}"))?;
     machine
-        .register_device(IDE, Box::new(ide))
+        .register_snapshot_device(IDE, ide)
         .map_err(|e| format!("ide: {e:?}"))?;
     machine
-        .register_device(VIRTIO, Box::new(virtio))
+        .register_snapshot_device(VIRTIO, virtio)
         .map_err(|e| format!("virtio: {e:?}"))?;
     machine
-        .register_device(UART, Box::new(Pl011::new(Pl011Params::new(UART_IRQ), None)))
+        .register_snapshot_device(UART, Pl011::new(Pl011Params::new(UART_IRQ), None))
         .map_err(|e| format!("uart: {e:?}"))?;
 
     let mailbox = Arc::new(IrqMailbox::new());
     machine
-        .register_sink(
+        .register_snapshot_sink(
             IRQ_SINK,
-            Box::new(EngineIrqSink::new(ARM_IRQ, Arc::clone(&mailbox))),
+            EngineIrqSink::new(ARM_IRQ, Arc::clone(&mailbox)),
         )
         .map_err(|e| format!("sink: {e:?}"))?;
 
@@ -195,12 +196,18 @@ pub fn run_generic_pc_vm(
         .reg_write(mosaic_isa_x86_64::Register::Rip.into(), RAM_BASE)
         .map_err(|e| format!("rip: {e:?}"))?;
 
-    let mut driver = MachineDriver::new(engine, shared);
+    let mut driver = MachineDriver::new(engine, Arc::clone(&shared));
     driver.attach_irq(Arc::clone(&mailbox));
 
     let report = driver
         .step(NonZeroU64::new(100).unwrap(), 16)
         .map_err(|e| format!("step: {e:?}"))?;
+
+    let snapshot_supported = shared
+        .lock()
+        .map_err(|e| e.to_string())?
+        .save_snapshot()
+        .is_ok();
 
     Ok(GenericVmReport {
         hooks: report.engine.instruction_hooks,
@@ -209,6 +216,7 @@ pub fn run_generic_pc_vm(
         ide_storage_ready: true,
         virtio_storage_ready: true,
         iso_volume_id: iso_vol_id,
+        snapshot_supported,
     })
 }
 
@@ -251,20 +259,20 @@ pub fn run_generic_arm64_virt_vm(disk_image: Option<Vec<u8>>) -> Result<GenericV
     let gic = GicV2::new();
 
     machine
-        .register_device(VIRTIO, Box::new(virtio))
+        .register_snapshot_device(VIRTIO, virtio)
         .map_err(|e| format!("virtio: {e:?}"))?;
     machine
-        .register_device(UART, Box::new(Pl011::new(Pl011Params::new(UART_IRQ), None)))
+        .register_snapshot_device(UART, Pl011::new(Pl011Params::new(UART_IRQ), None))
         .map_err(|e| format!("uart: {e:?}"))?;
     machine
-        .register_device(GIC, Box::new(gic))
+        .register_snapshot_device(GIC, gic)
         .map_err(|e| format!("gic: {e:?}"))?;
 
     let mailbox = Arc::new(IrqMailbox::new());
     machine
-        .register_sink(
+        .register_snapshot_sink(
             IRQ_SINK,
-            Box::new(EngineIrqSink::new(ARM_IRQ, Arc::clone(&mailbox))),
+            EngineIrqSink::new(ARM_IRQ, Arc::clone(&mailbox)),
         )
         .map_err(|e| format!("sink: {e:?}"))?;
 
@@ -288,12 +296,18 @@ pub fn run_generic_arm64_virt_vm(disk_image: Option<Vec<u8>>) -> Result<GenericV
         .reg_write(mosaic_isa_aarch64::Register::Pc.into(), RAM_BASE)
         .map_err(|e| format!("pc: {e:?}"))?;
 
-    let mut driver = MachineDriver::new(engine, shared);
+    let mut driver = MachineDriver::new(engine, Arc::clone(&shared));
     driver.attach_irq(Arc::clone(&mailbox));
 
     let report = driver
         .step(NonZeroU64::new(100).unwrap(), 16)
         .map_err(|e| format!("step: {e:?}"))?;
+
+    let snapshot_supported = shared
+        .lock()
+        .map_err(|e| e.to_string())?
+        .save_snapshot()
+        .is_ok();
 
     Ok(GenericVmReport {
         hooks: report.engine.instruction_hooks,
@@ -302,5 +316,6 @@ pub fn run_generic_arm64_virt_vm(disk_image: Option<Vec<u8>>) -> Result<GenericV
         ide_storage_ready: false,
         virtio_storage_ready: true,
         iso_volume_id: None,
+        snapshot_supported,
     })
 }

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use mosaic_contract_cpu_engine::{CpuEngine, EngineError, IrqLine};
 use mosaic_contract_signal::SignalSink;
-use mosaic_core_types::{Fnv64, SnapshotError};
+use mosaic_core_types::{Fnv64, Snapshot, SnapshotError};
 
 /// Pending IRQ edges, independent of which engine the mailbox is bound to.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -170,6 +170,34 @@ impl EngineIrqSink {
 impl SignalSink for EngineIrqSink {
     fn set_level(&mut self, high: bool) {
         self.mailbox.push(self.line, high);
+    }
+}
+
+impl Snapshot for EngineIrqSink {
+    type State = IrqMailboxState;
+    const SCHEMA_VERSION: u32 = IrqMailboxState::SCHEMA_VERSION;
+
+    fn save(&self) -> Self::State {
+        self.mailbox.save_edges()
+    }
+
+    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+            return Err(SnapshotError::VersionMismatch);
+        }
+        Ok(())
+    }
+
+    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+        self.validate(version, state)?;
+        self.mailbox.load_edges(state)
+    }
+
+    fn fingerprint(version: u32, state: &Self::State) -> u64 {
+        let mut hash = Fnv64::new();
+        hash.u32(version);
+        hash.u64(IrqMailbox::edge_fingerprint(state));
+        hash.finish()
     }
 }
 

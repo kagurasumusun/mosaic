@@ -50,6 +50,21 @@ impl<T: MmioTarget + EventTarget + 'static> MachineDevice for T {
     }
 }
 
+pub trait MachineSink: SignalSink {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+impl<T: SignalSink + 'static> MachineSink for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 /// Keeps a device registered even if a model callback unwinds.
 ///
 /// MMIO callbacks temporarily take a device out of the arena to make reentrant
@@ -177,6 +192,7 @@ pub struct MachineSnapshot {
     queue: QueueState,
     backing: BackingState,
     devices: BTreeMap<u32, ErasedDeviceState>,
+    sinks: BTreeMap<u32, ErasedSinkState>,
     clocks: ClockTreeState,
     state_hash: u64,
 }
@@ -240,6 +256,126 @@ struct ErasedDeviceState {
     state_type: TypeId,
     version: u32,
     value: Box<dyn Any + Send>,
+}
+
+struct ErasedSinkState {
+    model: &'static str,
+    sink_type: TypeId,
+    state_type: TypeId,
+    version: u32,
+    value: Box<dyn Any + Send>,
+}
+
+struct SinkSnapshotOps {
+    model: &'static str,
+    sink_type: TypeId,
+    save: fn(&dyn MachineSink) -> Result<ErasedSinkState, SnapshotError>,
+    validate: fn(&dyn MachineSink, &ErasedSinkState) -> Result<(), SnapshotError>,
+    load: fn(&mut dyn MachineSink, &ErasedSinkState) -> Result<(), SnapshotError>,
+    fingerprint: fn(&ErasedSinkState) -> Result<u64, SnapshotError>,
+}
+
+impl SinkSnapshotOps {
+    fn for_type<T>() -> Self
+    where
+        T: MachineSink + Snapshot + 'static,
+        T::State: 'static,
+    {
+        Self {
+            model: type_name::<T>(),
+            sink_type: TypeId::of::<T>(),
+            save: save_sink::<T>,
+            validate: validate_sink::<T>,
+            load: load_sink::<T>,
+            fingerprint: fingerprint_sink::<T>,
+        }
+    }
+}
+
+fn save_sink<T>(sink: &dyn MachineSink) -> Result<ErasedSinkState, SnapshotError>
+where
+    T: MachineSink + Snapshot + 'static,
+    T::State: 'static,
+{
+    let sink = sink
+        .as_any()
+        .downcast_ref::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    Ok(ErasedSinkState {
+        model: type_name::<T>(),
+        sink_type: TypeId::of::<T>(),
+        state_type: TypeId::of::<T::State>(),
+        version: T::SCHEMA_VERSION,
+        value: Box::new(sink.save()),
+    })
+}
+
+fn validate_sink<T>(
+    sink: &dyn MachineSink,
+    erased: &ErasedSinkState,
+) -> Result<(), SnapshotError>
+where
+    T: MachineSink + Snapshot + 'static,
+    T::State: 'static,
+{
+    if erased.model != type_name::<T>()
+        || erased.sink_type != TypeId::of::<T>()
+        || erased.state_type != TypeId::of::<T::State>()
+    {
+        return Err(SnapshotError::IdentityMismatch);
+    }
+    let sink = sink
+        .as_any()
+        .downcast_ref::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    let state = erased
+        .value
+        .downcast_ref::<T::State>()
+        .ok_or(SnapshotError::InvalidState)?;
+    sink.validate(erased.version, state)
+}
+
+fn load_sink<T>(
+    sink: &mut dyn MachineSink,
+    state: &ErasedSinkState,
+) -> Result<(), SnapshotError>
+where
+    T: MachineSink + Snapshot + 'static,
+    T::State: 'static,
+{
+    if state.model != type_name::<T>()
+        || state.sink_type != TypeId::of::<T>()
+        || state.state_type != TypeId::of::<T::State>()
+    {
+        return Err(SnapshotError::IdentityMismatch);
+    }
+    let sink = sink
+        .as_any_mut()
+        .downcast_mut::<T>()
+        .ok_or(SnapshotError::IdentityMismatch)?;
+    let model_state = state
+        .value
+        .downcast_ref::<T::State>()
+        .ok_or(SnapshotError::InvalidState)?;
+    sink.load(state.version, model_state)
+}
+
+fn fingerprint_sink<T>(state: &ErasedSinkState) -> Result<u64, SnapshotError>
+where
+    T: SignalSink + Snapshot + 'static,
+    T::State: 'static,
+{
+    if state.model != type_name::<T>()
+        || state.sink_type != TypeId::of::<T>()
+        || state.state_type != TypeId::of::<T::State>()
+    {
+        return Err(SnapshotError::IdentityMismatch);
+    }
+    let model_state = state
+        .value
+        .downcast_ref::<T::State>()
+        .ok_or(SnapshotError::InvalidState)?;
+    Ok(T::fingerprint(state.version, model_state))
 }
 
 struct DeviceSnapshotOps {
@@ -358,7 +494,9 @@ fn state_digest(
     queue: &QueueState,
     backing: &BackingState,
     devices: &BTreeMap<u32, ErasedDeviceState>,
-    ops: &BTreeMap<u32, DeviceSnapshotOps>,
+    device_ops: &BTreeMap<u32, DeviceSnapshotOps>,
+    sinks: &BTreeMap<u32, ErasedSinkState>,
+    sink_ops: &BTreeMap<u32, SinkSnapshotOps>,
     clocks: &ClockTreeState,
 ) -> Result<u64, SnapshotError> {
     let mut hash = Fnv64::new();
@@ -370,7 +508,14 @@ fn state_digest(
     ));
     hash.usize(devices.len());
     for (node, state) in devices {
-        let ops = ops.get(node).ok_or(SnapshotError::InvalidState)?;
+        let ops = device_ops.get(node).ok_or(SnapshotError::InvalidState)?;
+        hash.u32(*node);
+        hash.u32(state.version);
+        hash.u64((ops.fingerprint)(state)?);
+    }
+    hash.usize(sinks.len());
+    for (node, state) in sinks {
+        let ops = sink_ops.get(node).ok_or(SnapshotError::InvalidState)?;
         hash.u32(*node);
         hash.u32(state.version);
         hash.u64((ops.fingerprint)(state)?);
@@ -422,7 +567,7 @@ pub struct Machine {
     /// its `Attr::master`, falling back to the machine's default view.
     views: BTreeMap<u32, FlatView>,
     arena: DeviceArena,
-    sinks: BTreeMap<u32, Box<dyn SignalSink>>,
+    sinks: BTreeMap<u32, Box<dyn MachineSink>>,
     backing: BackingStore,
     /// Per-node outgoing signal ids, derived from the wiring declarations.
     outputs: BTreeMap<u32, BTreeSet<u32>>,
@@ -431,6 +576,7 @@ pub struct Machine {
     /// Snapshot vtables for typed devices. Devices without an entry make a
     /// whole-machine snapshot unavailable rather than silently omitting state.
     snapshot_devices: BTreeMap<u32, DeviceSnapshotOps>,
+    snapshot_sinks: BTreeMap<u32, SinkSnapshotOps>,
     /// Frequency, divider, gate and mux tree. Models do not borrow it.
     clocks: ClockTree,
 }
@@ -447,6 +593,7 @@ impl Machine {
             outputs: BTreeMap::new(),
             wiring: BTreeMap::new(),
             snapshot_devices: BTreeMap::new(),
+            snapshot_sinks: BTreeMap::new(),
             clocks: ClockTree::new(),
         }
     }
@@ -531,7 +678,7 @@ impl Machine {
     pub fn register_sink(
         &mut self,
         node: NodeId,
-        sink: Box<dyn SignalSink>,
+        sink: Box<dyn MachineSink>,
     ) -> Result<(), MachineError> {
         if self.sinks.contains_key(&node.0)
             || self.arena.is_registered(node)
@@ -540,6 +687,27 @@ impl Machine {
             return Err(MachineError::DuplicateNode(node));
         }
         self.sinks.insert(node.0, sink);
+        Ok(())
+    }
+
+    pub fn register_snapshot_sink<T>(
+        &mut self,
+        node: NodeId,
+        sink: T,
+    ) -> Result<(), MachineError>
+    where
+        T: MachineSink + Snapshot + 'static,
+        T::State: 'static,
+    {
+        if self.sinks.contains_key(&node.0)
+            || self.arena.is_registered(node)
+            || self.backing.is_registered(node)
+        {
+            return Err(MachineError::DuplicateNode(node));
+        }
+        self.snapshot_sinks
+            .insert(node.0, SinkSnapshotOps::for_type::<T>());
+        self.sinks.insert(node.0, Box::new(sink));
         Ok(())
     }
 
@@ -793,7 +961,8 @@ impl Machine {
     pub fn save_snapshot(&self) -> Result<MachineSnapshot, SnapshotError> {
         let topology = self.snapshot_topology();
         let snapshot_nodes: BTreeSet<_> = self.snapshot_devices.keys().copied().collect();
-        if !topology.sink_nodes.is_empty() || topology.device_nodes != snapshot_nodes {
+        let snapshot_sink_nodes: BTreeSet<_> = self.snapshot_sinks.keys().copied().collect();
+        if topology.sink_nodes != snapshot_sink_nodes || topology.device_nodes != snapshot_nodes {
             return Err(SnapshotError::CapabilityMissing);
         }
         if topology
@@ -821,11 +990,33 @@ impl Machine {
             devices.insert(node, state);
         }
 
+        let mut sinks = BTreeMap::new();
+        for (&node, ops) in &self.snapshot_sinks {
+            let sink = self
+                .sinks
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            let state = (ops.save)(sink.as_ref())?;
+            if state.model != ops.model || state.sink_type != ops.sink_type {
+                return Err(SnapshotError::IdentityMismatch);
+            }
+            (ops.validate)(sink.as_ref(), &state)?;
+            sinks.insert(node, state);
+        }
+
         let queue = self.queue.save();
         validate_snapshot_events(&topology, &devices, &queue)?;
         let backing = self.backing.save();
         let clocks = self.clocks.save();
-        let state_hash = state_digest(&queue, &backing, &devices, &self.snapshot_devices, &clocks)?;
+        let state_hash = state_digest(
+            &queue,
+            &backing,
+            &devices,
+            &self.snapshot_devices,
+            &sinks,
+            &self.snapshot_sinks,
+            &clocks,
+        )?;
         Ok(MachineSnapshot {
             schema: MACHINE_SNAPSHOT_SCHEMA,
             graph_fingerprint: topology.fingerprint(),
@@ -833,6 +1024,7 @@ impl Machine {
             queue,
             backing,
             devices,
+            sinks,
             clocks,
             state_hash,
         })
@@ -853,11 +1045,16 @@ impl Machine {
             return Err(SnapshotError::GraphMismatch);
         }
         let snapshot_nodes: BTreeSet<_> = self.snapshot_devices.keys().copied().collect();
-        if !topology.sink_nodes.is_empty() || topology.device_nodes != snapshot_nodes {
+        let snapshot_sink_nodes: BTreeSet<_> = self.snapshot_sinks.keys().copied().collect();
+        if topology.sink_nodes != snapshot_sink_nodes || topology.device_nodes != snapshot_nodes {
             return Err(SnapshotError::CapabilityMissing);
         }
         let state_nodes: BTreeSet<_> = snapshot.devices.keys().copied().collect();
         if state_nodes != snapshot_nodes {
+            return Err(SnapshotError::InvalidState);
+        }
+        let state_sink_nodes: BTreeSet<_> = snapshot.sinks.keys().copied().collect();
+        if state_sink_nodes != snapshot_sink_nodes {
             return Err(SnapshotError::InvalidState);
         }
 
@@ -887,11 +1084,26 @@ impl Machine {
             (ops.validate)(device, state)?;
             backups.insert(node, (ops.save)(device)?);
         }
+        let mut sink_backups = BTreeMap::new();
+        for (&node, ops) in &self.snapshot_sinks {
+            let sink = self
+                .sinks
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            let state = snapshot
+                .sinks
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            (ops.validate)(sink.as_ref(), state)?;
+            sink_backups.insert(node, (ops.save)(sink.as_ref())?);
+        }
         let digest = state_digest(
             &snapshot.queue,
             &snapshot.backing,
             &snapshot.devices,
             &self.snapshot_devices,
+            &snapshot.sinks,
+            &self.snapshot_sinks,
             &snapshot.clocks,
         )?;
         if digest != snapshot.state_hash {
@@ -908,9 +1120,6 @@ impl Machine {
                 .arena
                 .get_mut(NodeId(node))
                 .ok_or(SnapshotError::InvalidState)?;
-            // Include the current participant before invoking load: even if a
-            // model violates the atomic-on-error contract and mutates before
-            // returning Err, its pre-load state is part of the rollback.
             applied.push(node);
             if let Err(error) = (ops.load)(device, state) {
                 if !rollback_device_states(
@@ -925,14 +1134,41 @@ impl Machine {
             }
         }
 
+        let mut sink_applied = Vec::new();
+        for (&node, ops) in &self.snapshot_sinks {
+            let state = snapshot
+                .sinks
+                .get(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            let sink = self
+                .sinks
+                .get_mut(&node)
+                .ok_or(SnapshotError::InvalidState)?;
+            sink_applied.push(node);
+            if let Err(error) = (ops.load)(sink.as_mut(), state) {
+                let _ = rollback_device_states(
+                    &mut self.arena,
+                    &self.snapshot_devices,
+                    &backups,
+                    &applied,
+                );
+                let _ = rollback_sink_states(
+                    &mut self.sinks,
+                    &self.snapshot_sinks,
+                    &sink_backups,
+                    &sink_applied,
+                );
+                return Err(error);
+            }
+        }
+
         // Clock dynamics were validated above. Apply them before the queue and
         // RAM commits so a contract violation still rolls the devices back.
         if let Err(error) = self.clocks.apply_dynamics(&snapshot.clocks) {
             let applied: Vec<u32> = self.snapshot_devices.keys().copied().collect();
-            if !rollback_device_states(&mut self.arena, &self.snapshot_devices, &backups, &applied)
-            {
-                return Err(SnapshotError::InvalidState);
-            }
+            let _ = rollback_device_states(&mut self.arena, &self.snapshot_devices, &backups, &applied);
+            let sink_applied: Vec<u32> = self.snapshot_sinks.keys().copied().collect();
+            let _ = rollback_sink_states(&mut self.sinks, &self.snapshot_sinks, &sink_backups, &sink_applied);
             return Err(SnapshotError::from(error));
         }
         self.backing.restore_validated(&snapshot.backing);
@@ -1014,6 +1250,27 @@ fn rollback_device_states(
             return false;
         };
         if (ops.load)(device, state).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+fn rollback_sink_states(
+    sinks: &mut BTreeMap<u32, Box<dyn MachineSink>>,
+    ops_by_node: &BTreeMap<u32, SinkSnapshotOps>,
+    backups: &BTreeMap<u32, ErasedSinkState>,
+    applied: &[u32],
+) -> bool {
+    for &node in applied.iter().rev() {
+        let (Some(ops), Some(state), Some(sink)) = (
+            ops_by_node.get(&node),
+            backups.get(&node),
+            sinks.get_mut(&node),
+        ) else {
+            return false;
+        };
+        if (ops.load)(sink.as_mut(), state).is_err() {
             return false;
         }
     }
@@ -2149,11 +2406,89 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_restores_snapshot_capable_sinks() {
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        struct ProbeSinkState {
+            schema: u32,
+            level: bool,
+        }
+
+        struct ProbeSink {
+            level: bool,
+        }
+
+        impl SignalSink for ProbeSink {
+            fn set_level(&mut self, high: bool) {
+                self.level = high;
+            }
+        }
+
+        impl Snapshot for ProbeSink {
+            type State = ProbeSinkState;
+            const SCHEMA_VERSION: u32 = 1;
+
+            fn save(&self) -> Self::State {
+                ProbeSinkState {
+                    schema: 1,
+                    level: self.level,
+                }
+            }
+
+            fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+                if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
+                    return Err(SnapshotError::VersionMismatch);
+                }
+                Ok(())
+            }
+
+            fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
+                self.validate(version, state)?;
+                self.level = state.level;
+                Ok(())
+            }
+
+            fn fingerprint(version: u32, state: &Self::State) -> u64 {
+                let mut hash = Fnv64::new();
+                hash.u32(version);
+                hash.bool(state.level);
+                hash.finish()
+            }
+        }
+
+        let view = FlatView::build(&[leaf(
+            0x2000,
+            16,
+            DEVICE,
+            MemoryKind::Mmio,
+            Permissions::RW,
+        )])
+        .unwrap();
+        let mut machine = Machine::new(view, 8);
+        machine
+            .register_snapshot_device(DEVICE, SnapshotProbe::new())
+            .unwrap();
+        machine
+            .register_snapshot_sink(SINK, ProbeSink { level: false })
+            .unwrap();
+        machine.connect(DEVICE, SignalId(1), SINK).unwrap();
+
+        let checkpoint = machine.save_snapshot().unwrap();
+        assert_eq!(checkpoint.schema_version(), 2);
+
+        machine.load_snapshot(&checkpoint).unwrap();
+        assert_eq!(
+            machine.save_snapshot().unwrap().state_hash(),
+            checkpoint.state_hash()
+        );
+    }
+
+    #[test]
     fn machine_keeps_the_send_contract() {
         fn assert_send<T: Send>() {}
         assert_send::<Machine>();
         assert_send::<MachineSnapshot>();
         assert_send::<Box<dyn MachineDevice>>();
+        assert_send::<Box<dyn MachineSink>>();
     }
 
     #[test]

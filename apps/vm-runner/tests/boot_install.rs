@@ -30,6 +30,7 @@ macro_rules! test_os_boot {
             assert!(report.ide_storage_ready);
             assert!(report.virtio_storage_ready);
             assert_eq!(report.iso_volume_id.as_deref(), Some($vol_id));
+            assert!(report.snapshot_supported);
         }
     };
 }
@@ -43,6 +44,7 @@ macro_rules! test_arm_os_boot {
                 .expect(concat!("ARM OS boot failed: ", $os_name));
             assert_eq!(report.hooks, 100);
             assert!(report.virtio_storage_ready);
+            assert!(report.snapshot_supported);
         }
     };
 }
@@ -59,6 +61,7 @@ fn os_01_real_tinycore_linux() {
     assert!(report.ide_storage_ready);
     assert!(report.virtio_storage_ready);
     assert_eq!(report.iso_volume_id.as_deref(), Some("Core"));
+    assert!(report.snapshot_supported);
 }
 
 // 2-25: Linux Distributions & Versions
