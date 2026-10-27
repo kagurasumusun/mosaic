@@ -1,7 +1,11 @@
 //! BR25G64 64Kbit SPI EEPROM
 //!
-//! Catalog part `part:rohm/br25g64` — see manifests/hw/eeprom/br25g64.toml.
+//! Catalog part `part:rohm/br25g64` — manifests/hw/eeprom/br25g64.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::eeprom::spi_25cxx::SpiEeprom;
+
+/// br25g64: 8192 bytes, 2-byte address field.
+pub fn new() -> SpiEeprom {
+    SpiEeprom::new(8192, 2)
+}

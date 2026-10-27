@@ -32,6 +32,10 @@ pub mod timer;
 pub mod usb;
 pub mod virtio;
 
+/// Minimal `Ctx` shared by the part-core unit tests.
+#[cfg(test)]
+pub(crate) mod testutil;
+
 pub mod adc;
 pub mod audio;
 pub mod can;

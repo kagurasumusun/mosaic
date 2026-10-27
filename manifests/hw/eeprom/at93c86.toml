@@ -1,0 +1,13 @@
+# AT93C86 16Kbit Microwire EEPROM
+[part]
+id = 'part:microchip/at93c86'
+origin = 'microchip'
+name = 'at93c86'
+summary = "AT93C86 16Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 3
+address-bits = 10
+

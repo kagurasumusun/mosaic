@@ -166,3 +166,6 @@ pub mod veml6070;
 pub mod veml6075;
 pub mod veml6204;
 pub mod veml7700;
+
+pub mod i2c_pointer;
+pub mod onewire_ds18b20;

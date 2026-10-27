@@ -1,7 +1,12 @@
 //! ADS1015 12-bit 4-channel I2C ADC
 //!
-//! Catalog part `part:ti/ads1015` — see manifests/hw/adc/ads1015.toml.
+//! Catalog part `part:ti/ads1015` — manifests/hw/adc/ads1015.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::sensor::i2c_pointer::PointerSensor;
+
+/// ads1015: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+pub fn new() -> PointerSensor {
+    PointerSensor::new(4, 0x03)
+        .at(0x48)
+}

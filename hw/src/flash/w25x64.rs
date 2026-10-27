@@ -1,7 +1,11 @@
 //! W25X64 64Mbit SPI flash
 //!
-//! Catalog part `part:winbond/w25x64` — see manifests/hw/flash/w25x64.toml.
+//! Catalog part `part:winbond/w25x64` — manifests/hw/flash/w25x64.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::spi_nor::SpiNorFlash;
+
+/// w25x64: 8388608 bytes, JEDEC 0xef 0x40 0x17.
+pub fn new() -> SpiNorFlash {
+    SpiNorFlash::new(8388608, [0xef, 0x40, 0x17])
+}

@@ -1,0 +1,13 @@
+# AT93C56 2Kbit Microwire EEPROM
+[part]
+id = 'part:microchip/at93c56'
+origin = 'microchip'
+name = 'at93c56'
+summary = "AT93C56 2Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 3
+address-bits = 8
+

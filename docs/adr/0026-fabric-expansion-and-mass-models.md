@@ -224,3 +224,62 @@ ADR 0025 の 9 ファブリックに 22 新ファブリックを追加する。�
   次は EEPROM/SHT30/MCP9808 など)。
 - 新ファブリック (qspi/ospi/jtag/swd など) に接続する実モデルの追加。
 - ボード manifest からの新モデル利用 (stm32f103 以外の機械追加時)。
+
+## Addendum (step 2): leaf part の共有機能コア
+
+Status: accepted
+Date: 2026-10-27 (同日追記)
+
+### Context
+
+ADR 0026 本編の時点で生成した leaf part の大半は `Placeholder` 構造体の
+みで、ファブリックに接続しても応答しない (NACK/NoTarget)。実機種の
+網羅は進んだが、動作するのは LM75A/BME280 など既存詳細実装のみだった。
+
+### Decision
+
+**1 ファミリー 1 コア、部品モジュールは薄い設定のみ。** QEMU が
+`hw/eeprom/at24c.c` (24Cxx 全部) と `hw/block/m25p80.c` (SPI flash 全部)
+を容量プロパティで使い回すのと同じ形で、共通動作を 8 本のコアに集約し、
+部品モジュール (`hw/src/<fn>/<part>.rs`) は `pub fn new() -> Core` の
+ジオメトリ設定 (容量・ページ幅・ストラップアドレス・JEDEC) のみを持つ:
+
+| コア | ファミリー | 動作 |
+| --- | --- | --- |
+| `eeprom/i2c_24cxx` | AT24Cxx/M24C/CAT24C/BR24G/MB85RC/FM24C | ワードアドレス + 自動インクリメント、ページ内ロールオーバー (FRAM はなし)、電流アドレス読み出し |
+| `eeprom/spi_25cxx` | 25AA/25LC/M95/CAT25C/BR25G | WREN/WRDI/RDSR/WRSR/READ/WRITE、WEL はライト完了まで持続 |
+| `eeprom/microwire_93cxx` | 93C46..93C86 | EWEN/EWDS/ERAL/WRAL/ERASE/WRITE (NOR AND)/READ |
+| `flash/spi_nor` | W25X/W25Q/MX25L/S25FL/N25Q/GD25/EN25/XT25/AM25/IS25 | m25p80 相当: PP/SE/BE32K/BE64K/CE/RDID (JEDEC)/DP/RDP、プログラムは AND、消去は 0xFF |
+| `gpio/i2c_pcf857x` | PCF8574/8575 + PCA9554/9555 系 | quasi-bidirectional と バンク型 (in/out/pol/cfg) の 2 モデル |
+| `rtc/ds1307_core` | DS1307 系 + M41T00 + BQ32000 | BCD クロック + 56B RAM、桁上げチェイン、12/24h AM/PM 境界 |
+| `sensor/i2c_pointer` | TMP102/MCP9808/ADS1115/INA226 系 | ポインタ 16 ビットレジスタ、バイトカーソル持続 |
+| `sensor/onewire_ds18b20` | DS18B20/S/DS1822/DS1825/MAX31820 | Convert T/Read Scratchpad (Dallas CRC8)/Write/Copy/Recall/Read Power |
+
+**生成器の昇格規則。** `gen_models.py` の `detect_impl()` はサマリーの
+`Kbit/Mbit` から容量を、ベンダーから JEDEC 3 バイトを導出し、
+`render_part_impl()` がコアを束ねる設定モジュールを生成する。上書きは
+`pub struct Placeholder;` マーカーを持つファイルのみ (既存の詳細実装は
+絶対に上書きしない)。これで 240 部品が一括昇格した。
+
+**部品名の正規化。** 数字開始名 (`24c01`, `93c46`) は Rust モジュール名
+にならず xtask の code mirror も壊れるため、正式製品名 (`AT24Cxx`,
+`AT93Cxx`) にリネームして 14+5 部品を回収した。
+
+**契約の修正。** `OneWireRom::crc_ok` は「計算 CRC == 格納バイト」に
+修正し、`serial()`/`crc8()` を追加、Maxim AN27 の実測ベクトル
+(ROM `02 1C B8 01 00 00 00` → CRC `A2`) を契約テストに固定した。
+Dallas 1-Wire CRC8 は LSB ファースト (poly 0x8C 反射) であり、
+DS18B20 スクラッチパッド CRC も同じ向きであることを確認してから
+実装した。
+
+### Consequences
+
+- 240 部品がゲストから実際に読み書きできる (I2C 66 EEPROM + 38 SPI
+  EEPROM + 15 Microwire EEPROM + 65 SPI flash + 14 GPIO エクスパンダ +
+  10 RTC + 23 センサ + 3 ADC + 6 電力モニタ)。hw テストは 211 → 254。
+- 部品の追加は「コアに乗るファミリーなら辞書 1 行 + 再生成」のまま。
+  コアに乗らないファミリー (タッチコントローラ、オーディオコーデック、
+  SoC など) は次フェーズでコアを増やすか個別実装にする。
+- `Placeholder` は 502 部品に残る。それらは manifest の語彙
+  (アドレス・バインディング) としては正しく、ボード構成の材料に
+  なるが、バスに繋いでも応答しない。

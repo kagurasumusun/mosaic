@@ -1,7 +1,11 @@
 //! EN25QH128 128Mbit SPI flash
 //!
-//! Catalog part `part:eon/en25qh128` — see manifests/hw/flash/en25qh128.toml.
+//! Catalog part `part:eon/en25qh128` — manifests/hw/flash/en25qh128.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::spi_nor::SpiNorFlash;
+
+/// en25qh128: 16777216 bytes, JEDEC 0x1c 0x30 0x18.
+pub fn new() -> SpiNorFlash {
+    SpiNorFlash::new(16777216, [0x1c, 0x30, 0x18])
+}

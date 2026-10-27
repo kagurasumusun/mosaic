@@ -1,7 +1,11 @@
 //! S25FL164K 64Mbit SPI flash
 //!
-//! Catalog part `part:cypress/s25fl164k` — see manifests/hw/flash/s25fl164k.toml.
+//! Catalog part `part:cypress/s25fl164k` — manifests/hw/flash/s25fl164k.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::spi_nor::SpiNorFlash;
+
+/// s25fl164k: 8388608 bytes, JEDEC 0x01 0x02 0x17.
+pub fn new() -> SpiNorFlash {
+    SpiNorFlash::new(8388608, [0x01, 0x02, 0x17])
+}

@@ -1,7 +1,11 @@
 //! GD25Q128 128Mbit SPI flash
 //!
-//! Catalog part `part:gigadevice/gd25q128` — see manifests/hw/flash/gd25q128.toml.
+//! Catalog part `part:gigadevice/gd25q128` — manifests/hw/flash/gd25q128.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::spi_nor::SpiNorFlash;
+
+/// gd25q128: 16777216 bytes, JEDEC 0xc8 0x40 0x18.
+pub fn new() -> SpiNorFlash {
+    SpiNorFlash::new(16777216, [0xc8, 0x40, 0x18])
+}

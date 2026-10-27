@@ -1,7 +1,11 @@
 //! BR24G16 16Kbit I2C EEPROM
 //!
-//! Catalog part `part:rohm/br24g16` — see manifests/hw/eeprom/br24g16.toml.
+//! Catalog part `part:rohm/br24g16` — manifests/hw/eeprom/br24g16.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::eeprom::i2c_24cxx::I2cEeprom;
+
+/// br24g16: 2048 bytes, 16-byte page write, strap 0x50.
+pub fn new() -> I2cEeprom {
+    I2cEeprom::new(2048, 16).at(0x50)
+}

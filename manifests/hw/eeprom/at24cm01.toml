@@ -1,0 +1,12 @@
+# AT24CM01 1Mbit I2C EEPROM
+[part]
+id = 'part:microchip/at24cm01'
+origin = 'microchip'
+name = 'at24cm01'
+summary = "AT24CM01 1Mbit I2C EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

@@ -1,0 +1,13 @@
+# AT93C76 8Kbit Microwire EEPROM
+[part]
+id = 'part:microchip/at93c76'
+origin = 'microchip'
+name = 'at93c76'
+summary = "AT93C76 8Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 3
+address-bits = 9
+

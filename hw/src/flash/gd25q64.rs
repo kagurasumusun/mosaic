@@ -1,7 +1,11 @@
 //! GD25Q64 64Mbit SPI flash
 //!
-//! Catalog part `part:gigadevice/gd25q64` — see manifests/hw/flash/gd25q64.toml.
+//! Catalog part `part:gigadevice/gd25q64` — manifests/hw/flash/gd25q64.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::spi_nor::SpiNorFlash;
+
+/// gd25q64: 8388608 bytes, JEDEC 0xc8 0x40 0x17.
+pub fn new() -> SpiNorFlash {
+    SpiNorFlash::new(8388608, [0xc8, 0x40, 0x17])
+}

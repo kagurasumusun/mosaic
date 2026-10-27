@@ -69,3 +69,5 @@ pub mod xt25f128;
 pub mod xt25f16;
 pub mod xt25f32;
 pub mod xt25f64;
+
+pub mod spi_nor;

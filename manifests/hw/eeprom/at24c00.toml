@@ -1,0 +1,12 @@
+# AT24C00 16-byte I2C EEPROM
+[part]
+id = 'part:microchip/at24c00'
+origin = 'microchip'
+name = 'at24c00'
+summary = "AT24C00 16-byte I2C EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

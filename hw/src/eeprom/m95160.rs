@@ -1,7 +1,11 @@
 //! M95160 16Kbit SPI EEPROM
 //!
-//! Catalog part `part:st/m95160` — see manifests/hw/eeprom/m95160.toml.
+//! Catalog part `part:st/m95160` — manifests/hw/eeprom/m95160.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::eeprom::spi_25cxx::SpiEeprom;
+
+/// m95160: 2048 bytes, 2-byte address field.
+pub fn new() -> SpiEeprom {
+    SpiEeprom::new(2048, 2)
+}

@@ -8,6 +8,6 @@ bindings = ["microwire"]
 provenance = { doc = 'vendor datasheet', confidence = 'high' }
 
 [microwire]
-instruction-bits = 11
+instruction-bits = 3
 address-bits = 7
 

@@ -64,3 +64,5 @@ pub mod rv3032;
 pub mod rx8010;
 pub mod rx8025;
 pub mod rx8110;
+
+pub mod ds1307_core;

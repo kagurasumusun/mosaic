@@ -108,6 +108,11 @@ pub fn entries() -> Vec<&'static ModelEntry> {
     extend!(crate::flash::catalog::MODELS);
     extend!(crate::pci::catalog::MODELS);
     extend!(crate::wdt::catalog::MODELS);
+    extend!(crate::adc::catalog::MODELS);
+    extend!(crate::can::catalog::MODELS);
+    extend!(crate::dac::catalog::MODELS);
+    extend!(crate::eeprom::catalog::MODELS);
+    extend!(crate::sensor::catalog::MODELS);
     all
 }
 

@@ -54,3 +54,5 @@ pub mod tca6416;
 pub mod tca6424;
 pub mod tca9539;
 pub mod tca9554;
+
+pub mod i2c_pcf857x;

@@ -1,7 +1,11 @@
 //! M24C08 8Kbit I2C EEPROM
 //!
-//! Catalog part `part:st/m24c08` — see manifests/hw/eeprom/m24c08.toml.
+//! Catalog part `part:st/m24c08` — manifests/hw/eeprom/m24c08.toml.
+//! Thin configuration over a shared functional core (ADR 0026 step 2).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::eeprom::i2c_24cxx::I2cEeprom;
+
+/// m24c08: 1024 bytes, 16-byte page write, strap 0x50.
+pub fn new() -> I2cEeprom {
+    I2cEeprom::new(1024, 16).at(0x50)
+}
