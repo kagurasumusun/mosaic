@@ -1,0 +1,12 @@
+# Microchip MEC1633 eSPI EC
+[part]
+id = 'part:microchip/mec1633'
+origin = 'microchip'
+name = 'mec1633'
+summary = "Microchip MEC1633 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

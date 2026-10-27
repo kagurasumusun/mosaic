@@ -1,0 +1,8 @@
+# Realtek RT715 SoundWire mic codec
+[part]
+id = 'part:realtek/rt715'
+origin = 'realtek'
+name = 'rt715'
+summary = "Realtek RT715 SoundWire mic codec"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

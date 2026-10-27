@@ -1,0 +1,8 @@
+# LaCie Porsche Design FireWire 800 disk
+[part]
+id = 'part:lacie/lacie_porsche_fw800'
+origin = 'lacie'
+name = 'lacie_porsche_fw800'
+summary = "LaCie Porsche Design FireWire 800 disk"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,13 @@
+# Asahi Kasei AK4114 S/PDIF receiver (192kHz, 96kHz max)
+[part]
+id = 'part:asahi/ak4114'
+origin = 'asahi'
+name = 'ak4114'
+summary = "Asahi Kasei AK4114 S/PDIF receiver (192kHz, 96kHz max)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

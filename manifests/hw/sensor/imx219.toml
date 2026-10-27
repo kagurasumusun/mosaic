@@ -1,0 +1,8 @@
+# Sony IMX219 8MP 1/4" CSI-2 sensor (Raspberry Pi V2)
+[part]
+id = 'part:sony/imx219'
+origin = 'sony'
+name = 'imx219'
+summary = "Sony IMX219 8MP 1/4\" CSI-2 sensor (Raspberry Pi V2)"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

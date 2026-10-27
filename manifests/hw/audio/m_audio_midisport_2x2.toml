@@ -1,0 +1,13 @@
+# M-Audio MIDISPORT 2x2 USB MIDI interface
+[part]
+id = 'part:m_audio/m_audio_midisport_2x2'
+origin = 'm_audio'
+name = 'm_audio_midisport_2x2'
+summary = "M-Audio MIDISPORT 2x2 USB MIDI interface"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

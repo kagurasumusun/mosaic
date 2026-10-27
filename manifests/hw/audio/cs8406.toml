@@ -1,0 +1,13 @@
+# Cirrus Logic CS8406 S/PDIF transmitter (192kHz)
+[part]
+id = 'part:cirrus/cs8406'
+origin = 'cirrus'
+name = 'cs8406'
+summary = "Cirrus Logic CS8406 S/PDIF transmitter (192kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

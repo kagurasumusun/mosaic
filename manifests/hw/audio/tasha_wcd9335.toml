@@ -1,0 +1,8 @@
+# Qualcomm Tasha WCD9335 SLIMbus codec variant
+[part]
+id = 'part:qcom/tasha_wcd9335'
+origin = 'qcom'
+name = 'tasha_wcd9335'
+summary = "Qualcomm Tasha WCD9335 SLIMbus codec variant"
+bindings = ["slimbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

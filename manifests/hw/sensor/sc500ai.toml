@@ -1,0 +1,8 @@
+# SmartSens SC500AI 5MP 1/2.5" AI ISP CSI-2 sensor
+[part]
+id = 'part:smartsens/sc500ai'
+origin = 'smartsens'
+name = 'sc500ai'
+summary = "SmartSens SC500AI 5MP 1/2.5\" AI ISP CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# onsemi AR0144 1MP 1/4" global shutter CSI-2 sensor
+[part]
+id = 'part:onsemi/ar0144'
+origin = 'onsemi'
+name = 'ar0144'
+summary = "onsemi AR0144 1MP 1/4\" global shutter CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

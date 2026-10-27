@@ -1,0 +1,8 @@
+# Dell U2720Q 27" 4K USB-C DisplayPort monitor
+[part]
+id = 'part:dell/dell_u2720q'
+origin = 'dell'
+name = 'dell_u2720q'
+summary = "Dell U2720Q 27\" 4K USB-C DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

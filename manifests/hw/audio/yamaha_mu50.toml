@@ -1,0 +1,13 @@
+# Yamaha MU50 XG MIDI tone module
+[part]
+id = 'part:yamaha/yamaha_mu50'
+origin = 'yamaha'
+name = 'yamaha_mu50'
+summary = "Yamaha MU50 XG MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

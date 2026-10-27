@@ -1,0 +1,13 @@
+# ESS Technology ES9023 Sabre S/PDIF DAC
+[part]
+id = 'part:ess/es9023'
+origin = 'ess'
+name = 'es9023'
+summary = "ESS Technology ES9023 Sabre S/PDIF DAC"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

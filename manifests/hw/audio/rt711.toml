@@ -1,0 +1,8 @@
+# Realtek RT711 SoundWire audio codec (headset + mic)
+[part]
+id = 'part:realtek/rt711'
+origin = 'realtek'
+name = 'rt711'
+summary = "Realtek RT711 SoundWire audio codec (headset + mic)"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

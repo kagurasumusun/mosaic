@@ -1,0 +1,8 @@
+# LG 27GL850 27" 1440p 144Hz Nano IPS gaming monitor
+[part]
+id = 'part:lg/lg_27gl850'
+origin = 'lg'
+name = 'lg_27gl850'
+summary = "LG 27GL850 27\" 1440p 144Hz Nano IPS gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

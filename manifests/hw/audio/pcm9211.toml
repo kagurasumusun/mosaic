@@ -1,0 +1,13 @@
+# TI PCM9211 S/PDIF transceiver + DIR (216kHz)
+[part]
+id = 'part:ti/pcm9211'
+origin = 'ti'
+name = 'pcm9211'
+summary = "TI PCM9211 S/PDIF transceiver + DIR (216kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

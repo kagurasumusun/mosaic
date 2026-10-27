@@ -1,0 +1,8 @@
+# Samsung Odyssey G7 27" 1440p 240Hz curved gaming monitor
+[part]
+id = 'part:samsung/samsung_odyssey_g7'
+origin = 'samsung'
+name = 'samsung_odyssey_g7'
+summary = "Samsung Odyssey G7 27\" 1440p 240Hz curved gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

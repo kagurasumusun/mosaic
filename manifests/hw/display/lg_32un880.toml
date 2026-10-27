@@ -1,0 +1,8 @@
+# LG 32UN880 32" 4K Ergo DisplayPort monitor
+[part]
+id = 'part:lg/lg_32un880'
+origin = 'lg'
+name = 'lg_32un880'
+summary = "LG 32UN880 32\" 4K Ergo DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

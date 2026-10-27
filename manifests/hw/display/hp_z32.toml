@@ -1,0 +1,8 @@
+# HP Z32 32" 4K USB-C DisplayPort monitor
+[part]
+id = 'part:hp/hp_z32'
+origin = 'hp'
+name = 'hp_z32'
+summary = "HP Z32 32\" 4K USB-C DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

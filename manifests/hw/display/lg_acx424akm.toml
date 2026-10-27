@@ -1,0 +1,8 @@
+# LG ACX424AKM 4.5" 480x854 AMOLED DSI panel
+[part]
+id = 'part:lg/lg_acx424akm'
+origin = 'lg'
+name = 'lg_acx424akm'
+summary = "LG ACX424AKM 4.5\" 480x854 AMOLED DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

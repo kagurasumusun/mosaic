@@ -1,0 +1,8 @@
+# Samsung ViewFinity S9 27" 5K DisplayPort monitor
+[part]
+id = 'part:samsung/samsung_viewfinity_s9'
+origin = 'samsung'
+name = 'samsung_viewfinity_s9'
+summary = "Samsung ViewFinity S9 27\" 5K DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

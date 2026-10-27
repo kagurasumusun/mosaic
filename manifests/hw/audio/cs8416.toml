@@ -1,0 +1,13 @@
+# Cirrus Logic CS8416 S/PDIF receiver (192kHz)
+[part]
+id = 'part:cirrus/cs8416'
+origin = 'cirrus'
+name = 'cs8416'
+summary = "Cirrus Logic CS8416 S/PDIF receiver (192kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

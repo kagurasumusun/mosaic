@@ -1,0 +1,8 @@
+# Samsung S65UA 34" ultrawide 5K monitor
+[part]
+id = 'part:samsung/samsung_s65ua'
+origin = 'samsung'
+name = 'samsung_s65ua'
+summary = "Samsung S65UA 34\" ultrawide 5K monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# LG 27GP950 27" 4K 144Hz Nano IPS gaming monitor
+[part]
+id = 'part:lg/lg_27gp950'
+origin = 'lg'
+name = 'lg_27gp950'
+summary = "LG 27GP950 27\" 4K 144Hz Nano IPS gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

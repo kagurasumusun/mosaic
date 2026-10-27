@@ -1,0 +1,13 @@
+# TI DIX4192 S/PDIF transceiver (192kHz)
+[part]
+id = 'part:ti/dix4192'
+origin = 'ti'
+name = 'dix4192'
+summary = "TI DIX4192 S/PDIF transceiver (192kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

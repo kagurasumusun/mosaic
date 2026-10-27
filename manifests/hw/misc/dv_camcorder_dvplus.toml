@@ -1,0 +1,8 @@
+# Sony DCR-TRV900 DV camcorder (FireWire)
+[part]
+id = 'part:sony/dv_camcorder_dvplus'
+origin = 'sony'
+name = 'dv_camcorder_dvplus'
+summary = "Sony DCR-TRV900 DV camcorder (FireWire)"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

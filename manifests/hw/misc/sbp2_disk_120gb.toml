@@ -1,0 +1,8 @@
+# Seagate 120GB SBP-2 FireWire disk (ST3120026A)
+[part]
+id = 'part:seagate/sbp2_disk_120gb'
+origin = 'seagate'
+name = 'sbp2_disk_120gb'
+summary = "Seagate 120GB SBP-2 FireWire disk (ST3120026A)"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# Sony IMX327 2.1MP 1/2.8" Starvis CSI-2 sensor
+[part]
+id = 'part:sony/imx327'
+origin = 'sony'
+name = 'imx327'
+summary = "Sony IMX327 2.1MP 1/2.8\" Starvis CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# MSI Optix MPG27CQ 27" 1440p 144Hz curved gaming monitor
+[part]
+id = 'part:msi/msi_optix_mpg27cq'
+origin = 'msi'
+name = 'msi_optix_mpg27cq'
+summary = "MSI Optix MPG27CQ 27\" 1440p 144Hz curved gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# MSI Creator PS321URV 32" 4K DisplayPort monitor
+[part]
+id = 'part:msi/msi_creator_ps321urv'
+origin = 'msi'
+name = 'msi_creator_ps321urv'
+summary = "MSI Creator PS321URV 32\" 4K DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

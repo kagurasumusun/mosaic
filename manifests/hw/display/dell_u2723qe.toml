@@ -1,0 +1,8 @@
+# Dell U2723QE 27" 4K USB-C hub monitor
+[part]
+id = 'part:dell/dell_u2723qe'
+origin = 'dell'
+name = 'dell_u2723qe'
+summary = "Dell U2723QE 27\" 4K USB-C hub monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

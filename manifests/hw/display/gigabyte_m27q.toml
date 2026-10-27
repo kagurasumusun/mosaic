@@ -1,0 +1,8 @@
+# Gigabyte M27Q 27" 1440p 170Hz gaming monitor
+[part]
+id = 'part:gigabyte/gigabyte_m27q'
+origin = 'gigabyte'
+name = 'gigabyte_m27q'
+summary = "Gigabyte M27Q 27\" 1440p 170Hz gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

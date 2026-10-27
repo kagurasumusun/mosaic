@@ -1,0 +1,13 @@
+# Yamaha DX7 FM synthesizer (MIDI in/out/thru)
+[part]
+id = 'part:yamaha/yamaha_dx7'
+origin = 'yamaha'
+name = 'yamaha_dx7'
+summary = "Yamaha DX7 FM synthesizer (MIDI in/out/thru)"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

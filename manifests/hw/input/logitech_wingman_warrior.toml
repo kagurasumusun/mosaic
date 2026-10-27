@@ -1,0 +1,13 @@
+# Logitech WingMan Warrior gameport
+[part]
+id = 'part:logitech/logitech_wingman_warrior'
+origin = 'logitech'
+name = 'logitech_wingman_warrior'
+summary = "Logitech WingMan Warrior gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

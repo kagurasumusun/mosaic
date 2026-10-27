@@ -1,0 +1,12 @@
+# ALPS GlidePoint PS/2 touchpad
+[part]
+id = 'part:alps/alps_glidepoint'
+origin = 'alps'
+name = 'alps_glidepoint'
+summary = "ALPS GlidePoint PS/2 touchpad"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

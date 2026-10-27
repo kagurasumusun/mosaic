@@ -1,0 +1,8 @@
+# Maxim MAX98390 SoundWire smart amplifier
+[part]
+id = 'part:maxim/max98390'
+origin = 'maxim'
+name = 'max98390'
+summary = "Maxim MAX98390 SoundWire smart amplifier"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

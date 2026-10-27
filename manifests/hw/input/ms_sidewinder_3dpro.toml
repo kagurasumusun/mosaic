@@ -1,0 +1,13 @@
+# Microsoft SideWinder 3D Pro gameport joystick
+[part]
+id = 'part:microsoft/ms_sidewinder_3dpro'
+origin = 'microsoft'
+name = 'ms_sidewinder_3dpro'
+summary = "Microsoft SideWinder 3D Pro gameport joystick"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

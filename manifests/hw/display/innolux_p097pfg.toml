@@ -1,0 +1,8 @@
+# Innolux P097PFG 9.7" 1536x2048 DSI panel
+[part]
+id = 'part:innolux/innolux_p097pfg'
+origin = 'innolux'
+name = 'innolux_p097pfg'
+summary = "Innolux P097PFG 9.7\" 1536x2048 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

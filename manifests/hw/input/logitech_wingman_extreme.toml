@@ -1,0 +1,13 @@
+# Logitech WingMan Extreme Digital gameport
+[part]
+id = 'part:logitech/logitech_wingman_extreme'
+origin = 'logitech'
+name = 'logitech_wingman_extreme'
+summary = "Logitech WingMan Extreme Digital gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

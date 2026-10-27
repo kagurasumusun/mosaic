@@ -1,0 +1,12 @@
+# ITE IT8728F Super I/O via eSPI (LPC)
+[part]
+id = 'part:ite/ite_it8728f'
+origin = 'ite'
+name = 'ite_it8728f'
+summary = "ITE IT8728F Super I/O via eSPI (LPC)"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

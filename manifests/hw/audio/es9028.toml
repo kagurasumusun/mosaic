@@ -1,0 +1,13 @@
+# ESS Technology ES9028 Sabre S/PDIF DAC (32-bit)
+[part]
+id = 'part:ess/es9028'
+origin = 'ess'
+name = 'es9028'
+summary = "ESS Technology ES9028 Sabre S/PDIF DAC (32-bit)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

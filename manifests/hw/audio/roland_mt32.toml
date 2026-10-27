@@ -1,0 +1,13 @@
+# Roland MT-32 Multi-Timbre Sound Module (LA synthesis)
+[part]
+id = 'part:roland/roland_mt32'
+origin = 'roland'
+name = 'roland_mt32'
+summary = "Roland MT-32 Multi-Timbre Sound Module (LA synthesis)"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

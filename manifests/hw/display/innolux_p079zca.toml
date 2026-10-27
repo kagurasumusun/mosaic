@@ -1,0 +1,8 @@
+# Innolux P079ZCA 7.9" 768x1024 DSI panel
+[part]
+id = 'part:innolux/innolux_p079zca'
+origin = 'innolux'
+name = 'innolux_p079zca'
+summary = "Innolux P079ZCA 7.9\" 768x1024 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

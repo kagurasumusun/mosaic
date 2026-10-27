@@ -423,6 +423,18 @@ pub(super) fn validate_leaf_catalog_manifest(
                     "microwire",
                     "uart",
                     "can",
+                    "ps2",
+                    "spdif",
+                    "espi",
+                    "midi",
+                    "gameport",
+                    "hdmi",
+                    "displayport",
+                    "mipi_dsi",
+                    "mipi_csi",
+                    "soundwire",
+                    "slimbus",
+                    "firewire",
                     "register",
                 ],
                 file_name,
@@ -448,7 +460,7 @@ pub(super) fn validate_leaf_catalog_manifest(
                 }
                 if !matches!(
                     binding.as_str(),
-                    "i2c" | "spi" | "onewire" | "smbus" | "pmbus" | "microwire" | "uart" | "can"
+                    "i2c" | "spi" | "onewire" | "smbus" | "pmbus" | "microwire" | "uart" | "can" | "ps2" | "spdif" | "espi" | "midi" | "gameport" | "hdmi" | "displayport" | "mipi_dsi" | "mipi_csi" | "soundwire" | "slimbus" | "firewire"
                 ) {
                     return Err(format!("part.bindings: unsupported binding {binding:?}"));
                 }
@@ -521,6 +533,21 @@ pub(super) fn validate_leaf_catalog_manifest(
             {
                 return Err("part.bindings: spi binding has no [spi] section".into());
             }
+
+            // Fabric bindings that are point-to-point (no bus addressing and
+            // hence no extra config section) — see ADR 0026 step 3 for the
+            // full list. They declare the binding in `part.bindings` so the
+            // graph can route them, but the manifest has no `[<name>]`
+            // section to validate.
+            let _point_to_point_bindings: &[&str] = &[
+                "hdmi",
+                "displayport",
+                "mipi_dsi",
+                "mipi_csi",
+                "soundwire",
+                "slimbus",
+                "firewire",
+            ];
 
             // 1-Wire binding: requires a family code and optional serial.
             if let Some(onewire) = root.get("onewire") {
@@ -673,6 +700,129 @@ pub(super) fn validate_leaf_catalog_manifest(
                 && !root.contains_key("can")
             {
                 return Err("part.bindings: can binding has no [can] section".into());
+            }
+            if let Some(ps2) = root.get("ps2") {
+                if !bindings.iter().any(|binding| binding.as_str() == "ps2") {
+                    return Err(
+                        "ps2: section exists but part does not declare a ps2 binding".into(),
+                    );
+                }
+                let ps2 = ps2
+                    .as_table()
+                    .ok_or_else(|| "ps2: expected a table".to_owned())?;
+                reject_unknown(ps2, &["kind", "device-id"], "ps2")?;
+                if let Some(kind) = ps2.get("kind") {
+                    let kind_str = kind.as_str().ok_or_else(|| {
+                        "ps2.kind: expected a string (keyboard|mouse)".to_owned()
+                    })?;
+                    if !matches!(kind_str, "keyboard" | "mouse") {
+                        return Err(format!("ps2.kind: unsupported {kind_str:?}"));
+                    }
+                }
+                if let Some(id) = ps2.get("device-id") {
+                    non_negative_integer(id, "ps2.device-id")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "ps2")
+                && !root.contains_key("ps2")
+            {
+                return Err("part.bindings: ps2 binding has no [ps2] section".into());
+            }
+            if let Some(spdif) = root.get("spdif") {
+                if !bindings.iter().any(|binding| binding.as_str() == "spdif") {
+                    return Err(
+                        "spdif: section exists but part does not declare an spdif binding".into(),
+                    );
+                }
+                let spdif = spdif
+                    .as_table()
+                    .ok_or_else(|| "spdif: expected a table".to_owned())?;
+                reject_unknown(spdif, &["mode", "rate"], "spdif")?;
+                if let Some(mode) = spdif.get("mode") {
+                    let m = mode.as_str().ok_or_else(|| {
+                        "spdif.mode: expected a string (consumer|professional)".to_owned()
+                    })?;
+                    if !matches!(m, "consumer" | "professional") {
+                        return Err(format!("spdif.mode: unsupported {m:?}"));
+                    }
+                }
+                if let Some(rate) = spdif.get("rate") {
+                    non_negative_integer(rate, "spdif.rate")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "spdif")
+                && !root.contains_key("spdif")
+            {
+                return Err("part.bindings: spdif binding has no [spdif] section".into());
+            }
+            if let Some(espi) = root.get("espi") {
+                if !bindings.iter().any(|binding| binding.as_str() == "espi") {
+                    return Err(
+                        "espi: section exists but part does not declare an espi binding".into(),
+                    );
+                }
+                let espi = espi
+                    .as_table()
+                    .ok_or_else(|| "espi: expected a table".to_owned())?;
+                reject_unknown(espi, &["cycles", "chip-select"], "espi")?;
+                if let Some(cs) = espi.get("chip-select") {
+                    non_negative_integer(cs, "espi.chip-select")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "espi")
+                && !root.contains_key("espi")
+            {
+                return Err("part.bindings: espi binding has no [espi] section".into());
+            }
+            if let Some(midi) = root.get("midi") {
+                if !bindings.iter().any(|binding| binding.as_str() == "midi") {
+                    return Err(
+                        "midi: section exists but part does not declare a midi binding".into(),
+                    );
+                }
+                let midi = midi
+                    .as_table()
+                    .ok_or_else(|| "midi: expected a table".to_owned())?;
+                reject_unknown(midi, &["direction", "channels"], "midi")?;
+                if let Some(dir) = midi.get("direction") {
+                    let d = dir.as_str().ok_or_else(|| {
+                        "midi.direction: expected a string (in|out|both)".to_owned()
+                    })?;
+                    if !matches!(d, "in" | "out" | "both") {
+                        return Err(format!("midi.direction: unsupported {d:?}"));
+                    }
+                }
+                if let Some(ch) = midi.get("channels") {
+                    non_negative_integer(ch, "midi.channels")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "midi")
+                && !root.contains_key("midi")
+            {
+                return Err("part.bindings: midi binding has no [midi] section".into());
+            }
+            if let Some(gp) = root.get("gameport") {
+                if !bindings.iter().any(|binding| binding.as_str() == "gameport") {
+                    return Err(
+                        "gameport: section exists but part does not declare a gameport binding"
+                            .into(),
+                    );
+                }
+                let gp = gp
+                    .as_table()
+                    .ok_or_else(|| "gameport: expected a table".to_owned())?;
+                reject_unknown(gp, &["axes", "buttons"], "gameport")?;
+                if let Some(axes) = gp.get("axes") {
+                    non_negative_integer(axes, "gameport.axes")?;
+                }
+                if let Some(btns) = gp.get("buttons") {
+                    non_negative_integer(btns, "gameport.buttons")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "gameport")
+                && !root.contains_key("gameport")
+            {
+                return Err("part.bindings: gameport binding has no [gameport] section".into());
             }
 
             let registers: Vec<&toml::Value> = match root.get("register") {

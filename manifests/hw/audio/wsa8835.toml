@@ -1,0 +1,8 @@
+# Qualcomm WSA8835 SoundWire smart speaker amp
+[part]
+id = 'part:qcom/wsa8835'
+origin = 'qcom'
+name = 'wsa8835'
+summary = "Qualcomm WSA8835 SoundWire smart speaker amp"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

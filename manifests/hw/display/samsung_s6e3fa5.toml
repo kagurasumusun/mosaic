@@ -1,0 +1,8 @@
+# Samsung S6E3FA5 5.7" 1440x2560 DSI AMOLED
+[part]
+id = 'part:samsung/samsung_s6e3fa5'
+origin = 'samsung'
+name = 'samsung_s6e3fa5'
+summary = "Samsung S6E3FA5 5.7\" 1440x2560 DSI AMOLED"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

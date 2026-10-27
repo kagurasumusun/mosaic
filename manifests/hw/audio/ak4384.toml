@@ -1,0 +1,13 @@
+# Asahi Kasei AK4384 S/PDIF DAC (192kHz, 24-bit)
+[part]
+id = 'part:asahi/ak4384'
+origin = 'asahi'
+name = 'ak4384'
+summary = "Asahi Kasei AK4384 S/PDIF DAC (192kHz, 24-bit)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

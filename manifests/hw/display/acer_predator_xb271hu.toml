@@ -1,0 +1,8 @@
+# Acer Predator XB271HU 27" 1440p 165Hz gaming monitor
+[part]
+id = 'part:acer/acer_predator_xb271hu'
+origin = 'acer'
+name = 'acer_predator_xb271hu'
+summary = "Acer Predator XB271HU 27\" 1440p 165Hz gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

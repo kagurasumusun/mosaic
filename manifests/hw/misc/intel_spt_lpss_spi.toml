@@ -1,0 +1,12 @@
+# Intel SPT LPSS SPI controller via eSPI
+[part]
+id = 'part:intel/intel_spt_lpss_spi'
+origin = 'intel'
+name = 'intel_spt_lpss_spi'
+summary = "Intel SPT LPSS SPI controller via eSPI"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

@@ -1,0 +1,13 @@
+# Roland Sound Canvas SC-55 GS MIDI tone module
+[part]
+id = 'part:roland/roland_sc55'
+origin = 'roland'
+name = 'roland_sc55'
+summary = "Roland Sound Canvas SC-55 GS MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

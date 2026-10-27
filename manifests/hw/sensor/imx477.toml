@@ -1,0 +1,8 @@
+# Sony IMX477 12MP 1/2.3" CSI-2 sensor (HQ Camera)
+[part]
+id = 'part:sony/imx477'
+origin = 'sony'
+name = 'imx477'
+summary = "Sony IMX477 12MP 1/2.3\" CSI-2 sensor (HQ Camera)"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

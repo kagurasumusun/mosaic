@@ -1,0 +1,13 @@
+# Korg M1 Music Workstation (MIDI in/out/thru)
+[part]
+id = 'part:korg/korg_m1'
+origin = 'korg'
+name = 'korg_m1'
+summary = "Korg M1 Music Workstation (MIDI in/out/thru)"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

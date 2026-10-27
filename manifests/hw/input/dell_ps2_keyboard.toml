@@ -1,0 +1,12 @@
+# Dell SK-8125 PS/2 keyboard
+[part]
+id = 'part:dell/dell_ps2_keyboard'
+origin = 'dell'
+name = 'dell_ps2_keyboard'
+summary = "Dell SK-8125 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

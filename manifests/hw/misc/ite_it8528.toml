@@ -1,0 +1,12 @@
+# ITE IT8528 eSPI EC
+[part]
+id = 'part:ite/ite_it8528'
+origin = 'ite'
+name = 'ite_it8528'
+summary = "ITE IT8528 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

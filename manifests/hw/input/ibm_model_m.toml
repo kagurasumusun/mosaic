@@ -1,0 +1,12 @@
+# IBM Model M 101-key PS/2 keyboard (1985)
+[part]
+id = 'part:ibm/ibm_model_m'
+origin = 'ibm'
+name = 'ibm_model_m'
+summary = "IBM Model M 101-key PS/2 keyboard (1985)"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

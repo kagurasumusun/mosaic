@@ -1,0 +1,13 @@
+# Behringer UMC202HD MIDI interface
+[part]
+id = 'part:behringer/behringer_umc202hd_midi'
+origin = 'behringer'
+name = 'behringer_umc202hd_midi'
+summary = "Behringer UMC202HD MIDI interface"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

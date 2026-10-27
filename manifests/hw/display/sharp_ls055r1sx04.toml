@@ -1,0 +1,8 @@
+# Sharp LS055R1SX04 5.5" 1080x1920 IGZO DSI panel
+[part]
+id = 'part:sharp/sharp_ls055r1sx04'
+origin = 'sharp'
+name = 'sharp_ls055r1sx04'
+summary = "Sharp LS055R1SX04 5.5\" 1080x1920 IGZO DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# Maxim MAX98373 SoundWire class-D amplifier
+[part]
+id = 'part:maxim/max98373'
+origin = 'maxim'
+name = 'max98373'
+summary = "Maxim MAX98373 SoundWire class-D amplifier"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

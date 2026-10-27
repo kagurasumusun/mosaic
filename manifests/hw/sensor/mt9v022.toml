@@ -1,0 +1,8 @@
+# onsemi MT9V022 0.3MP 1/3" global shutter sensor
+[part]
+id = 'part:onsemi/mt9v022'
+origin = 'onsemi'
+name = 'mt9v022'
+summary = "onsemi MT9V022 0.3MP 1/3\" global shutter sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

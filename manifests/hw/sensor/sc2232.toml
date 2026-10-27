@@ -1,0 +1,8 @@
+# SmartSens SC2232 2MP 1/3" CSI-2 sensor
+[part]
+id = 'part:smartsens/sc2232'
+origin = 'smartsens'
+name = 'sc2232'
+summary = "SmartSens SC2232 2MP 1/3\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,12 @@
+# Keytronic E03601P2 PS/2 keyboard
+[part]
+id = 'part:keytronic/keytronic_ps2'
+origin = 'keytronic'
+name = 'keytronic_ps2'
+summary = "Keytronic E03601P2 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

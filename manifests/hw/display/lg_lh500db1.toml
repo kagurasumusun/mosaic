@@ -1,0 +1,8 @@
+# LG LH500DB1 5" 720x1280 DSI panel
+[part]
+id = 'part:lg/lg_lh500db1'
+origin = 'lg'
+name = 'lg_lh500db1'
+summary = "LG LH500DB1 5\" 720x1280 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

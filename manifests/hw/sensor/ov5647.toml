@@ -1,0 +1,8 @@
+# OmniVision OV5647 5MP 1/4" CSI-2 sensor (Raspberry Pi V1)
+[part]
+id = 'part:omnivision/ov5647'
+origin = 'omnivision'
+name = 'ov5647'
+summary = "OmniVision OV5647 5MP 1/4\" CSI-2 sensor (Raspberry Pi V1)"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

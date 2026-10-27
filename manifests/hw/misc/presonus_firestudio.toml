@@ -1,0 +1,8 @@
+# PreSonus FireStudio FireWire audio interface
+[part]
+id = 'part:presonus/presonus_firestudio'
+origin = 'presonus'
+name = 'presonus_firestudio'
+summary = "PreSonus FireStudio FireWire audio interface"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

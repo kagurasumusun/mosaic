@@ -1,0 +1,8 @@
+# Acer ConceptD CP7 32" 4K HDR DisplayPort monitor
+[part]
+id = 'part:acer/acer_conceptd_cp7'
+origin = 'acer'
+name = 'acer_conceptd_cp7'
+summary = "Acer ConceptD CP7 32\" 4K HDR DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

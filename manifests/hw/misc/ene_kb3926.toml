@@ -1,0 +1,12 @@
+# ENE KB3926 eSPI EC
+[part]
+id = 'part:ene/ene_kb3926'
+origin = 'ene'
+name = 'ene_kb3926'
+summary = "ENE KB3926 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

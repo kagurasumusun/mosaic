@@ -1,0 +1,8 @@
+# onsemi AR1335 13MP 1/3.2" CSI-2 sensor
+[part]
+id = 'part:onsemi/ar1335'
+origin = 'onsemi'
+name = 'ar1335'
+summary = "onsemi AR1335 13MP 1/3.2\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

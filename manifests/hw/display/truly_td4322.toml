@@ -1,0 +1,8 @@
+# Truly TD4322 4.3" 480x800 DSI panel
+[part]
+id = 'part:truly/truly_td4322'
+origin = 'truly'
+name = 'truly_td4322'
+summary = "Truly TD4322 4.3\" 480x800 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

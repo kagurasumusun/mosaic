@@ -1,0 +1,13 @@
+# E-mu Proteus FX MIDI sound module
+[part]
+id = 'part:emu/emu_proteus_fx'
+origin = 'emu'
+name = 'emu_proteus_fx'
+summary = "E-mu Proteus FX MIDI sound module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

@@ -1,0 +1,8 @@
+# ASUS ROG Swift PG279QM 27" 1440p 240Hz gaming monitor
+[part]
+id = 'part:asus/asus_pg279qm'
+origin = 'asus'
+name = 'asus_pg279qm'
+summary = "ASUS ROG Swift PG279QM 27\" 1440p 240Hz gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

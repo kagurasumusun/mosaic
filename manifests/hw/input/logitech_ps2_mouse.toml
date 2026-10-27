@@ -1,0 +1,12 @@
+# Logitech 3-button PS/2 mouse (M-UV55)
+[part]
+id = 'part:logitech/logitech_ps2_mouse'
+origin = 'logitech'
+name = 'logitech_ps2_mouse'
+summary = "Logitech 3-button PS/2 mouse (M-UV55)"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

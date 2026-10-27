@@ -1,0 +1,8 @@
+# Realtek RT700 SoundWire audio codec (smart codec)
+[part]
+id = 'part:realtek/rt700'
+origin = 'realtek'
+name = 'rt700'
+summary = "Realtek RT700 SoundWire audio codec (smart codec)"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# OmniVision OV9281 1MP global shutter CSI-2 sensor
+[part]
+id = 'part:omnivision/ov9281'
+origin = 'omnivision'
+name = 'ov9281'
+summary = "OmniVision OV9281 1MP global shutter CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

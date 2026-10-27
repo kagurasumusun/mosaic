@@ -1,0 +1,8 @@
+# Qualcomm Tavil WCD9341 SLIMbus codec
+[part]
+id = 'part:qcom/tavil_wcd9341'
+origin = 'qcom'
+name = 'tavil_wcd9341'
+summary = "Qualcomm Tavil WCD9341 SLIMbus codec"
+bindings = ["slimbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

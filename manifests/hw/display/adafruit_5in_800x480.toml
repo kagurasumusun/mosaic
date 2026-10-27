@@ -1,0 +1,8 @@
+# Adafruit 5" 800x480 DSI panel
+[part]
+id = 'part:adafruit/adafruit_5in_800x480'
+origin = 'adafruit'
+name = 'adafruit_5in_800x480'
+summary = "Adafruit 5\" 800x480 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

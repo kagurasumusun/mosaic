@@ -1,0 +1,8 @@
+# Truly TDA8460A 5" 720x1280 DSI panel
+[part]
+id = 'part:truly/truly_tda8460a'
+origin = 'truly'
+name = 'truly_tda8460a'
+summary = "Truly TDA8460A 5\" 720x1280 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

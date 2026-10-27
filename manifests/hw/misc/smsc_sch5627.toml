@@ -1,0 +1,12 @@
+# SMSC SCH5627 environmental controller via eSPI
+[part]
+id = 'part:smsc/smsc_sch5627'
+origin = 'smsc'
+name = 'smsc_sch5627'
+summary = "SMSC SCH5627 environmental controller via eSPI"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

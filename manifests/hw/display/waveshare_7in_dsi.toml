@@ -1,0 +1,8 @@
+# Waveshare 7" 1024x600 DSI capacitive touchscreen
+[part]
+id = 'part:waveshare/waveshare_7in_dsi'
+origin = 'waveshare'
+name = 'waveshare_7in_dsi'
+summary = "Waveshare 7\" 1024x600 DSI capacitive touchscreen"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

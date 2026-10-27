@@ -1,0 +1,12 @@
+# Logitech MX3200 PS/2 keyboard
+[part]
+id = 'part:logitech/logitech_mx3200'
+origin = 'logitech'
+name = 'logitech_mx3200'
+summary = "Logitech MX3200 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

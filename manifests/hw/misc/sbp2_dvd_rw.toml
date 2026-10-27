@@ -1,0 +1,8 @@
+# Pioneer DVR-109 FireWire DVD-RW drive
+[part]
+id = 'part:pioneer/sbp2_dvd_rw'
+origin = 'pioneer'
+name = 'sbp2_dvd_rw'
+summary = "Pioneer DVR-109 FireWire DVD-RW drive"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

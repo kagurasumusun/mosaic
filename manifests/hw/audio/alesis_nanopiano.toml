@@ -1,0 +1,13 @@
+# Alesis NanoPiano 16-part GM MIDI module
+[part]
+id = 'part:alesis/alesis_nanopiano'
+origin = 'alesis'
+name = 'alesis_nanopiano'
+summary = "Alesis NanoPiano 16-part GM MIDI module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

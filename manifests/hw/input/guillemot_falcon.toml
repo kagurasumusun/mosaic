@@ -1,0 +1,13 @@
+# Guillemot Falcon gameport joystick
+[part]
+id = 'part:guillemot/guillemot_falcon'
+origin = 'guillemot'
+name = 'guillemot_falcon'
+summary = "Guillemot Falcon gameport joystick"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

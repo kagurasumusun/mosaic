@@ -1,0 +1,12 @@
+# ITE IT8528E eSPI Super-IO
+[part]
+id = 'part:ite/ite_it8528e'
+origin = 'ite'
+name = 'ite_it8528e'
+summary = "ITE IT8528E eSPI Super-IO"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

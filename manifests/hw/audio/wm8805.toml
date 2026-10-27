@@ -1,0 +1,13 @@
+# Wolfson/Cirrus WM8805 S/PDIF transceiver (4:1 mux)
+[part]
+id = 'part:cirrus/wm8805'
+origin = 'cirrus'
+name = 'wm8805'
+summary = "Wolfson/Cirrus WM8805 S/PDIF transceiver (4:1 mux)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

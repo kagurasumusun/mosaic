@@ -1,0 +1,12 @@
+# Microchip MEC1428 eSPI EC
+[part]
+id = 'part:microchip/mec1428'
+origin = 'microchip'
+name = 'mec1428'
+summary = "Microchip MEC1428 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

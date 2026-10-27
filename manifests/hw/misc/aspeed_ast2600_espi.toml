@@ -1,0 +1,12 @@
+# ASPEED AST2600 eSPI BMC bridge
+[part]
+id = 'part:aspeed/aspeed_ast2600_espi'
+origin = 'aspeed'
+name = 'aspeed_ast2600_espi'
+summary = "ASPEED AST2600 eSPI BMC bridge"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

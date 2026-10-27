@@ -1,0 +1,8 @@
+# Realtek RT1308 SoundWire class-D amplifier
+[part]
+id = 'part:realtek/rt1308'
+origin = 'realtek'
+name = 'rt1308'
+summary = "Realtek RT1308 SoundWire class-D amplifier"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

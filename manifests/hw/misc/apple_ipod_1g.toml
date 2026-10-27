@@ -1,0 +1,8 @@
+# Apple iPod 1G (5GB) FireWire SBP-2 disk
+[part]
+id = 'part:apple/apple_ipod_1g'
+origin = 'apple'
+name = 'apple_ipod_1g'
+summary = "Apple iPod 1G (5GB) FireWire SBP-2 disk"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

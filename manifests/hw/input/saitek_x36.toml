@@ -1,0 +1,13 @@
+# Saitek X-36 gameport HOTAS
+[part]
+id = 'part:saitek/saitek_x36'
+origin = 'saitek'
+name = 'saitek_x36'
+summary = "Saitek X-36 gameport HOTAS"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

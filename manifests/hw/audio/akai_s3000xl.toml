@@ -1,0 +1,13 @@
+# Akai S3000XL MIDI sampler
+[part]
+id = 'part:akai/akai_s3000xl'
+origin = 'akai'
+name = 'akai_s3000xl'
+summary = "Akai S3000XL MIDI sampler"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

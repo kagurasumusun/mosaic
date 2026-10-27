@@ -1,0 +1,12 @@
+# Hewlett-Packard KU-0316 PS/2 keyboard
+[part]
+id = 'part:hp/hp_ps2_keyboard'
+origin = 'hp'
+name = 'hp_ps2_keyboard'
+summary = "Hewlett-Packard KU-0316 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

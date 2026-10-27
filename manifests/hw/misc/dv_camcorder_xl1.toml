@@ -1,0 +1,8 @@
+# Canon XL1 DV camcorder (FireWire)
+[part]
+id = 'part:canon/dv_camcorder_xl1'
+origin = 'canon'
+name = 'dv_camcorder_xl1'
+summary = "Canon XL1 DV camcorder (FireWire)"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# Sony IMX477M 12MP monochrome CSI-2 sensor
+[part]
+id = 'part:sony/imx477m'
+origin = 'sony'
+name = 'imx477m'
+summary = "Sony IMX477M 12MP monochrome CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

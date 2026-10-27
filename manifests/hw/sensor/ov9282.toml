@@ -1,0 +1,8 @@
+# OmniVision OV9282 1MP global shutter CSI-2 sensor
+[part]
+id = 'part:omnivision/ov9282'
+origin = 'omnivision'
+name = 'ov9282'
+summary = "OmniVision OV9282 1MP global shutter CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

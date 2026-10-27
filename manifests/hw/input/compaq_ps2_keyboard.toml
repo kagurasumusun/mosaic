@@ -1,0 +1,12 @@
+# Compaq PS/2 104-key keyboard
+[part]
+id = 'part:compaq/compaq_ps2_keyboard'
+origin = 'compaq'
+name = 'compaq_ps2_keyboard'
+summary = "Compaq PS/2 104-key keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

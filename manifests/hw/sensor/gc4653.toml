@@ -1,0 +1,8 @@
+# GalaxyCore GC4653 4MP 1/3" CSI-2 sensor
+[part]
+id = 'part:galaxycore/gc4653'
+origin = 'galaxycore'
+name = 'gc4653'
+summary = "GalaxyCore GC4653 4MP 1/3\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# Sony IMX296 1.6MP global shutter CSI-2 sensor
+[part]
+id = 'part:sony/imx296'
+origin = 'sony'
+name = 'imx296'
+summary = "Sony IMX296 1.6MP global shutter CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

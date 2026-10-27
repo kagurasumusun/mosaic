@@ -1,0 +1,12 @@
+# Microsoft IntelliMouse PS/2 wheel mouse
+[part]
+id = 'part:microsoft/microsoft_intellimouse'
+origin = 'microsoft'
+name = 'microsoft_intellimouse'
+summary = "Microsoft IntelliMouse PS/2 wheel mouse"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

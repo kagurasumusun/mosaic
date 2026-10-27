@@ -1,0 +1,12 @@
+# IBM ThinkPad T42 integrated PS/2 keyboard
+[part]
+id = 'part:ibm/ibm_thinkpad_keyboard'
+origin = 'ibm'
+name = 'ibm_thinkpad_keyboard'
+summary = "IBM ThinkPad T42 integrated PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

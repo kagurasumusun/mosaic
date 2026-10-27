@@ -1,0 +1,12 @@
+# Chicony KB-9810 PS/2 keyboard
+[part]
+id = 'part:chicony/chicony_ps2'
+origin = 'chicony'
+name = 'chicony_ps2'
+summary = "Chicony KB-9810 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

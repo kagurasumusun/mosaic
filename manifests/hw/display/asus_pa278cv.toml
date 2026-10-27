@@ -1,0 +1,8 @@
+# ASUS ProArt PA278CV 27" 1440p USB-C monitor
+[part]
+id = 'part:asus/asus_pa278cv'
+origin = 'asus'
+name = 'asus_pa278cv'
+summary = "ASUS ProArt PA278CV 27\" 1440p USB-C monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# Sony IMX519 16MP 1/2.3" autofocus CSI-2 sensor
+[part]
+id = 'part:sony/imx519'
+origin = 'sony'
+name = 'imx519'
+summary = "Sony IMX519 16MP 1/2.3\" autofocus CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

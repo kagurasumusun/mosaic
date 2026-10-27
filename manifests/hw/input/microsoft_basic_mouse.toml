@@ -1,0 +1,12 @@
+# Microsoft Basic Mouse 2.0 PS/2
+[part]
+id = 'part:microsoft/microsoft_basic_mouse'
+origin = 'microsoft'
+name = 'microsoft_basic_mouse'
+summary = "Microsoft Basic Mouse 2.0 PS/2"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

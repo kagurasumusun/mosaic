@@ -1,0 +1,12 @@
+# IBM TrackPoint II PS/2 pointing device
+[part]
+id = 'part:ibm/ibm_trackpoint_ii'
+origin = 'ibm'
+name = 'ibm_trackpoint_ii'
+summary = "IBM TrackPoint II PS/2 pointing device"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

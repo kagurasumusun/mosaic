@@ -1,0 +1,8 @@
+# BenQ SW271C 27" 4K HDR PhotoVue monitor
+[part]
+id = 'part:benq/benq_sw271c'
+origin = 'benq'
+name = 'benq_sw271c'
+summary = "BenQ SW271C 27\" 4K HDR PhotoVue monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

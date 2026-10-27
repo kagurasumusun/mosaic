@@ -1,0 +1,8 @@
+# onsemi AR0521 5MP 1/2.5" CSI-2 sensor
+[part]
+id = 'part:onsemi/ar0521'
+origin = 'onsemi'
+name = 'ar0521'
+summary = "onsemi AR0521 5MP 1/2.5\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

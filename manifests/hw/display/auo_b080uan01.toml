@@ -1,0 +1,8 @@
+# AUO B080UAN01 8" 1200x1920 DSI panel
+[part]
+id = 'part:auo/auo_b080uan01'
+origin = 'auo'
+name = 'auo_b080uan01'
+summary = "AUO B080UAN01 8\" 1200x1920 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

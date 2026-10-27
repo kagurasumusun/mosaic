@@ -1,0 +1,13 @@
+# Microsoft SideWinder Force Feedback Pro gameport
+[part]
+id = 'part:microsoft/ms_sidewinder_ffb'
+origin = 'microsoft'
+name = 'ms_sidewinder_ffb'
+summary = "Microsoft SideWinder Force Feedback Pro gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

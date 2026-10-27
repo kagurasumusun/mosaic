@@ -1,0 +1,8 @@
+# Qualcomm WCD9375 SLIMbus audio codec
+[part]
+id = 'part:qcom/wcd9375'
+origin = 'qcom'
+name = 'wcd9375'
+summary = "Qualcomm WCD9375 SLIMbus audio codec"
+bindings = ["slimbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

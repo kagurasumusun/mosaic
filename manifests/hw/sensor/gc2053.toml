@@ -1,0 +1,8 @@
+# GalaxyCore GC2053 2MP 1/3" CSI-2 sensor
+[part]
+id = 'part:galaxycore/gc2053'
+origin = 'galaxycore'
+name = 'gc2053'
+summary = "GalaxyCore GC2053 2MP 1/3\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

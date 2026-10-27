@@ -1,0 +1,13 @@
+# Korg 05R/W GM MIDI tone module
+[part]
+id = 'part:korg/korg_05rw'
+origin = 'korg'
+name = 'korg_05rw'
+summary = "Korg 05R/W GM MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

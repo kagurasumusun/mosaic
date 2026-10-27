@@ -1,0 +1,13 @@
+# Yamaha MU80 XG MIDI tone module
+[part]
+id = 'part:yamaha/yamaha_mu80'
+origin = 'yamaha'
+name = 'yamaha_mu80'
+summary = "Yamaha MU80 XG MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

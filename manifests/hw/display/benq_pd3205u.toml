@@ -1,0 +1,8 @@
+# BenQ PD3205U 32" 4K DesignVue DisplayPort monitor
+[part]
+id = 'part:benq/benq_pd3205u'
+origin = 'benq'
+name = 'benq_pd3205u'
+summary = "BenQ PD3205U 32\" 4K DesignVue DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

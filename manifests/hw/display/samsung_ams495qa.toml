@@ -1,0 +1,8 @@
+# Samsung AMS495QA 5" 720x1280 DSI panel
+[part]
+id = 'part:samsung/samsung_ams495qa'
+origin = 'samsung'
+name = 'samsung_ams495qa'
+summary = "Samsung AMS495QA 5\" 720x1280 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

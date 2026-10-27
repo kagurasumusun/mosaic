@@ -1,0 +1,8 @@
+# Acer VG270 27" 1080p 144Hz gaming monitor
+[part]
+id = 'part:acer/acer_vg270'
+origin = 'acer'
+name = 'acer_vg270'
+summary = "Acer VG270 27\" 1080p 144Hz gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

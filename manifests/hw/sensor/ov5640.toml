@@ -1,0 +1,8 @@
+# OmniVision OV5640 5MP 1/4" CSI-2 sensor
+[part]
+id = 'part:omnivision/ov5640'
+origin = 'omnivision'
+name = 'ov5640'
+summary = "OmniVision OV5640 5MP 1/4\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# onsemi AR0234 2MP 1/2.6" global shutter CSI-2 sensor
+[part]
+id = 'part:onsemi/ar0234'
+origin = 'onsemi'
+name = 'ar0234'
+summary = "onsemi AR0234 2MP 1/2.6\" global shutter CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

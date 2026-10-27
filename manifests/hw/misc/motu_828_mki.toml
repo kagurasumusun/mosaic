@@ -1,0 +1,8 @@
+# MOTU 828 mkI FireWire audio interface
+[part]
+id = 'part:motu/motu_828_mki'
+origin = 'motu'
+name = 'motu_828_mki'
+summary = "MOTU 828 mkI FireWire audio interface"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

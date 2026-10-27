@@ -1,0 +1,12 @@
+# Sun Type 6 PS/2 keyboard (PC mode)
+[part]
+id = 'part:sun/sun_type6_ps2'
+origin = 'sun'
+name = 'sun_type6_ps2'
+summary = "Sun Type 6 PS/2 keyboard (PC mode)"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

@@ -1,0 +1,12 @@
+# Synaptics PS/2 touchpad
+[part]
+id = 'part:synaptics/synaptics_ps2_touchpad'
+origin = 'synaptics'
+name = 'synaptics_ps2_touchpad'
+summary = "Synaptics PS/2 touchpad"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

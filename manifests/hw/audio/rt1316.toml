@@ -1,0 +1,8 @@
+# Realtek RT1316 SoundWire smart amplifier
+[part]
+id = 'part:realtek/rt1316'
+origin = 'realtek'
+name = 'rt1316'
+summary = "Realtek RT1316 SoundWire smart amplifier"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

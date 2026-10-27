@@ -1,0 +1,13 @@
+# Wolfson/Cirrus WM8804 S/PDIF transceiver (192kHz)
+[part]
+id = 'part:cirrus/wm8804'
+origin = 'cirrus'
+name = 'wm8804'
+summary = "Wolfson/Cirrus WM8804 S/PDIF transceiver (192kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

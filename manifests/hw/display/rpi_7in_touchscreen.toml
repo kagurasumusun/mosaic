@@ -1,0 +1,8 @@
+# Raspberry Pi 7" 800x480 DSI touchscreen (Official)
+[part]
+id = 'part:raspberrypi/rpi_7in_touchscreen'
+origin = 'raspberrypi'
+name = 'rpi_7in_touchscreen'
+summary = "Raspberry Pi 7\" 800x480 DSI touchscreen (Official)"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

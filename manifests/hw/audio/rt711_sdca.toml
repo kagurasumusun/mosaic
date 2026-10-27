@@ -1,0 +1,8 @@
+# Realtek RT711-SDCA SoundWire codec
+[part]
+id = 'part:realtek/rt711_sdca'
+origin = 'realtek'
+name = 'rt711_sdca'
+summary = "Realtek RT711-SDCA SoundWire codec"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

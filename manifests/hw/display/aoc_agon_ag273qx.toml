@@ -1,0 +1,8 @@
+# AOC Agon AG273QX 27" 1440p 240Hz gaming monitor
+[part]
+id = 'part:aoc/aoc_agon_ag273qx'
+origin = 'aoc'
+name = 'aoc_agon_ag273qx'
+summary = "AOC Agon AG273QX 27\" 1440p 240Hz gaming monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

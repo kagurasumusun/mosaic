@@ -1,0 +1,13 @@
+# Microsoft SideWinder Precision Pro gameport
+[part]
+id = 'part:microsoft/ms_sidewinder_precision'
+origin = 'microsoft'
+name = 'ms_sidewinder_precision'
+summary = "Microsoft SideWinder Precision Pro gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

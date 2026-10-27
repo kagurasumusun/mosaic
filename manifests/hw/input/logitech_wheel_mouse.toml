@@ -1,0 +1,12 @@
+# Logitech Wheel Mouse PS/2
+[part]
+id = 'part:logitech/logitech_wheel_mouse'
+origin = 'logitech'
+name = 'logitech_wheel_mouse'
+summary = "Logitech Wheel Mouse PS/2"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'mouse'

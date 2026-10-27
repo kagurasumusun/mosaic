@@ -1,0 +1,13 @@
+# Asahi Kasei AK4430 S/PDIF DAC (768kHz, 32-bit)
+[part]
+id = 'part:asahi/ak4430'
+origin = 'asahi'
+name = 'ak4430'
+summary = "Asahi Kasei AK4430 S/PDIF DAC (768kHz, 32-bit)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

@@ -1,0 +1,8 @@
+# Sony IMX462 2.1MP 1/2.8" Starvis 2 CSI-2 sensor
+[part]
+id = 'part:sony/imx462'
+origin = 'sony'
+name = 'imx462'
+summary = "Sony IMX462 2.1MP 1/2.8\" Starvis 2 CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

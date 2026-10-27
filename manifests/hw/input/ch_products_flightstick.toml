@@ -1,0 +1,13 @@
+# CH Products Flightstick gameport
+[part]
+id = 'part:ch/ch_products_flightstick'
+origin = 'ch'
+name = 'ch_products_flightstick'
+summary = "CH Products Flightstick gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

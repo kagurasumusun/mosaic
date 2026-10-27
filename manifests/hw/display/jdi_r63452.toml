@@ -1,0 +1,8 @@
+# JDI R63452 5.5" 1080x1920 DSI panel
+[part]
+id = 'part:jdi/jdi_r63452'
+origin = 'jdi'
+name = 'jdi_r63452'
+summary = "JDI R63452 5.5\" 1080x1920 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

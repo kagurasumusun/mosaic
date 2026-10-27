@@ -1,0 +1,13 @@
+# Roland Sound Canvas SC-8820 USB MIDI tone module
+[part]
+id = 'part:roland/roland_sc8820'
+origin = 'roland'
+name = 'roland_sc8820'
+summary = "Roland Sound Canvas SC-8820 USB MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

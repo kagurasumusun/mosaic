@@ -1,0 +1,13 @@
+# Focusrite Scarlett 2i2 MIDI interface
+[part]
+id = 'part:focusrite/focusrite_scarlett_2i2_midi'
+origin = 'focusrite'
+name = 'focusrite_scarlett_2i2_midi'
+summary = "Focusrite Scarlett 2i2 MIDI interface"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16

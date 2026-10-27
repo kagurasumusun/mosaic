@@ -1,0 +1,13 @@
+# TI DIR9001 S/PDIF receiver (96kHz)
+[part]
+id = 'part:ti/dir9001'
+origin = 'ti'
+name = 'dir9001'
+summary = "TI DIR9001 S/PDIF receiver (96kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

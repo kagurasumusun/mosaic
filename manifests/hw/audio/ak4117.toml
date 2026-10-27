@@ -1,0 +1,13 @@
+# Asahi Kasei AK4117 S/PDIF receiver (192kHz)
+[part]
+id = 'part:asahi/ak4117'
+origin = 'asahi'
+name = 'ak4117'
+summary = "Asahi Kasei AK4117 S/PDIF receiver (192kHz)"
+bindings = ["spdif"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[spdif]
+mode = 'consumer'
+rate = 48000

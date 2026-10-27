@@ -1,0 +1,13 @@
+# Gravis GamePad Pro gameport
+[part]
+id = 'part:gravis/gravis_gamepad_pro'
+origin = 'gravis'
+name = 'gravis_gamepad_pro'
+summary = "Gravis GamePad Pro gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

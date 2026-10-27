@@ -1,0 +1,12 @@
+# Nuvoton NPCD390 eSPI EC
+[part]
+id = 'part:nuvoton/nuvoton_npcd390'
+origin = 'nuvoton'
+name = 'nuvoton_npcd390'
+summary = "Nuvoton NPCD390 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

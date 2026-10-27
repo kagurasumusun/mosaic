@@ -1,0 +1,8 @@
+# Raspberry Pi 5" 800x480 DSI display
+[part]
+id = 'part:raspberrypi/rpi_5in_dsi'
+origin = 'raspberrypi'
+name = 'rpi_5in_dsi'
+summary = "Raspberry Pi 5\" 800x480 DSI display"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

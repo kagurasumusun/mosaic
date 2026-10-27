@@ -1,0 +1,12 @@
+# SMSC MEC1308 eSPI EC
+[part]
+id = 'part:smsc/smsc_mec1308'
+origin = 'smsc'
+name = 'smsc_mec1308'
+summary = "SMSC MEC1308 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

@@ -32,3 +32,4 @@
 | [0024](0024-qemu-directory-axes.md) | QEMU 型ディレクトリ軸への再編成（機能軸 `hw/`・アーキ軸 `machine/`、manifest ミラー、クレート統合、入り口 1 本） | 採用 |
 | [0025](0025-reuse-foundations.md) | 再利用基盤 (bus/boot) とモデルカタログ | 採用 |
 | [0026](0026-fabric-expansion-and-mass-models.md) | ファブリック拡張 (9→31 種) と実モデル大量実装 (1000+ 件) | 採用 |
+| [0027](0027-fabric-expansion-step3-video-audio-input.md) | ファブリック拡張 step 3 — ビデオ/オーディオ/入力の接続方式 12 種 (HDMI/DP/DSI/CSI/PS2/S/PDIF/eSPI/SoundWire/SLIMbus/FireWire/MIDI/GamePort) + 178 件の新モデル | 採用 |

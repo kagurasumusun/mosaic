@@ -1,0 +1,8 @@
+# Realtek RT5682S SoundWire audio codec
+[part]
+id = 'part:realtek/rt5682s'
+origin = 'realtek'
+name = 'rt5682s'
+summary = "Realtek RT5682S SoundWire audio codec"
+bindings = ["soundwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# HP Z27 27" 4K USB-C monitor
+[part]
+id = 'part:hp/hp_z27'
+origin = 'hp'
+name = 'hp_z27'
+summary = "HP Z27 27\" 4K USB-C monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

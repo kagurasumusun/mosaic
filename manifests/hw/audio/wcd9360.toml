@@ -1,0 +1,8 @@
+# Qualcomm WCD9360 SLIMbus audio codec
+[part]
+id = 'part:qcom/wcd9360'
+origin = 'qcom'
+name = 'wcd9360'
+summary = "Qualcomm WCD9360 SLIMbus audio codec"
+bindings = ["slimbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

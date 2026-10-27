@@ -1,0 +1,8 @@
+# OmniVision OV64A40 64MP 1/1.7" CSI-2 sensor
+[part]
+id = 'part:omnivision/ov64a40'
+origin = 'omnivision'
+name = 'ov64a40'
+summary = "OmniVision OV64A40 64MP 1/1.7\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

@@ -1,0 +1,8 @@
+# SmartSens SC223A 2MP 1/3" CSI-2 sensor
+[part]
+id = 'part:smartsens/sc223a'
+origin = 'smartsens'
+name = 'sc223a'
+summary = "SmartSens SC223A 2MP 1/3\" CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

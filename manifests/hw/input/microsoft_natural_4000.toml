@@ -1,0 +1,12 @@
+# Microsoft Natural Ergonomic 4000 PS/2 keyboard
+[part]
+id = 'part:microsoft/microsoft_natural_4000'
+origin = 'microsoft'
+name = 'microsoft_natural_4000'
+summary = "Microsoft Natural Ergonomic 4000 PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

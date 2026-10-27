@@ -1,0 +1,8 @@
+# OmniVision OV08D10 8MP CSI-2 sensor
+[part]
+id = 'part:omnivision/ov08d10'
+origin = 'omnivision'
+name = 'ov08d10'
+summary = "OmniVision OV08D10 8MP CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

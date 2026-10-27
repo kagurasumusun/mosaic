@@ -1,0 +1,8 @@
+# onsemi MT9M001 1MP 1/2" parallel/CSI-2 sensor
+[part]
+id = 'part:onsemi/mt9m001'
+origin = 'onsemi'
+name = 'mt9m001'
+summary = "onsemi MT9M001 1MP 1/2\" parallel/CSI-2 sensor"
+bindings = ["mipi_csi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

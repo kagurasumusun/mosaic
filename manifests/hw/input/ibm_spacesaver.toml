@@ -1,0 +1,12 @@
+# IBM Space Saver 84-key PS/2 keyboard
+[part]
+id = 'part:ibm/ibm_spacesaver'
+origin = 'ibm'
+name = 'ibm_spacesaver'
+summary = "IBM Space Saver 84-key PS/2 keyboard"
+bindings = ["ps2"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[ps2]
+kind = 'keyboard'

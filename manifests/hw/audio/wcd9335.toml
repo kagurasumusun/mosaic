@@ -1,0 +1,8 @@
+# Qualcomm WCD9335 SLIMbus audio codec
+[part]
+id = 'part:qcom/wcd9335'
+origin = 'qcom'
+name = 'wcd9335'
+summary = "Qualcomm WCD9335 SLIMbus audio codec"
+bindings = ["slimbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

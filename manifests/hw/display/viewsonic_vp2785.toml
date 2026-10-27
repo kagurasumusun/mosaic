@@ -1,0 +1,8 @@
+# ViewSonic VP2785-4K 27" 4K HDR400 monitor
+[part]
+id = 'part:viewsonic/viewsonic_vp2785'
+origin = 'viewsonic'
+name = 'viewsonic_vp2785'
+summary = "ViewSonic VP2785-4K 27\" 4K HDR400 monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

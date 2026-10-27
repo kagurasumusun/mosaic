@@ -1,0 +1,12 @@
+# Nuvoton NPCD376 eSPI EC
+[part]
+id = 'part:nuvoton/nuvoton_npcd376'
+origin = 'nuvoton'
+name = 'nuvoton_npcd376'
+summary = "Nuvoton NPCD376 eSPI EC"
+bindings = ["espi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[espi]
+chip-select = 0

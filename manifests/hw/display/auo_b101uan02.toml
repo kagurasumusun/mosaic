@@ -1,0 +1,8 @@
+# AUO B101UAN02 10.1" 1200x1920 DSI panel
+[part]
+id = 'part:auo/auo_b101uan02'
+origin = 'auo'
+name = 'auo_b101uan02'
+summary = "AUO B101UAN02 10.1\" 1200x1920 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

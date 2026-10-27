@@ -1,0 +1,8 @@
+# Focusrite Saffire Pro 40 FireWire audio interface
+[part]
+id = 'part:focusrite/focusrite_saffire_pro40'
+origin = 'focusrite'
+name = 'focusrite_saffire_pro40'
+summary = "Focusrite Saffire Pro 40 FireWire audio interface"
+bindings = ["firewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

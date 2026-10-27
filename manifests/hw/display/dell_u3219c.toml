@@ -1,0 +1,8 @@
+# Dell U3219C 32" 4K USB-C DisplayPort monitor
+[part]
+id = 'part:dell/dell_u3219c'
+origin = 'dell'
+name = 'dell_u3219c'
+summary = "Dell U3219C 32\" 4K USB-C DisplayPort monitor"
+bindings = ["displayport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

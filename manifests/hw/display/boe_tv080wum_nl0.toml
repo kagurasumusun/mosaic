@@ -1,0 +1,8 @@
+# BOE TV080WUM-NL0 8" 1200x1920 DSI panel
+[part]
+id = 'part:boe/boe_tv080wum_nl0'
+origin = 'boe'
+name = 'boe_tv080wum_nl0'
+summary = "BOE TV080WUM-NL0 8\" 1200x1920 DSI panel"
+bindings = ["mipi_dsi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

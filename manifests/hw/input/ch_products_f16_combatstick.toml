@@ -1,0 +1,13 @@
+# CH Products F-16 Combatstick gameport
+[part]
+id = 'part:ch/ch_products_f16_combatstick'
+origin = 'ch'
+name = 'ch_products_f16_combatstick'
+summary = "CH Products F-16 Combatstick gameport"
+bindings = ["gameport"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[gameport]
+axes = 4
+buttons = 4

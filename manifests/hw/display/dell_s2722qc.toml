@@ -1,0 +1,8 @@
+# Dell S2722QC 27" 4K USB-C HDMI monitor
+[part]
+id = 'part:dell/dell_s2722qc'
+origin = 'dell'
+name = 'dell_s2722qc'
+summary = "Dell S2722QC 27\" 4K USB-C HDMI monitor"
+bindings = ["hdmi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }

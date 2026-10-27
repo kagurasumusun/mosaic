@@ -1,0 +1,13 @@
+# Roland Sound Canvas SC-88 GS MIDI tone module
+[part]
+id = 'part:roland/roland_sc88'
+origin = 'roland'
+name = 'roland_sc88'
+summary = "Roland Sound Canvas SC-88 GS MIDI tone module"
+bindings = ["midi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+
+[midi]
+direction = 'both'
+channels = 16
