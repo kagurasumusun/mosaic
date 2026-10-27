@@ -1,7 +1,11 @@
 //! Logitech ThunderPad Digital gameport
 //!
-//! Catalog part `part:logitech/logitech_thunderpad_digital` — see manifests/hw/<cat>/logitech/logitech_thunderpad_digital.toml.
+//! Catalog part `part:logitech/logitech_thunderpad_digital` — manifests/hw/input/logitech_thunderpad_digital.toml.
+//! Thin configuration over the shared gameport stick core (ADR 0027).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::input::gameport_stick_core::GamePortStickCore;
+
+/// logitech_thunderpad_digital: 4-axis / 4-button analog gameport stick.
+pub fn new() -> GamePortStickCore {
+    GamePortStickCore::new()
+}

@@ -1,7 +1,11 @@
 //! Guillemot Falcon gameport joystick
 //!
-//! Catalog part `part:guillemot/guillemot_falcon` — see manifests/hw/<cat>/guillemot/guillemot_falcon.toml.
+//! Catalog part `part:guillemot/guillemot_falcon` — manifests/hw/input/guillemot_falcon.toml.
+//! Thin configuration over the shared gameport stick core (ADR 0027).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::input::gameport_stick_core::GamePortStickCore;
+
+/// guillemot_falcon: 4-axis / 4-button analog gameport stick.
+pub fn new() -> GamePortStickCore {
+    GamePortStickCore::new()
+}

@@ -1,7 +1,11 @@
 //! ThrustMaster F-22 Pro gameport joystick
 //!
-//! Catalog part `part:thrustmaster/thrustmaster_f22` — see manifests/hw/<cat>/thrustmaster/thrustmaster_f22.toml.
+//! Catalog part `part:thrustmaster/thrustmaster_f22` — manifests/hw/input/thrustmaster_f22.toml.
+//! Thin configuration over the shared gameport stick core (ADR 0027).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::input::gameport_stick_core::GamePortStickCore;
+
+/// thrustmaster_f22: 4-axis / 4-button analog gameport stick.
+pub fn new() -> GamePortStickCore {
+    GamePortStickCore::new()
+}

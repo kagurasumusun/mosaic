@@ -69,3 +69,6 @@ pub mod saitek_x36;
 pub mod sun_type6_ps2;
 pub mod synaptics_ps2_touchpad;
 pub mod thrustmaster_f22;
+pub mod ps2_keyboard_core;
+pub mod ps2_mouse_core;
+pub mod gameport_stick_core;
