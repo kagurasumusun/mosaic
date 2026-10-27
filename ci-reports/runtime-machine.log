@@ -1,5 +1,5 @@
 [0m[1m[33mwarning[0m[0m[1m: variable does not need to be mutable[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mcontract/src/onewire.rs:28:21[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/contract/src/onewire.rs:28:21[0m
 [0m   [0m[0m[1m[38;5;12m|[0m
 [0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn onewire_crc8(mut bits: u64) -> u8 {[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12m----[0m[0m[1m[33m^^^^[0m
@@ -9,5 +9,5 @@
 [0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_mut)]` on by default[0m
 
 [1m[33mwarning[0m[1m:[0m `mosaic-contract` (lib) generated 1 warning (run `cargo fix --lib -p mosaic-contract` to apply 1 suggestion)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
 [1m[32m     Running[0m `target/debug/examples/machine`
