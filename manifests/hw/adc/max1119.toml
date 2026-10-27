@@ -1,0 +1,12 @@
+# MAX1119 8-bit 2-channel SPI ADC
+[part]
+id = 'part:maxim/max1119'
+origin = 'maxim'
+name = 'max1119'
+summary = "MAX1119 8-bit 2-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

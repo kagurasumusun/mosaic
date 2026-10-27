@@ -1,0 +1,12 @@
+# TMP275 digital temperature sensor (I2C, 12-bit)
+[part]
+id = 'part:ti/tmp275'
+origin = 'ti'
+name = 'tmp275'
+summary = "TMP275 digital temperature sensor (I2C, 12-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

@@ -1,0 +1,12 @@
+# Trinamic TMC5160 stepper motor driver (SPI)
+[part]
+id = 'part:trinamic/tmc5160'
+origin = 'trinamic'
+name = 'tmc5160'
+summary = "Trinamic TMC5160 stepper motor driver (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

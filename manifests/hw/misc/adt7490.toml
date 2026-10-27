@@ -1,0 +1,13 @@
+# ADI ADT7490 system monitor (SMBus)
+[part]
+id = 'part:adi/adt7490'
+origin = 'adi'
+name = 'adt7490'
+summary = "ADI ADT7490 system monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+

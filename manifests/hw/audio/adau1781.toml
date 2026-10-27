@@ -1,0 +1,12 @@
+# ADI ADAU1781 SigmaDSP audio codec (I2S + I2C)
+[part]
+id = 'part:adi/adau1781'
+origin = 'adi'
+name = 'adau1781'
+summary = "ADI ADAU1781 SigmaDSP audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [58]
+

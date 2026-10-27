@@ -1,0 +1,13 @@
+# CAT93C46 1Kbit Microwire EEPROM
+[part]
+id = 'part:onsemi/cat93c46'
+origin = 'onsemi'
+name = 'cat93c46'
+summary = "CAT93C46 1Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 7
+

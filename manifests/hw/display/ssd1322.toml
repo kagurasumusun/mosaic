@@ -1,0 +1,12 @@
+# SSD1322 grayscale OLED controller (SPI)
+[part]
+id = 'part:solomon/ssd1322'
+origin = 'solomon'
+name = 'ssd1322'
+summary = "SSD1322 grayscale OLED controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

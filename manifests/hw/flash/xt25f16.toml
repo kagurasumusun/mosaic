@@ -1,0 +1,12 @@
+# XT25F16 16Mbit SPI flash
+[part]
+id = 'part:xtx/xt25f16'
+origin = 'xtx'
+name = 'xt25f16'
+summary = "XT25F16 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

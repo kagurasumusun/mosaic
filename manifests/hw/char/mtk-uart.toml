@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:mediatek/mtk-uart'
+summary = "MediaTek UART (8250 compatible)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['char']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

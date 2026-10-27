@@ -1,0 +1,12 @@
+# DS1673 I2C RTC with watchdog
+[part]
+id = 'part:maxim/ds1673'
+origin = 'maxim'
+name = 'ds1673'
+summary = "DS1673 I2C RTC with watchdog"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

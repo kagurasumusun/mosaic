@@ -1,0 +1,12 @@
+# TI BQ32000 I2C real-time clock with trickle charger
+[part]
+id = 'part:ti/bq32000'
+origin = 'ti'
+name = 'bq32000'
+summary = "TI BQ32000 I2C real-time clock with trickle charger"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

@@ -1,0 +1,12 @@
+# AD7877 4-wire touch screen controller (SPI)
+[part]
+id = 'part:adi/ad7877'
+origin = 'adi'
+name = 'ad7877'
+summary = "AD7877 4-wire touch screen controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

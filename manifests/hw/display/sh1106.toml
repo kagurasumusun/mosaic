@@ -1,0 +1,15 @@
+# SH1106 monochrome OLED controller (I2C/SPI)
+[part]
+id = 'part:solomon/sh1106'
+origin = 'solomon'
+name = 'sh1106'
+summary = "SH1106 monochrome OLED controller (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [60, 61]
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# MCP795 SPI real-time clock with SRAM
+[part]
+id = 'part:microchip/mcp795'
+origin = 'microchip'
+name = 'mcp795'
+summary = "MCP795 SPI real-time clock with SRAM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

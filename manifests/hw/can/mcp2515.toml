@@ -1,0 +1,12 @@
+# Microchip MCP2515 CAN controller (SPI)
+[part]
+id = 'part:microchip/mcp2515'
+origin = 'microchip'
+name = 'mcp2515'
+summary = "Microchip MCP2515 CAN controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

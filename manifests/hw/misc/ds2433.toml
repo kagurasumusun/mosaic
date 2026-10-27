@@ -1,0 +1,12 @@
+# DS2433 1-Wire 4kbit EEPROM
+[part]
+id = 'part:maxim/ds2433'
+origin = 'maxim'
+name = 'ds2433'
+summary = "DS2433 1-Wire 4kbit EEPROM"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 35
+

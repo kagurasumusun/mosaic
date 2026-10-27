@@ -1,0 +1,12 @@
+# PCA9539 16-bit I2C I/O expander
+[part]
+id = 'part:nxp/pca9539'
+origin = 'nxp'
+name = 'pca9539'
+summary = "PCA9539 16-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [116, 117, 118, 119]
+

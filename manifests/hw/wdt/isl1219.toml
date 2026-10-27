@@ -1,0 +1,12 @@
+# ISL1219 I2C RTC with watchdog
+[part]
+id = 'part:renesas/isl1219'
+origin = 'renesas'
+name = 'isl1219'
+summary = "ISL1219 I2C RTC with watchdog"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [111]
+

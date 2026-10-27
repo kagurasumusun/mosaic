@@ -1,0 +1,13 @@
+# M93C66 4Kbit Microwire EEPROM
+[part]
+id = 'part:st/m93c66'
+origin = 'st'
+name = 'm93c66'
+summary = "M93C66 4Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 8
+

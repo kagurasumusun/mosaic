@@ -1,0 +1,12 @@
+# MCP3421 18-bit 1-channel I2C ADC
+[part]
+id = 'part:microchip/mcp3421'
+origin = 'microchip'
+name = 'mcp3421'
+summary = "MCP3421 18-bit 1-channel I2C ADC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105, 106, 107, 108, 109, 110, 111]
+

@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:cirrus/cs4281'
+summary = "Cirrus CS4281 audio controller (PCI)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['audio']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

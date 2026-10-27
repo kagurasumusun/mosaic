@@ -1,0 +1,12 @@
+# ISL1208 I2C RTC with watchdog
+[part]
+id = 'part:renesas/isl1208'
+origin = 'renesas'
+name = 'isl1208'
+summary = "ISL1208 I2C RTC with watchdog"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [111]
+

@@ -1,0 +1,12 @@
+# DS2450 1-Wire quad ADC
+[part]
+id = 'part:maxim/ds2450'
+origin = 'maxim'
+name = 'ds2450'
+summary = "DS2450 1-Wire quad ADC"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 32
+

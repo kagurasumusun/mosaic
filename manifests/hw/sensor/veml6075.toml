@@ -1,0 +1,12 @@
+# VEML6075 UV-A and UV-B sensor (I2C)
+[part]
+id = 'part:vishay/veml6075'
+origin = 'vishay'
+name = 'veml6075'
+summary = "VEML6075 UV-A and UV-B sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [16]
+

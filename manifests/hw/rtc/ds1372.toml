@@ -1,0 +1,12 @@
+# DS1372 I2C RTC with unique 64-bit ID
+[part]
+id = 'part:maxim/ds1372'
+origin = 'maxim'
+name = 'ds1372'
+summary = "DS1372 I2C RTC with unique 64-bit ID"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

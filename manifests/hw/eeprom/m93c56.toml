@@ -1,0 +1,13 @@
+# M93C56 2Kbit Microwire EEPROM
+[part]
+id = 'part:st/m93c56'
+origin = 'st'
+name = 'm93c56'
+summary = "M93C56 2Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 8
+

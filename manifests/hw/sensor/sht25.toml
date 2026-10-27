@@ -1,0 +1,12 @@
+# SHT25 humidity and temperature sensor (I2C)
+[part]
+id = 'part:sensirion/sht25'
+origin = 'sensirion'
+name = 'sht25'
+summary = "SHT25 humidity and temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64]
+

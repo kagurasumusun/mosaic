@@ -1,0 +1,15 @@
+# LPS22HB MEMS pressure sensor (I2C/SPI)
+[part]
+id = 'part:st/lps22hb'
+origin = 'st'
+name = 'lps22hb'
+summary = "LPS22HB MEMS pressure sensor (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [92, 93]
+
+[spi]
+mode = [0]
+

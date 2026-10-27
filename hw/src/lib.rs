@@ -32,6 +32,13 @@ pub mod timer;
 pub mod usb;
 pub mod virtio;
 
+pub mod adc;
+pub mod audio;
+pub mod can;
+pub mod dac;
+pub mod eeprom;
+pub mod wdt;
+
 /// The device model catalog: every model, registered by its own module
 /// (QEMU's `TypeInfo` tables, ADR 0025).
 pub mod catalog;

@@ -1,0 +1,12 @@
+# PCF85063 I2C real-time clock
+[part]
+id = 'part:nxp/pcf85063'
+origin = 'nxp'
+name = 'pcf85063'
+summary = "PCF85063 I2C real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [81]
+

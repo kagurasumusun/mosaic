@@ -1,0 +1,15 @@
+# MPU-9250 9-axis IMU (I2C/SPI, 16-bit)
+[part]
+id = 'part:invensense/mpu9250'
+origin = 'invensense'
+name = 'mpu9250'
+summary = "MPU-9250 9-axis IMU (I2C/SPI, 16-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105]
+
+[spi]
+mode = [0, 3]
+

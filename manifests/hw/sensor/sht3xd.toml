@@ -1,0 +1,12 @@
+# SHT3xD digital humidity and temperature sensor (I2C)
+[part]
+id = 'part:sensirion/sht3xd'
+origin = 'sensirion'
+name = 'sht3xd'
+summary = "SHT3xD digital humidity and temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

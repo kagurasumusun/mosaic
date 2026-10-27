@@ -1,0 +1,12 @@
+# FM24V05 512Kbit F-RAM (I2C)
+[part]
+id = 'part:cypress/fm24v05'
+origin = 'cypress'
+name = 'fm24v05'
+summary = "FM24V05 512Kbit F-RAM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

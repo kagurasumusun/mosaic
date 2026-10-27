@@ -1,0 +1,12 @@
+# GD25LQ16 16Mbit low-voltage SPI flash
+[part]
+id = 'part:gigadevice/gd25lq16'
+origin = 'gigadevice'
+name = 'gd25lq16'
+summary = "GD25LQ16 16Mbit low-voltage SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# DAC7578 12-bit 8-channel I2C DAC
+[part]
+id = 'part:ti/dac7578'
+origin = 'ti'
+name = 'dac7578'
+summary = "DAC7578 12-bit 8-channel I2C DAC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

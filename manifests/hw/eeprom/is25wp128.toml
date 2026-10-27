@@ -1,0 +1,12 @@
+# IS25WP128 128Mbit SPI flash (dual/quad)
+[part]
+id = 'part:issi/is25wp128'
+origin = 'issi'
+name = 'is25wp128'
+summary = "IS25WP128 128Mbit SPI flash (dual/quad)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

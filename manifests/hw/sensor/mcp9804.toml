@@ -1,0 +1,12 @@
+# MCP9804 digital temperature sensor (I2C, 13-bit)
+[part]
+id = 'part:microchip/mcp9804'
+origin = 'microchip'
+name = 'mcp9804'
+summary = "MCP9804 digital temperature sensor (I2C, 13-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30, 31]
+

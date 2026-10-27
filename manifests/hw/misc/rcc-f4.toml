@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:st/rcc-f4'
+summary = "STM32F4 Reset and Clock Control (RCC)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['misc']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

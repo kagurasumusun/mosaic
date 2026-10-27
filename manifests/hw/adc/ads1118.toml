@@ -1,0 +1,12 @@
+# ADS1118 16-bit 4-channel SPI ADC
+[part]
+id = 'part:ti/ads1118'
+origin = 'ti'
+name = 'ads1118'
+summary = "ADS1118 16-bit 4-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1]
+

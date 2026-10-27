@@ -1,0 +1,12 @@
+# Infineon SLB9672 TPM 2.0 (SPI)
+[part]
+id = 'part:infineon/tpm-sl9672'
+origin = 'infineon'
+name = 'tpm-sl9672'
+summary = "Infineon SLB9672 TPM 2.0 (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

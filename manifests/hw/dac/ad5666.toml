@@ -1,0 +1,12 @@
+# AD5666 16-bit 4-channel SPI DAC
+[part]
+id = 'part:adi/ad5666'
+origin = 'adi'
+name = 'ad5666'
+summary = "AD5666 16-bit 4-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

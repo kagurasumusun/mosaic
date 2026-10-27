@@ -1,0 +1,12 @@
+# W25X80 8Mbit SPI flash
+[part]
+id = 'part:winbond/w25x80'
+origin = 'winbond'
+name = 'w25x80'
+summary = "W25X80 8Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

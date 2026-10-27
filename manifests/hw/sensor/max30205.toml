@@ -1,0 +1,12 @@
+# MAX30205 human body temperature sensor (I2C, 16-bit)
+[part]
+id = 'part:maxim/max30205'
+origin = 'maxim'
+name = 'max30205'
+summary = "MAX30205 human body temperature sensor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

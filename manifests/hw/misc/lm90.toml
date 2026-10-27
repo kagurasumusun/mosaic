@@ -1,0 +1,13 @@
+# National LM90 dual temp sensor (SMBus)
+[part]
+id = 'part:national/lm90'
+origin = 'national'
+name = 'lm90'
+summary = "National LM90 dual temp sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 76
+pec = false
+

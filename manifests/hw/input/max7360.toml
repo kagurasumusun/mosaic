@@ -1,0 +1,12 @@
+# Maxim MAX7360 key switch controller (I2C)
+[part]
+id = 'part:maxim/max7360'
+origin = 'maxim'
+name = 'max7360'
+summary = "Maxim MAX7360 key switch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56]
+

@@ -1,0 +1,12 @@
+# ILI9488 color TFT LCD controller (SPI)
+[part]
+id = 'part:ilitek/ili9488'
+origin = 'ilitek'
+name = 'ili9488'
+summary = "ILI9488 color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

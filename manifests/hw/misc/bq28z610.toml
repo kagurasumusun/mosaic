@@ -1,0 +1,13 @@
+# TI BQ28Z610 battery management (SMBus)
+[part]
+id = 'part:ti/bq28z610'
+origin = 'ti'
+name = 'bq28z610'
+summary = "TI BQ28Z610 battery management (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 11
+pec = true
+

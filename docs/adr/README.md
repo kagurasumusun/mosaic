@@ -30,4 +30,5 @@
 | [0022](0022-guest-image-testing.md) | ゲストイメージによるテスト方針（実イメージのみ、台帳駆動） | 採用 |
 | [0023](0023-machine-model-placement.md) | 機械モデルの居場所（catalog board、`-kernel` は機械の経路、イメージ形式は modelkit、R2/R5 修正） | 採用 → 居場所は 0024 で移設 |
 | [0024](0024-qemu-directory-axes.md) | QEMU 型ディレクトリ軸への再編成（機能軸 `hw/`・アーキ軸 `machine/`、manifest ミラー、クレート統合、入り口 1 本） | 採用 |
-- [0025 - Reuse foundations (bus/boot) and the model catalog](0025-reuse-foundations.md)
+| [0025](0025-reuse-foundations.md) | 再利用基盤 (bus/boot) とモデルカタログ | 採用 |
+| [0026](0026-fabric-expansion-and-mass-models.md) | ファブリック拡張 (9→31 種) と実モデル大量実装 (1000+ 件) | 採用 |

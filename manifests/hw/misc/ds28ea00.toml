@@ -1,0 +1,12 @@
+# DS28EA00 1-Wire digital thermometer with PIO
+[part]
+id = 'part:maxim/ds28ea00'
+origin = 'maxim'
+name = 'ds28ea00'
+summary = "DS28EA00 1-Wire digital thermometer with PIO"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 66
+

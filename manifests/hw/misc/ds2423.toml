@@ -1,0 +1,12 @@
+# DS2423 1-Wire RAM with counters
+[part]
+id = 'part:maxim/ds2423'
+origin = 'maxim'
+name = 'ds2423'
+summary = "DS2423 1-Wire RAM with counters"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 29
+

@@ -1,0 +1,12 @@
+# PCA9554A 16-bit I2C I/O expander
+[part]
+id = 'part:nxp/pca9554a'
+origin = 'nxp'
+name = 'pca9554a'
+summary = "PCA9554A 16-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56, 57, 58, 59, 60, 61, 62, 63]
+

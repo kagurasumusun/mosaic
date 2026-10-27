@@ -1,0 +1,12 @@
+# FocalTech FT5316 capacitive touch controller (I2C)
+[part]
+id = 'part:focaltech/ft5316'
+origin = 'focaltech'
+name = 'ft5316'
+summary = "FocalTech FT5316 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56]
+

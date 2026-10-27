@@ -1,0 +1,12 @@
+# Goodix GT7996F touch controller (I2C)
+[part]
+id = 'part:goodix/gt7996f'
+origin = 'goodix'
+name = 'gt7996f'
+summary = "Goodix GT7996F touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [93]
+

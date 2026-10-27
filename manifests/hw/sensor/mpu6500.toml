@@ -1,0 +1,15 @@
+# MPU-6500 6-axis IMU (I2C/SPI, 16-bit)
+[part]
+id = 'part:invensense/mpu6500'
+origin = 'invensense'
+name = 'mpu6500'
+summary = "MPU-6500 6-axis IMU (I2C/SPI, 16-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105]
+
+[spi]
+mode = [0, 3]
+

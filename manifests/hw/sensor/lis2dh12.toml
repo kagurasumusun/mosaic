@@ -1,0 +1,15 @@
+# LIS2DH12 3-axis accelerometer (I2C/SPI, 12-bit)
+[part]
+id = 'part:st/lis2dh12'
+origin = 'st'
+name = 'lis2dh12'
+summary = "LIS2DH12 3-axis accelerometer (I2C/SPI, 12-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25]
+
+[spi]
+mode = [3]
+

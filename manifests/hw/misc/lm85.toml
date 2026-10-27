@@ -1,0 +1,13 @@
+# National LM85 hardware monitor (SMBus)
+[part]
+id = 'part:national/lm85'
+origin = 'national'
+name = 'lm85'
+summary = "National LM85 hardware monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+

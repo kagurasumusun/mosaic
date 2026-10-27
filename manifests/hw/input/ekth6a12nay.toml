@@ -1,0 +1,12 @@
+# ELAN eKTH6A12NAY touchpad (I2C)
+[part]
+id = 'part:elan/ekth6a12nay'
+origin = 'elan'
+name = 'ekth6a12nay'
+summary = "ELAN eKTH6A12NAY touchpad (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [21]
+

@@ -1,0 +1,12 @@
+# ADI ADAU1962 8-channel DAC (I2C + I2S)
+[part]
+id = 'part:adi/adau1962'
+origin = 'adi'
+name = 'adau1962'
+summary = "ADI ADAU1962 8-channel DAC (I2C + I2S)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [10]
+

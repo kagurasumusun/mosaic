@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:davicom/dm9000'
+summary = "DAVICOM DM9000 10/100 Ethernet controller (mem-mapped)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['net']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

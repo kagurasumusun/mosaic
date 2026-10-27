@@ -1,0 +1,12 @@
+# FocalTech FT6206 capacitive touch controller (I2C)
+[part]
+id = 'part:focaltech/ft6206'
+origin = 'focaltech'
+name = 'ft6206'
+summary = "FocalTech FT6206 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56]
+

@@ -1,0 +1,12 @@
+# Exar XR20M1172 1-channel SPI UART
+[part]
+id = 'part:exar/xr20m1172'
+origin = 'exar'
+name = 'xr20m1172'
+summary = "Exar XR20M1172 1-channel SPI UART"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

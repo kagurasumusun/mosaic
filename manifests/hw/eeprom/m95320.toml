@@ -1,0 +1,12 @@
+# M95320 32Kbit SPI EEPROM
+[part]
+id = 'part:st/m95320'
+origin = 'st'
+name = 'm95320'
+summary = "M95320 32Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# MCP4911 10-bit 1-channel SPI DAC
+[part]
+id = 'part:microchip/mcp4911'
+origin = 'microchip'
+name = 'mcp4911'
+summary = "MCP4911 10-bit 1-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

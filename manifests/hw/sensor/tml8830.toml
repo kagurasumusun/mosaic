@@ -1,0 +1,12 @@
+# AMS TSL2591 luminosity sensor (I2C)
+[part]
+id = 'part:ams-osram/tml8830'
+origin = 'ams-osram'
+name = 'tml8830'
+summary = "AMS TSL2591 luminosity sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [41]
+

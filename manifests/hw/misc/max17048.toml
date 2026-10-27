@@ -1,0 +1,12 @@
+# Maxim MAX17048 Li+ fuel gauge (I2C)
+[part]
+id = 'part:maxim/max17048'
+origin = 'maxim'
+name = 'max17048'
+summary = "Maxim MAX17048 Li+ fuel gauge (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [54, 107]
+

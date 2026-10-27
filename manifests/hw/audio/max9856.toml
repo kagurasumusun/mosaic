@@ -1,0 +1,12 @@
+# Maxim MAX9856 audio codec (I2S + I2C)
+[part]
+id = 'part:maxim/max9856'
+origin = 'maxim'
+name = 'max9856'
+summary = "Maxim MAX9856 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [16]
+

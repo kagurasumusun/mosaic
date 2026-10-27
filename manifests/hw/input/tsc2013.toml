@@ -1,0 +1,12 @@
+# TSC2013 4-wire touch screen controller (SPI)
+[part]
+id = 'part:ti/tsc2013'
+origin = 'ti'
+name = 'tsc2013'
+summary = "TSC2013 4-wire touch screen controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

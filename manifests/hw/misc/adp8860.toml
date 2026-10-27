@@ -1,0 +1,12 @@
+# ADI ADP8860 7-channel LED driver (I2C)
+[part]
+id = 'part:adi/adp8860'
+origin = 'adi'
+name = 'adp8860'
+summary = "ADI ADP8860 7-channel LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [54]
+

@@ -1,0 +1,12 @@
+# XT25F64 64Mbit SPI flash
+[part]
+id = 'part:xtx/xt25f64'
+origin = 'xtx'
+name = 'xt25f64'
+summary = "XT25F64 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

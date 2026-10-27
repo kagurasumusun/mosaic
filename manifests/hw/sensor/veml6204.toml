@@ -1,0 +1,12 @@
+# VEML6204 ambient light sensor (I2C)
+[part]
+id = 'part:vishay/veml6204'
+origin = 'vishay'
+name = 'veml6204'
+summary = "VEML6204 ambient light sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72]
+

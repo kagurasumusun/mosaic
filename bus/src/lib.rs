@@ -28,13 +28,34 @@
 //! * a fabric owns arbitration, addressing and delivery only; it never owns
 //!   guest-visible registers — register files belong to the devices in `hw`.
 
+pub mod ac97;
 pub mod can;
+pub mod canfd;
+pub mod flexray;
 pub mod gpio;
+pub mod hda;
 pub mod i2c;
+pub mod i2s;
 pub mod i3c;
+pub mod jtag;
+pub mod lpc;
+pub mod mdio;
+pub mod microwire;
 pub mod net;
+pub mod onewire;
+pub mod ospi;
+pub mod parallel;
+pub mod pata;
 pub mod pci;
+pub mod pcie;
+pub mod pmbus;
+pub mod qspi;
+pub mod rs485;
+pub mod sata;
+pub mod scsi;
 pub mod sd;
+pub mod smbus;
 pub mod spi;
+pub mod swd;
 pub mod uart;
 pub mod usb;

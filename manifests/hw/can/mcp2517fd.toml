@@ -1,0 +1,12 @@
+# Microchip MCP2517FD CAN FD controller (SPI)
+[part]
+id = 'part:microchip/mcp2517fd'
+origin = 'microchip'
+name = 'mcp2517fd'
+summary = "Microchip MCP2517FD CAN FD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

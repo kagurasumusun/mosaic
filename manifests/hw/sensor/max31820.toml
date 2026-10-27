@@ -1,0 +1,12 @@
+# MAX31820 1-Wire temperature sensor (12-bit)
+[part]
+id = 'part:maxim/max31820'
+origin = 'maxim'
+name = 'max31820'
+summary = "MAX31820 1-Wire temperature sensor (12-bit)"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 59
+

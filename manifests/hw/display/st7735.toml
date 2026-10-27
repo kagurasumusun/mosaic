@@ -1,0 +1,12 @@
+# ST7735 1.8in color TFT LCD controller (SPI)
+[part]
+id = 'part:sitronix/st7735'
+origin = 'sitronix'
+name = 'st7735'
+summary = "ST7735 1.8in color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

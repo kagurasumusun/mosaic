@@ -1,0 +1,12 @@
+# HMC6343 3-axis compass with tilt (I2C)
+[part]
+id = 'part:adi/hmc6343'
+origin = 'adi'
+name = 'hmc6343'
+summary = "HMC6343 3-axis compass with tilt (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [25]
+

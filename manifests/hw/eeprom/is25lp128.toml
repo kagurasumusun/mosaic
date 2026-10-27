@@ -1,0 +1,12 @@
+# IS25LP128 128Mbit SPI flash
+[part]
+id = 'part:issi/is25lp128'
+origin = 'issi'
+name = 'is25lp128'
+summary = "IS25LP128 128Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

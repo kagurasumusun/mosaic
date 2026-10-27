@@ -1,0 +1,12 @@
+# TI LM5064 PMBus hot-swap controller
+[part]
+id = 'part:ti/lm5064'
+origin = 'ti'
+name = 'lm5064'
+summary = "TI LM5064 PMBus hot-swap controller"
+bindings = ["pmbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[pmbus]
+address = 64
+

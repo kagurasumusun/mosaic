@@ -1,0 +1,13 @@
+# TI BQ24190 I2C single-cell charger (SMBus)
+[part]
+id = 'part:ti/bq24190'
+origin = 'ti'
+name = 'bq24190'
+summary = "TI BQ24190 I2C single-cell charger (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 107
+pec = true
+

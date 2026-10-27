@@ -1,0 +1,12 @@
+# ADS7830 8-channel 8-bit SPI ADC
+[part]
+id = 'part:ti/ads7830'
+origin = 'ti'
+name = 'ads7830'
+summary = "ADS7830 8-channel 8-bit SPI ADC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

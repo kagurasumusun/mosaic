@@ -1,0 +1,12 @@
+# MT25QL01G 1Gbit SPI flash
+[part]
+id = 'part:micron/mt25ql01g'
+origin = 'micron'
+name = 'mt25ql01g'
+summary = "MT25QL01G 1Gbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

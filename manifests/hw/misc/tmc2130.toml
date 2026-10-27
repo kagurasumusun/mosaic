@@ -1,0 +1,12 @@
+# Trinamic TMC2130 stepper motor driver (SPI)
+[part]
+id = 'part:trinamic/tmc2130'
+origin = 'trinamic'
+name = 'tmc2130'
+summary = "Trinamic TMC2130 stepper motor driver (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

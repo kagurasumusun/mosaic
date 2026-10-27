@@ -1,0 +1,12 @@
+# DAC8551 16-bit SPI DAC
+[part]
+id = 'part:ti/dac8551'
+origin = 'ti'
+name = 'dac8551'
+summary = "DAC8551 16-bit SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

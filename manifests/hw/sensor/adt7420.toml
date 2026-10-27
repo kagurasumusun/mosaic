@@ -1,0 +1,12 @@
+# ADT7420 16-bit digital temperature sensor (I2C)
+[part]
+id = 'part:adi/adt7420'
+origin = 'adi'
+name = 'adt7420'
+summary = "ADT7420 16-bit digital temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

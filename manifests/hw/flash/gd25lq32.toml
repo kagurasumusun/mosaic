@@ -1,0 +1,12 @@
+# GD25LQ32 32Mbit low-voltage SPI flash
+[part]
+id = 'part:gigadevice/gd25lq32'
+origin = 'gigadevice'
+name = 'gd25lq32'
+summary = "GD25LQ32 32Mbit low-voltage SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

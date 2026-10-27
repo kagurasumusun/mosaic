@@ -1,0 +1,12 @@
+# MB85RC16 16Kbit FRAM (I2C)
+[part]
+id = 'part:fujitsu/mb85rc16'
+origin = 'fujitsu'
+name = 'mb85rc16'
+summary = "MB85RC16 16Kbit FRAM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

@@ -1,0 +1,12 @@
+# DAC7574 12-bit 4-channel I2C DAC
+[part]
+id = 'part:ti/dac7574'
+origin = 'ti'
+name = 'dac7574'
+summary = "DAC7574 12-bit 4-channel I2C DAC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [76, 77, 78, 79]
+

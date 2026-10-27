@@ -1,0 +1,15 @@
+# BMI160 6-axis IMU (I2C/SPI)
+[part]
+id = 'part:bosch/bmi160'
+origin = 'bosch'
+name = 'bmi160'
+summary = "BMI160 6-axis IMU (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105]
+
+[spi]
+mode = [0]
+

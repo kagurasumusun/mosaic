@@ -1,0 +1,12 @@
+# W25Q40 4Mbit SPI flash
+[part]
+id = 'part:winbond/w25q40'
+origin = 'winbond'
+name = 'w25q40'
+summary = "W25Q40 4Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

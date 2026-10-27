@@ -1,0 +1,12 @@
+# CAT24C02 2Kbit I2C EEPROM
+[part]
+id = 'part:onsemi/cat24c02'
+origin = 'onsemi'
+name = 'cat24c02'
+summary = "CAT24C02 2Kbit I2C EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

@@ -1,0 +1,12 @@
+# Goodix GT1151 capacitive touch controller (I2C)
+[part]
+id = 'part:goodix/gt1151'
+origin = 'goodix'
+name = 'gt1151'
+summary = "Goodix GT1151 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [20]
+

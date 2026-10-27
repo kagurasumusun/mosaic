@@ -1,0 +1,15 @@
+# MS5611-01BA03 pressure sensor (I2C/SPI, 24-bit)
+[part]
+id = 'part:adi/ms5611'
+origin = 'adi'
+name = 'ms5611'
+summary = "MS5611-01BA03 pressure sensor (I2C/SPI, 24-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [119]
+
+[spi]
+mode = [0]
+

@@ -1,0 +1,12 @@
+# S25FL116K 16Mbit SPI flash
+[part]
+id = 'part:cypress/s25fl116k'
+origin = 'cypress'
+name = 's25fl116k'
+summary = "S25FL116K 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

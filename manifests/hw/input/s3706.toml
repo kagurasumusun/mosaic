@@ -1,0 +1,12 @@
+# Synaptics S3706 touchpad (I2C)
+[part]
+id = 'part:synaptics/s3706'
+origin = 'synaptics'
+name = 's3706'
+summary = "Synaptics S3706 touchpad (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [32]
+

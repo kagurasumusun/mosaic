@@ -1,0 +1,12 @@
+# Sharp LS013B7DH03 memory LCD (SPI)
+[part]
+id = 'part:sharp/ls013b7dh03'
+origin = 'sharp'
+name = 'ls013b7dh03'
+summary = "Sharp LS013B7DH03 memory LCD (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

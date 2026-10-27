@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:st/usart-h7'
+summary = "STM32H7 USART with FIFO and oversampling 8"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['char']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

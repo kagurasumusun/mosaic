@@ -1,0 +1,12 @@
+# Cirrus CS42448 multichannel codec (I2S + I2C)
+[part]
+id = 'part:cirrus/cs42448'
+origin = 'cirrus'
+name = 'cs42448'
+summary = "Cirrus CS42448 multichannel codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72]
+

@@ -1,0 +1,12 @@
+# ADI SSM2603 audio codec (I2S + I2C)
+[part]
+id = 'part:adi/ssm2603'
+origin = 'adi'
+name = 'ssm2603'
+summary = "ADI SSM2603 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [26, 27]
+

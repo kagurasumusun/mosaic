@@ -1,0 +1,12 @@
+# AD5664 16-bit 4-channel SPI DAC
+[part]
+id = 'part:adi/ad5664'
+origin = 'adi'
+name = 'ad5664'
+summary = "AD5664 16-bit 4-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

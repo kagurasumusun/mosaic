@@ -1,0 +1,12 @@
+# TI DRV8301 3-phase BLDC pre-driver (SPI)
+[part]
+id = 'part:ti/drv8301'
+origin = 'ti'
+name = 'drv8301'
+summary = "TI DRV8301 3-phase BLDC pre-driver (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1]
+

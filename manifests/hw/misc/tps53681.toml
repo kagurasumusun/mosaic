@@ -1,0 +1,12 @@
+# TI TPS53681 PMBus VRM controller
+[part]
+id = 'part:ti/tps53681'
+origin = 'ti'
+name = 'tps53681'
+summary = "TI TPS53681 PMBus VRM controller"
+bindings = ["pmbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[pmbus]
+address = 90
+

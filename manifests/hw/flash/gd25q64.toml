@@ -1,0 +1,12 @@
+# GD25Q64 64Mbit SPI flash
+[part]
+id = 'part:gigadevice/gd25q64'
+origin = 'gigadevice'
+name = 'gd25q64'
+summary = "GD25Q64 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

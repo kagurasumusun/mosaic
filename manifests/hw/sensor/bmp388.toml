@@ -1,0 +1,15 @@
+# BMP388 barometric pressure sensor (I2C/SPI)
+[part]
+id = 'part:bosch/bmp388'
+origin = 'bosch'
+name = 'bmp388'
+summary = "BMP388 barometric pressure sensor (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [118, 119]
+
+[spi]
+mode = [0]
+

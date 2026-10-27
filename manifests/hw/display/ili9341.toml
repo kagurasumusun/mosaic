@@ -1,0 +1,12 @@
+# ILI9341 2.4in color TFT LCD controller (SPI)
+[part]
+id = 'part:ilitek/ili9341'
+origin = 'ilitek'
+name = 'ili9341'
+summary = "ILI9341 2.4in color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

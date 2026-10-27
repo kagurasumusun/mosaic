@@ -1,0 +1,12 @@
+# NCS02 I2C temperature sensor (10-bit)
+[part]
+id = 'part:onsemi/ncs02'
+origin = 'onsemi'
+name = 'ncs02'
+summary = "NCS02 I2C temperature sensor (10-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

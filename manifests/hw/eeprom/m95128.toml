@@ -1,0 +1,12 @@
+# M95128 128Kbit SPI EEPROM
+[part]
+id = 'part:st/m95128'
+origin = 'st'
+name = 'm95128'
+summary = "M95128 128Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

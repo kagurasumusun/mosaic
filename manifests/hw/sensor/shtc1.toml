@@ -1,0 +1,12 @@
+# SHTC1 humidity and temperature sensor (I2C)
+[part]
+id = 'part:sensirion/shtc1'
+origin = 'sensirion'
+name = 'shtc1'
+summary = "SHTC1 humidity and temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [112]
+

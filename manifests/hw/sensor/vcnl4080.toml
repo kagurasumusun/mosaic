@@ -1,0 +1,12 @@
+# VCNL4080 ambient light and proximity sensor (I2C)
+[part]
+id = 'part:vishay/vcnl4080'
+origin = 'vishay'
+name = 'vcnl4080'
+summary = "VCNL4080 ambient light and proximity sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [65]
+

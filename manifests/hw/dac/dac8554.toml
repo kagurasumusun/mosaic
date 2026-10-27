@@ -1,0 +1,12 @@
+# DAC8554 16-bit 4-channel SPI DAC
+[part]
+id = 'part:ti/dac8554'
+origin = 'ti'
+name = 'dac8554'
+summary = "DAC8554 16-bit 4-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

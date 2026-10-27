@@ -1,0 +1,12 @@
+# EN25F16 16Mbit SPI flash
+[part]
+id = 'part:eon/en25f16'
+origin = 'eon'
+name = 'en25f16'
+summary = "EN25F16 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# N25Q064 64Mbit SPI flash
+[part]
+id = 'part:micron/n25q064'
+origin = 'micron'
+name = 'n25q064'
+summary = "N25Q064 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# DS1388 I2C RTC with watchdog and trickle charger
+[part]
+id = 'part:maxim/ds1388'
+origin = 'maxim'
+name = 'ds1388'
+summary = "DS1388 I2C RTC with watchdog and trickle charger"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

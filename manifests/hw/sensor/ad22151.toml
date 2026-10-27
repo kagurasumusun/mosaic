@@ -1,0 +1,12 @@
+# AD22151 linear Hall-effect sensor (SPI)
+[part]
+id = 'part:adi/ad22151'
+origin = 'adi'
+name = 'ad22151'
+summary = "AD22151 linear Hall-effect sensor (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:st/uart-l4'
+summary = "STM32L4 UART with low-power wakeup"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['char']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

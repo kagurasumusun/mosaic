@@ -1,0 +1,12 @@
+# DS2438 1-Wire smart battery monitor
+[part]
+id = 'part:maxim/ds2438'
+origin = 'maxim'
+name = 'ds2438'
+summary = "DS2438 1-Wire smart battery monitor"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 38
+

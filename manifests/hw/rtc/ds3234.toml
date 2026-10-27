@@ -1,0 +1,12 @@
+# DS3234 extremely accurate SPI RTC with TCXO and RAM
+[part]
+id = 'part:maxim/ds3234'
+origin = 'maxim'
+name = 'ds3234'
+summary = "DS3234 extremely accurate SPI RTC with TCXO and RAM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

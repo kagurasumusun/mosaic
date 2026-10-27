@@ -1,0 +1,12 @@
+# ScioSense ENS160 digital air quality sensor (I2C)
+[part]
+id = 'part:sciosense/ens160'
+origin = 'sciosense'
+name = 'ens160'
+summary = "ScioSense ENS160 digital air quality sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [82, 83]
+

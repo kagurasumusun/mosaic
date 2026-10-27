@@ -1,0 +1,12 @@
+# ISL29018 ambient light sensor (I2C, 15-bit)
+[part]
+id = 'part:renesas/isl29018'
+origin = 'renesas'
+name = 'isl29018'
+summary = "ISL29018 ambient light sensor (I2C, 15-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

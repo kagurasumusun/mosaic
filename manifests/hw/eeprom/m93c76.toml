@@ -1,0 +1,13 @@
+# M93C76 8Kbit Microwire EEPROM
+[part]
+id = 'part:st/m93c76'
+origin = 'st'
+name = 'm93c76'
+summary = "M93C76 8Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 9
+

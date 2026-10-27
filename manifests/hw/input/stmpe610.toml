@@ -1,0 +1,12 @@
+# STMPE610 touch screen controller (SPI)
+[part]
+id = 'part:st/stmpe610'
+origin = 'st'
+name = 'stmpe610'
+summary = "STMPE610 touch screen controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

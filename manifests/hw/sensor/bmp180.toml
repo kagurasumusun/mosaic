@@ -1,0 +1,12 @@
+# BMP180 barometric pressure sensor (I2C)
+[part]
+id = 'part:bosch/bmp180'
+origin = 'bosch'
+name = 'bmp180'
+summary = "BMP180 barometric pressure sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [119]
+

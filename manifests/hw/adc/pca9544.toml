@@ -1,0 +1,12 @@
+# PCA9544 4-channel I2C multiplexer with interrupt
+[part]
+id = 'part:nxp/pca9544'
+origin = 'nxp'
+name = 'pca9544'
+summary = "PCA9544 4-channel I2C multiplexer with interrupt"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [112, 113, 114, 115, 116, 117, 118, 119]
+

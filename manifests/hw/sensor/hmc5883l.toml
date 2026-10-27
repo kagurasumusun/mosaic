@@ -1,0 +1,12 @@
+# HMC5883L 3-axis digital compass (I2C, 12-bit)
+[part]
+id = 'part:adi/hmc5883l'
+origin = 'adi'
+name = 'hmc5883l'
+summary = "HMC5883L 3-axis digital compass (I2C, 12-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [30]
+

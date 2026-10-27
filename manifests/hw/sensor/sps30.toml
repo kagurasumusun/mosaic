@@ -1,0 +1,12 @@
+# SPS30 particulate matter sensor (I2C)
+[part]
+id = 'part:sensirion/sps30'
+origin = 'sensirion'
+name = 'sps30'
+summary = "SPS30 particulate matter sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [105]
+

@@ -1,3 +1,33 @@
 //! display (QEMU `hw/display/` role).
 pub mod catalog;
 pub mod vga;
+
+pub mod ast_gfx;
+pub mod dpi;
+pub mod dsi;
+pub mod gd5446;
+pub mod hx8357;
+pub mod i915;
+pub mod ili9163;
+pub mod ili9325;
+pub mod ili9341;
+pub mod ili9342;
+pub mod ili9481;
+pub mod ili9486;
+pub mod ili9488;
+pub mod ls013b7dh03;
+pub mod ls027b7dh01;
+pub mod ltdc;
+pub mod s3c_fb;
+pub mod sh1106;
+pub mod ssd1306;
+pub mod ssd1309;
+pub mod ssd1322;
+pub mod ssd1327;
+pub mod ssd1331;
+pub mod ssd1351;
+pub mod st7735;
+pub mod st7789;
+pub mod st7796;
+pub mod stdvga;
+pub mod vbe;

@@ -1,0 +1,12 @@
+# MS5837-30BA pressure sensor (I2C, 24-bit)
+[part]
+id = 'part:adi/ms5837'
+origin = 'adi'
+name = 'ms5837'
+summary = "MS5837-30BA pressure sensor (I2C, 24-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [118]
+

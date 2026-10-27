@@ -1,0 +1,12 @@
+# PCF8570 256x8 static RAM with I2C
+[part]
+id = 'part:nxp/pcf8570'
+origin = 'nxp'
+name = 'pcf8570'
+summary = "PCF8570 256x8 static RAM with I2C"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

@@ -1,0 +1,13 @@
+# M93C86 16Kbit Microwire EEPROM
+[part]
+id = 'part:st/m93c86'
+origin = 'st'
+name = 'm93c86'
+summary = "M93C86 16Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 10
+

@@ -1,0 +1,12 @@
+# AD5695 16-bit 4-channel I2C DAC
+[part]
+id = 'part:adi/ad5695'
+origin = 'adi'
+name = 'ad5695'
+summary = "AD5695 16-bit 4-channel I2C DAC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30]
+

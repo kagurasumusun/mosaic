@@ -1,0 +1,12 @@
+# ADT7410 16-bit digital temperature sensor (I2C)
+[part]
+id = 'part:adi/adt7410'
+origin = 'adi'
+name = 'adt7410'
+summary = "ADT7410 16-bit digital temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

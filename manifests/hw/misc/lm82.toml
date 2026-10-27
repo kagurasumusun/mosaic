@@ -1,0 +1,13 @@
+# National LM82 temperature sensor (SMBus)
+[part]
+id = 'part:national/lm82'
+origin = 'national'
+name = 'lm82'
+summary = "National LM82 temperature sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 76
+pec = false
+

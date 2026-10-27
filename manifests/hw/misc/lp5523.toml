@@ -1,0 +1,12 @@
+# TI LP5523 9-channel LED driver (I2C)
+[part]
+id = 'part:ti/lp5523'
+origin = 'ti'
+name = 'lp5523'
+summary = "TI LP5523 9-channel LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [50]
+

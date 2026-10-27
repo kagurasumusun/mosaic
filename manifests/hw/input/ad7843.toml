@@ -1,0 +1,12 @@
+# AD7843 4-wire touch screen controller (SPI)
+[part]
+id = 'part:adi/ad7843'
+origin = 'adi'
+name = 'ad7843'
+summary = "AD7843 4-wire touch screen controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

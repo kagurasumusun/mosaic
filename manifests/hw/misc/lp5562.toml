@@ -1,0 +1,12 @@
+# TI LP5562 4-channel LED driver (I2C)
+[part]
+id = 'part:ti/lp5562'
+origin = 'ti'
+name = 'lp5562'
+summary = "TI LP5562 4-channel LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [48]
+

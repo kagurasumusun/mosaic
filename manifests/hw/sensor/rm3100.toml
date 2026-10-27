@@ -1,0 +1,12 @@
+# PNI RM3100 3-axis magnetometer (SPI)
+[part]
+id = 'part:pni/rm3100'
+origin = 'pni'
+name = 'rm3100'
+summary = "PNI RM3100 3-axis magnetometer (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [3]
+

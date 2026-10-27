@@ -1,0 +1,12 @@
+# RX-8110 CE I2C real-time clock
+[part]
+id = 'part:epson/rx8110'
+origin = 'epson'
+name = 'rx8110'
+summary = "RX-8110 CE I2C real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [50]
+

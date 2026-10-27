@@ -1,0 +1,12 @@
+# Realtek ALC5616 audio codec (I2S + I2C)
+[part]
+id = 'part:realtek/alc5616'
+origin = 'realtek'
+name = 'alc5616'
+summary = "Realtek ALC5616 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [40, 41, 42, 43]
+

@@ -1,0 +1,12 @@
+# MCP79412 I2C real-time clock with SRAM
+[part]
+id = 'part:microchip/mcp79412'
+origin = 'microchip'
+name = 'mcp79412'
+summary = "MCP79412 I2C real-time clock with SRAM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [111]
+

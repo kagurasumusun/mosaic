@@ -1,0 +1,12 @@
+# SCD41 CO2 humidity temperature sensor (I2C)
+[part]
+id = 'part:sensirion/scd41'
+origin = 'sensirion'
+name = 'scd41'
+summary = "SCD41 CO2 humidity temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [98]
+

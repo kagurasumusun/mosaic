@@ -2,3 +2,6 @@
 
 pub mod catalog;
 pub mod fw_cfg;
+
+pub mod lpc11xx_flash;
+pub mod option_bytes_f1;

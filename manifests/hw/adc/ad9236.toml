@@ -1,0 +1,12 @@
+# AD9236 12-bit 80MSPS ADC
+[part]
+id = 'part:adi/ad9236'
+origin = 'adi'
+name = 'ad9236'
+summary = "AD9236 12-bit 80MSPS ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

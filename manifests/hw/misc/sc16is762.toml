@@ -1,0 +1,15 @@
+# NXP SC16IS762 dual SPI/I2C UART
+[part]
+id = 'part:nxp/sc16is762'
+origin = 'nxp'
+name = 'sc16is762'
+summary = "NXP SC16IS762 dual SPI/I2C UART"
+bindings = ["spi", "i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87]
+

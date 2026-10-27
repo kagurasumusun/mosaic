@@ -1,0 +1,12 @@
+# VEML6030 ambient light sensor (I2C, 16-bit)
+[part]
+id = 'part:ams-osram/veml6030'
+origin = 'ams-osram'
+name = 'veml6030'
+summary = "VEML6030 ambient light sensor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72]
+

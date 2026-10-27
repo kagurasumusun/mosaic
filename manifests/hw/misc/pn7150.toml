@@ -1,0 +1,12 @@
+# NXP PN7150 NFC controller (I2C)
+[part]
+id = 'part:nxp/pn7150'
+origin = 'nxp'
+name = 'pn7150'
+summary = "NXP PN7150 NFC controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [40]
+

@@ -1,0 +1,12 @@
+# APDS-9306 ambient light sensor (I2C)
+[part]
+id = 'part:avago/apds9306'
+origin = 'avago'
+name = 'apds9306'
+summary = "APDS-9306 ambient light sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [41, 57, 73]
+

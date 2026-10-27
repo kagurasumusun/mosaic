@@ -1,0 +1,13 @@
+# ADI ADM1025 voltage and temp monitor (SMBus)
+[part]
+id = 'part:adi/adm1025'
+origin = 'adi'
+name = 'adm1025'
+summary = "ADI ADM1025 voltage and temp monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 45
+pec = false
+

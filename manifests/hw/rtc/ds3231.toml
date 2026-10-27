@@ -1,0 +1,12 @@
+# DS3231 extremely accurate I2C RTC with TCXO
+[part]
+id = 'part:maxim/ds3231'
+origin = 'maxim'
+name = 'ds3231'
+summary = "DS3231 extremely accurate I2C RTC with TCXO"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

@@ -1,0 +1,12 @@
+# Goodix GT9271 capacitive touch controller (I2C)
+[part]
+id = 'part:goodix/gt9271'
+origin = 'goodix'
+name = 'gt9271'
+summary = "Goodix GT9271 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [20, 93]
+

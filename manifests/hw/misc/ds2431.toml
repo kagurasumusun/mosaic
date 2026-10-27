@@ -1,0 +1,12 @@
+# DS2431 1-Wire 1kbit EEPROM
+[part]
+id = 'part:maxim/ds2431'
+origin = 'maxim'
+name = 'ds2431'
+summary = "DS2431 1-Wire 1kbit EEPROM"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 45
+

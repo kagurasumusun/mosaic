@@ -1,0 +1,12 @@
+# TI LP5569 9-channel LED driver (I2C)
+[part]
+id = 'part:ti/lp5569'
+origin = 'ti'
+name = 'lp5569'
+summary = "TI LP5569 9-channel LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [50]
+

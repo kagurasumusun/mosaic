@@ -1,0 +1,12 @@
+# DS18B20 1-Wire digital thermometer (12-bit)
+[part]
+id = 'part:maxim/ds18b20'
+origin = 'maxim'
+name = 'ds18b20'
+summary = "DS18B20 1-Wire digital thermometer (12-bit)"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 40
+

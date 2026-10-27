@@ -1,0 +1,13 @@
+# TI BQ40Z80 battery management (SMBus)
+[part]
+id = 'part:ti/bq40z80'
+origin = 'ti'
+name = 'bq40z80'
+summary = "TI BQ40Z80 battery management (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 11
+pec = true
+

@@ -1,0 +1,12 @@
+# M41T62 I2C serial real-time clock with watchdog
+[part]
+id = 'part:st/m41t62'
+origin = 'st'
+name = 'm41t62'
+summary = "M41T62 I2C serial real-time clock with watchdog"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

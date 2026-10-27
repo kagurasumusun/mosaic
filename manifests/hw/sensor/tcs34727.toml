@@ -1,0 +1,12 @@
+# TCS34727 RGB color sensor (I2C)
+[part]
+id = 'part:ams-osram/tcs34727'
+origin = 'ams-osram'
+name = 'tcs34727'
+summary = "TCS34727 RGB color sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [41]
+

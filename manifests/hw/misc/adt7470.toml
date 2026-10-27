@@ -1,0 +1,13 @@
+# ADI ADT7470 system monitor (SMBus)
+[part]
+id = 'part:adi/adt7470'
+origin = 'adi'
+name = 'adt7470'
+summary = "ADI ADT7470 system monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+

@@ -1,0 +1,16 @@
+# NXP SA56004 temperature sensor (I2C, SMBus)
+[part]
+id = 'part:nxp/sa56004'
+origin = 'nxp'
+name = 'sa56004'
+summary = "NXP SA56004 temperature sensor (I2C, SMBus)"
+bindings = ["i2c", "smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+
+[smbus]
+address = 76
+pec = false
+

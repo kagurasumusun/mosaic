@@ -1,0 +1,12 @@
+# MAX187 12-bit 1-channel SPI ADC
+[part]
+id = 'part:maxim/max187'
+origin = 'maxim'
+name = 'max187'
+summary = "MAX187 12-bit 1-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

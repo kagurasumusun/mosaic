@@ -1,0 +1,12 @@
+# M41T94 SPI serial real-time clock
+[part]
+id = 'part:st/m41t94'
+origin = 'st'
+name = 'm41t94'
+summary = "M41T94 SPI serial real-time clock"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [3]
+

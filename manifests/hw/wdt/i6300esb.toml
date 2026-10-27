@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:intel/i6300esb'
+summary = "Intel 6300ESB watchdog timer (PCI)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['wdt']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

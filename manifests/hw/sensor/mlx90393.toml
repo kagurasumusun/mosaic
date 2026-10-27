@@ -1,0 +1,15 @@
+# Melexis MLX90393 3-axis magnetometer (I2C/SPI)
+[part]
+id = 'part:melexis/mlx90393'
+origin = 'melexis'
+name = 'mlx90393'
+summary = "Melexis MLX90393 3-axis magnetometer (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [12]
+
+[spi]
+mode = [3]
+

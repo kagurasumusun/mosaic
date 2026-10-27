@@ -1,0 +1,12 @@
+# DS1394 SPI RTC with trickle charger
+[part]
+id = 'part:maxim/ds1394'
+origin = 'maxim'
+name = 'ds1394'
+summary = "DS1394 SPI RTC with trickle charger"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

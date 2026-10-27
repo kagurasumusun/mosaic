@@ -1,0 +1,12 @@
+# MAX7323 8-port I2C I/O expander
+[part]
+id = 'part:maxim/max7323'
+origin = 'maxim'
+name = 'max7323'
+summary = "MAX7323 8-port I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79]
+

@@ -1,0 +1,12 @@
+# ADI ADP5585 10-key keypad controller (I2C)
+[part]
+id = 'part:adi/adp5585'
+origin = 'adi'
+name = 'adp5585'
+summary = "ADI ADP5585 10-key keypad controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [52, 53, 54, 55]
+

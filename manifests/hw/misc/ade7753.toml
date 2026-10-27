@@ -1,0 +1,12 @@
+# ADI ADE7753 energy metering IC (SPI)
+[part]
+id = 'part:adi/ade7753'
+origin = 'adi'
+name = 'ade7753'
+summary = "ADI ADE7753 energy metering IC (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

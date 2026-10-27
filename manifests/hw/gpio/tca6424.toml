@@ -1,0 +1,12 @@
+# TCA6424 24-bit I2C I/O expander
+[part]
+id = 'part:ti/tca6424'
+origin = 'ti'
+name = 'tca6424'
+summary = "TCA6424 24-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [34, 35, 36, 37, 38, 39]
+

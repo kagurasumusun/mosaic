@@ -1,0 +1,12 @@
+# Maxim MAX3110E SPI UART
+[part]
+id = 'part:maxim/max3110'
+origin = 'maxim'
+name = 'max3110'
+summary = "Maxim MAX3110E SPI UART"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

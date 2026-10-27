@@ -1,0 +1,12 @@
+# ADS1263 32-bit 10-channel SPI ADC
+[part]
+id = 'part:ti/ads1263'
+origin = 'ti'
+name = 'ads1263'
+summary = "ADS1263 32-bit 10-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1]
+

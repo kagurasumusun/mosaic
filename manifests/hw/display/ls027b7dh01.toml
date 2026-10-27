@@ -1,0 +1,12 @@
+# Samsung LS027B7DH01 memory LCD (SPI)
+[part]
+id = 'part:samsung/ls027b7dh01'
+origin = 'samsung'
+name = 'ls027b7dh01'
+summary = "Samsung LS027B7DH01 memory LCD (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

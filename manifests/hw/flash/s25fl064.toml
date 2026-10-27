@@ -1,0 +1,12 @@
+# S25FL064 64Mbit SPI flash
+[part]
+id = 'part:spansion/s25fl064'
+origin = 'spansion'
+name = 's25fl064'
+summary = "S25FL064 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# TI LP55231 9-channel LED driver (I2C)
+[part]
+id = 'part:ti/lp55231'
+origin = 'ti'
+name = 'lp55231'
+summary = "TI LP55231 9-channel LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [50]
+

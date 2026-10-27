@@ -1,0 +1,13 @@
+# ADI ADM1028 system monitor (SMBus)
+[part]
+id = 'part:adi/adm1028'
+origin = 'adi'
+name = 'adm1028'
+summary = "ADI ADM1028 system monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 45
+pec = false
+

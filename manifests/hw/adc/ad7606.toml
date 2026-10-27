@@ -1,0 +1,12 @@
+# AD7606 16-bit 8-channel SPI ADC
+[part]
+id = 'part:adi/ad7606'
+origin = 'adi'
+name = 'ad7606'
+summary = "AD7606 16-bit 8-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

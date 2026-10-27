@@ -1,0 +1,12 @@
+# DS2413 1-Wire dual-channel addressable switch
+[part]
+id = 'part:maxim/ds2413'
+origin = 'maxim'
+name = 'ds2413'
+summary = "DS2413 1-Wire dual-channel addressable switch"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 58
+

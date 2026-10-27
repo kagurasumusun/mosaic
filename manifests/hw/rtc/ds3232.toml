@@ -1,0 +1,12 @@
+# DS3232 extremely accurate I2C RTC with TCXO and RAM
+[part]
+id = 'part:maxim/ds3232'
+origin = 'maxim'
+name = 'ds3232'
+summary = "DS3232 extremely accurate I2C RTC with TCXO and RAM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

@@ -1,0 +1,13 @@
+# TI BQ27425 fuel gauge (SMBus)
+[part]
+id = 'part:ti/bq27425'
+origin = 'ti'
+name = 'bq27425'
+summary = "TI BQ27425 fuel gauge (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 85
+pec = true
+

@@ -1,0 +1,12 @@
+# VEML6070 UV-A light sensor (I2C)
+[part]
+id = 'part:ams-osram/veml6070'
+origin = 'ams-osram'
+name = 'veml6070'
+summary = "VEML6070 UV-A light sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56, 57]
+

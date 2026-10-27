@@ -1,0 +1,15 @@
+# NXP PN532 NFC controller (I2C/SPI/UART)
+[part]
+id = 'part:nxp/pn532'
+origin = 'nxp'
+name = 'pn532'
+summary = "NXP PN532 NFC controller (I2C/SPI/UART)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [36, 72]
+
+[spi]
+mode = [0]
+

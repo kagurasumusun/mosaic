@@ -1,0 +1,12 @@
+# ST25DV dynamic NFC/RFID tag (I2C)
+[part]
+id = 'part:st/st25dv'
+origin = 'st'
+name = 'st25dv'
+summary = "ST25DV dynamic NFC/RFID tag (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [83, 87]
+

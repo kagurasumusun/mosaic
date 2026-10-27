@@ -1,0 +1,12 @@
+# DS1672 I2C 32-bit binary counter
+[part]
+id = 'part:maxim/ds1672'
+origin = 'maxim'
+name = 'ds1672'
+summary = "DS1672 I2C 32-bit binary counter"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

@@ -1,0 +1,12 @@
+# ScioSense ENS210 temperature and humidity sensor (I2C)
+[part]
+id = 'part:sciosense/ens210'
+origin = 'sciosense'
+name = 'ens210'
+summary = "ScioSense ENS210 temperature and humidity sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [67]
+

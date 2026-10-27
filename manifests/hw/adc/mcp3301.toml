@@ -1,0 +1,12 @@
+# MCP3301 13-bit 1-channel SPI ADC
+[part]
+id = 'part:microchip/mcp3301'
+origin = 'microchip'
+name = 'mcp3301'
+summary = "MCP3301 13-bit 1-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

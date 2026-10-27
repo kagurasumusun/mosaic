@@ -1,0 +1,12 @@
+# PCF2129 I2C RTC with tamper detection
+[part]
+id = 'part:nxp/pcf2129'
+origin = 'nxp'
+name = 'pcf2129'
+summary = "PCF2129 I2C RTC with tamper detection"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [81]
+

@@ -1,0 +1,13 @@
+# National LM83 quad temp sensor (SMBus)
+[part]
+id = 'part:national/lm83'
+origin = 'national'
+name = 'lm83'
+summary = "National LM83 quad temp sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 24
+pec = false
+

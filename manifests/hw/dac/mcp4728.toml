@@ -1,0 +1,12 @@
+# MCP4728 12-bit 4-channel I2C DAC with EEPROM
+[part]
+id = 'part:microchip/mcp4728'
+origin = 'microchip'
+name = 'mcp4728'
+summary = "MCP4728 12-bit 4-channel I2C DAC with EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [96, 97, 98, 99, 100, 101, 102, 103]
+

@@ -1,0 +1,13 @@
+# National LM92 temperature sensor (SMBus)
+[part]
+id = 'part:national/lm92'
+origin = 'national'
+name = 'lm92'
+summary = "National LM92 temperature sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 72
+pec = false
+

@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:raspberrypi/rp2040-i2c'
+summary = "Raspberry Pi RP2040 I2C"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['i2c']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

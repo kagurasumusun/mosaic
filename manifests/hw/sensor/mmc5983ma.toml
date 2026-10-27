@@ -1,0 +1,15 @@
+# MEMSIC MMC5983MA 3-axis magnetometer (I2C/SPI)
+[part]
+id = 'part:memsic/mmc5983ma'
+origin = 'memsic'
+name = 'mmc5983ma'
+summary = "MEMSIC MMC5983MA 3-axis magnetometer (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [48, 64]
+
+[spi]
+mode = [3]
+

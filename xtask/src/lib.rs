@@ -117,7 +117,7 @@ pub const HW_FUNCTION_DIRS: &[&str] = &[
     "adc", "audio", "block", "can", "char", "display", "dma", "flash", "gpio", "i2c", "i3c", "ide",
     "input", "intc", "mailbox", "misc", "net", "nvram", "pci", "rtc", "sd", "sensor", "ssi",
     "timer", "usb", "virtio",
-];
+    "dac", "eeprom", "maxim", "memory", "wdt"];
 
 /// Top-level directories whose contents must be kebab-case.
 const KEBAB_ROOTS: &[&str] = &[

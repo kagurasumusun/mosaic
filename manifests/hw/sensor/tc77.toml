@@ -1,0 +1,12 @@
+# TC77 serial digital thermal sensor (SPI, 13-bit)
+[part]
+id = 'part:microchip/tc77'
+origin = 'microchip'
+name = 'tc77'
+summary = "TC77 serial digital thermal sensor (SPI, 13-bit)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 1]
+

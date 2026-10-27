@@ -1,0 +1,12 @@
+# DAC8550 16-bit SPI DAC
+[part]
+id = 'part:ti/dac8550'
+origin = 'ti'
+name = 'dac8550'
+summary = "DAC8550 16-bit SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

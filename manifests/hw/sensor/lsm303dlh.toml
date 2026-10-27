@@ -1,0 +1,12 @@
+# LSM303DLH 3-axis accelerometer + magnetometer (I2C)
+[part]
+id = 'part:st/lsm303dlh'
+origin = 'st'
+name = 'lsm303dlh'
+summary = "LSM303DLH 3-axis accelerometer + magnetometer (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 30]
+

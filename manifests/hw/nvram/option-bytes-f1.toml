@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:st/option-bytes-f1'
+summary = "STM32F1 option bytes (NVRAM)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['nvram']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

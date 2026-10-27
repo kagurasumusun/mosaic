@@ -1,0 +1,15 @@
+# ADXL345 3-axis digital accelerometer (I2C/SPI, 13-bit)
+[part]
+id = 'part:adi/adxl345'
+origin = 'adi'
+name = 'adxl345'
+summary = "ADXL345 3-axis digital accelerometer (I2C/SPI, 13-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [83]
+
+[spi]
+mode = [3]
+

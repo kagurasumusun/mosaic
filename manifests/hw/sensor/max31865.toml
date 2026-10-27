@@ -1,0 +1,12 @@
+# MAX31865 RTD-to-digital converter (SPI)
+[part]
+id = 'part:maxim/max31865'
+origin = 'maxim'
+name = 'max31865'
+summary = "MAX31865 RTD-to-digital converter (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

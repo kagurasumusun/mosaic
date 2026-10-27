@@ -1,0 +1,16 @@
+# Melexis MLX90614 IR thermometer (I2C/SMBus)
+[part]
+id = 'part:melexis/mlx90614'
+origin = 'melexis'
+name = 'mlx90614'
+summary = "Melexis MLX90614 IR thermometer (I2C/SMBus)"
+bindings = ["i2c", "smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [90, 91, 92, 93, 94, 95]
+
+[smbus]
+address = 90
+pec = true
+

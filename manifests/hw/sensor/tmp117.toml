@@ -1,0 +1,12 @@
+# TMP117 high-precision digital temperature sensor (I2C, 16-bit)
+[part]
+id = 'part:ti/tmp117'
+origin = 'ti'
+name = 'tmp117'
+summary = "TMP117 high-precision digital temperature sensor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

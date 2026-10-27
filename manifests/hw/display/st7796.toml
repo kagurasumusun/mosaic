@@ -1,0 +1,12 @@
+# ST7796 color TFT LCD controller (SPI)
+[part]
+id = 'part:sitronix/st7796'
+origin = 'sitronix'
+name = 'st7796'
+summary = "ST7796 color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

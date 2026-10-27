@@ -1,0 +1,12 @@
+# AD7190 24-bit SPI ADC
+[part]
+id = 'part:adi/ad7190'
+origin = 'adi'
+name = 'ad7190'
+summary = "AD7190 24-bit SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

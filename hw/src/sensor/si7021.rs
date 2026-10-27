@@ -1,0 +1,7 @@
+//! Si7021 humidity and temperature sensor (I2C, 12-bit/14-bit)
+//!
+//! Catalog part `part:silabs/si7021` — see manifests/hw/sensor/si7021.toml.
+
+/// Marker type for catalog discovery.
+#[allow(dead_code)]
+pub struct Placeholder;

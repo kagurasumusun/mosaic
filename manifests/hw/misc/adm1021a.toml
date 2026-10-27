@@ -1,0 +1,13 @@
+# ADI ADM1021A dual temp sensor (SMBus)
+[part]
+id = 'part:adi/adm1021a'
+origin = 'adi'
+name = 'adm1021a'
+summary = "ADI ADM1021A dual temp sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 76
+pec = false
+

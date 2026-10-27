@@ -1,0 +1,12 @@
+# Si7021 humidity and temperature sensor (I2C, 12-bit/14-bit)
+[part]
+id = 'part:silabs/si7021'
+origin = 'silabs'
+name = 'si7021'
+summary = "Si7021 humidity and temperature sensor (I2C, 12-bit/14-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64]
+

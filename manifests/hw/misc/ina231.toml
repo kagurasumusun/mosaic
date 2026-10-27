@@ -1,0 +1,12 @@
+# TI INA231 voltage/current monitor (I2C, 16-bit)
+[part]
+id = 'part:ti/ina231'
+origin = 'ti'
+name = 'ina231'
+summary = "TI INA231 voltage/current monitor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79]
+

@@ -1,0 +1,12 @@
+# Infineon SLB9670 TPM 2.0 (SPI)
+[part]
+id = 'part:infineon/tpm-sl9670'
+origin = 'infineon'
+name = 'tpm-sl9670'
+summary = "Infineon SLB9670 TPM 2.0 (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

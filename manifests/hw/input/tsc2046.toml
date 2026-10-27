@@ -1,0 +1,12 @@
+# TSC2046 4-wire touch screen controller (SPI)
+[part]
+id = 'part:ti/tsc2046'
+origin = 'ti'
+name = 'tsc2046'
+summary = "TSC2046 4-wire touch screen controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

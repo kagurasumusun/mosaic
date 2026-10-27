@@ -1,0 +1,12 @@
+# NXP SE97B thermal sensor with EEPROM (I2C)
+[part]
+id = 'part:nxp/se97b'
+origin = 'nxp'
+name = 'se97b'
+summary = "NXP SE97B thermal sensor with EEPROM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30, 31]
+

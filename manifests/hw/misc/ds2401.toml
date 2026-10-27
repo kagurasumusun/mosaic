@@ -1,0 +1,12 @@
+# DS2401 1-Wire silicon serial number
+[part]
+id = 'part:maxim/ds2401'
+origin = 'maxim'
+name = 'ds2401'
+summary = "DS2401 1-Wire silicon serial number"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 1
+

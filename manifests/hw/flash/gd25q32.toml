@@ -1,0 +1,12 @@
+# GD25Q32 32Mbit SPI flash
+[part]
+id = 'part:gigadevice/gd25q32'
+origin = 'gigadevice'
+name = 'gd25q32'
+summary = "GD25Q32 32Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

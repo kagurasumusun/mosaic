@@ -1,0 +1,12 @@
+# ADI ADE7754 polyphase energy metering (SPI)
+[part]
+id = 'part:adi/ade7754'
+origin = 'adi'
+name = 'ade7754'
+summary = "ADI ADE7754 polyphase energy metering (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

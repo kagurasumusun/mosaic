@@ -1,0 +1,12 @@
+# PCF85363 I2C real-time clock with SRAM
+[part]
+id = 'part:nxp/pcf85363'
+origin = 'nxp'
+name = 'pcf85363'
+summary = "PCF85363 I2C real-time clock with SRAM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [81]
+

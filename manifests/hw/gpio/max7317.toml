@@ -1,0 +1,12 @@
+# MAX7317 10-port I2C I/O expander
+[part]
+id = 'part:maxim/max7317'
+origin = 'maxim'
+name = 'max7317'
+summary = "MAX7317 10-port I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [48, 49, 50, 51, 52, 53, 54, 55]
+

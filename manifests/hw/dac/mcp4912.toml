@@ -1,0 +1,12 @@
+# MCP4912 10-bit 2-channel SPI DAC
+[part]
+id = 'part:microchip/mcp4912'
+origin = 'microchip'
+name = 'mcp4912'
+summary = "MCP4912 10-bit 2-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

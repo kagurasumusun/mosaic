@@ -1,0 +1,12 @@
+# TLA2024 12-bit 4-channel I2C ADC
+[part]
+id = 'part:ti/tla2024'
+origin = 'ti'
+name = 'tla2024'
+summary = "TLA2024 12-bit 4-channel I2C ADC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

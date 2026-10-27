@@ -1,0 +1,12 @@
+# DS1338 I2C RTC with 56-byte NV RAM
+[part]
+id = 'part:maxim/ds1338'
+origin = 'maxim'
+name = 'ds1338'
+summary = "DS1338 I2C RTC with 56-byte NV RAM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

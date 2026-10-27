@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:espressif/esp32-gpio'
+summary = "Espressif ESP32 GPIO"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['gpio']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

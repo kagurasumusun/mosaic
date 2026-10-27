@@ -1,0 +1,12 @@
+# TI TCA8418 80-key keypad controller (I2C)
+[part]
+id = 'part:ti/tca8418'
+origin = 'ti'
+name = 'tca8418'
+summary = "TI TCA8418 80-key keypad controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [52, 53, 54, 55]
+

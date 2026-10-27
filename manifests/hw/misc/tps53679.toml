@@ -1,0 +1,12 @@
+# TI TPS53679 PMBus VRM controller
+[part]
+id = 'part:ti/tps53679'
+origin = 'ti'
+name = 'tps53679'
+summary = "TI TPS53679 PMBus VRM controller"
+bindings = ["pmbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[pmbus]
+address = 90
+

@@ -1,0 +1,12 @@
+# TMP112 high-accuracy digital temperature sensor (I2C, 12-bit)
+[part]
+id = 'part:ti/tmp112'
+origin = 'ti'
+name = 'tmp112'
+summary = "TMP112 high-accuracy digital temperature sensor (I2C, 12-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

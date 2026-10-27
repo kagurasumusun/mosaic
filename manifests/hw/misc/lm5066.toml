@@ -1,0 +1,12 @@
+# TI LM5066 PMBus hot-swap controller
+[part]
+id = 'part:ti/lm5066'
+origin = 'ti'
+name = 'lm5066'
+summary = "TI LM5066 PMBus hot-swap controller"
+bindings = ["pmbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[pmbus]
+address = 64
+

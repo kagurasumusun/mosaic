@@ -1,0 +1,13 @@
+# TI BQ27542 fuel gauge (SMBus)
+[part]
+id = 'part:ti/bq27542'
+origin = 'ti'
+name = 'bq27542'
+summary = "TI BQ27542 fuel gauge (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 85
+pec = true
+

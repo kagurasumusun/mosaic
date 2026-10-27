@@ -1,0 +1,12 @@
+# SHT40 humidity and temperature sensor (I2C)
+[part]
+id = 'part:sensirion/sht40'
+origin = 'sensirion'
+name = 'sht40'
+summary = "SHT40 humidity and temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

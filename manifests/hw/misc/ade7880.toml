@@ -1,0 +1,15 @@
+# ADI ADE7880 3-phase energy metering (I2C/SPI)
+[part]
+id = 'part:adi/ade7880'
+origin = 'adi'
+name = 'ade7880'
+summary = "ADI ADE7880 3-phase energy metering (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56, 60, 108, 112]
+
+[spi]
+mode = [0]
+

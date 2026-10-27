@@ -1,0 +1,12 @@
+# TI INA3221 3-channel voltage/current monitor (I2C, 16-bit)
+[part]
+id = 'part:ti/ina3221'
+origin = 'ti'
+name = 'ina3221'
+summary = "TI INA3221 3-channel voltage/current monitor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64]
+

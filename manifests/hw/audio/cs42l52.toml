@@ -1,0 +1,12 @@
+# Cirrus CS42L52 audio codec (I2S + I2C)
+[part]
+id = 'part:cirrus/cs42l52'
+origin = 'cirrus'
+name = 'cs42l52'
+summary = "Cirrus CS42L52 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [74, 75, 76, 77]
+

@@ -1,0 +1,12 @@
+# AD7683 16-bit 1-channel SPI ADC
+[part]
+id = 'part:adi/ad7683'
+origin = 'adi'
+name = 'ad7683'
+summary = "AD7683 16-bit 1-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# CAT25C256 256Kbit SPI EEPROM
+[part]
+id = 'part:onsemi/cat25c256'
+origin = 'onsemi'
+name = 'cat25c256'
+summary = "CAT25C256 256Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

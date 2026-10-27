@@ -1,0 +1,12 @@
+# MB85RC64 64Kbit FRAM (I2C)
+[part]
+id = 'part:fujitsu/mb85rc64'
+origin = 'fujitsu'
+name = 'mb85rc64'
+summary = "MB85RC64 64Kbit FRAM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

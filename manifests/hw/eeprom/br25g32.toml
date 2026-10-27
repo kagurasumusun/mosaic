@@ -1,0 +1,12 @@
+# BR25G32 32Kbit SPI EEPROM
+[part]
+id = 'part:rohm/br25g32'
+origin = 'rohm'
+name = 'br25g32'
+summary = "BR25G32 32Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

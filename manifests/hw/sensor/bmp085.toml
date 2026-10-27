@@ -1,0 +1,12 @@
+# BMP085 barometric pressure sensor (I2C)
+[part]
+id = 'part:bosch/bmp085'
+origin = 'bosch'
+name = 'bmp085'
+summary = "BMP085 barometric pressure sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [119]
+

@@ -1,0 +1,12 @@
+# GD25Q16 16Mbit SPI flash
+[part]
+id = 'part:gigadevice/gd25q16'
+origin = 'gigadevice'
+name = 'gd25q16'
+summary = "GD25Q16 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

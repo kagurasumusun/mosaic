@@ -1,0 +1,13 @@
+# M93C46 1Kbit Microwire EEPROM
+[part]
+id = 'part:st/m93c46'
+origin = 'st'
+name = 'm93c46'
+summary = "M93C46 1Kbit Microwire EEPROM"
+bindings = ["microwire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[microwire]
+instruction-bits = 11
+address-bits = 7
+

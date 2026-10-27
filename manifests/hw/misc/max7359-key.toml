@@ -1,0 +1,12 @@
+# Maxim MAX7359 key switch (I2C variant)
+[part]
+id = 'part:maxim/max7359-key'
+origin = 'maxim'
+name = 'max7359-key'
+summary = "Maxim MAX7359 key switch (I2C variant)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56]
+

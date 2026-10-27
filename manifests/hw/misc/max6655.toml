@@ -1,0 +1,13 @@
+# Maxim MAX6655 system monitor (SMBus)
+[part]
+id = 'part:maxim/max6655'
+origin = 'maxim'
+name = 'max6655'
+summary = "Maxim MAX6655 system monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 30
+pec = false
+

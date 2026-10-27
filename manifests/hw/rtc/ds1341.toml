@@ -1,0 +1,12 @@
+# DS1341 I2C real-time clock
+[part]
+id = 'part:maxim/ds1341'
+origin = 'maxim'
+name = 'ds1341'
+summary = "DS1341 I2C real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

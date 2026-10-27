@@ -1,0 +1,13 @@
+# National LM93 hardware monitor (SMBus)
+[part]
+id = 'part:national/lm93'
+origin = 'national'
+name = 'lm93'
+summary = "National LM93 hardware monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+

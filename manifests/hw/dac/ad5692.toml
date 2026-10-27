@@ -1,0 +1,12 @@
+# AD5692 16-bit 1-channel I2C DAC
+[part]
+id = 'part:adi/ad5692'
+origin = 'adi'
+name = 'ad5692'
+summary = "AD5692 16-bit 1-channel I2C DAC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30]
+

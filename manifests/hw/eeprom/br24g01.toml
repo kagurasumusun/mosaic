@@ -1,0 +1,12 @@
+# BR24G01 1Kbit I2C EEPROM
+[part]
+id = 'part:rohm/br24g01'
+origin = 'rohm'
+name = 'br24g01'
+summary = "BR24G01 1Kbit I2C EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

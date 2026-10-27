@@ -1,0 +1,12 @@
+# M41T83 I2C serial real-time clock
+[part]
+id = 'part:st/m41t83'
+origin = 'st'
+name = 'm41t83'
+summary = "M41T83 I2C serial real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

@@ -1,0 +1,12 @@
+# LIS3DSH 3-axis accelerometer (SPI, 16-bit)
+[part]
+id = 'part:st/lis3dsh'
+origin = 'st'
+name = 'lis3dsh'
+summary = "LIS3DSH 3-axis accelerometer (SPI, 16-bit)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [3]
+

@@ -1,0 +1,12 @@
+# DS2430 1-Wire 256-bit EEPROM
+[part]
+id = 'part:maxim/ds2430'
+origin = 'maxim'
+name = 'ds2430'
+summary = "DS2430 1-Wire 256-bit EEPROM"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 20
+

@@ -1,0 +1,12 @@
+# ILI9486 color TFT LCD controller (SPI)
+[part]
+id = 'part:ilitek/ili9486'
+origin = 'ilitek'
+name = 'ili9486'
+summary = "ILI9486 color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

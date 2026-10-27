@@ -1,0 +1,12 @@
+# AM25F16 16Mbit SPI flash
+[part]
+id = 'part:amacro/am25f16'
+origin = 'amacro'
+name = 'am25f16'
+summary = "AM25F16 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

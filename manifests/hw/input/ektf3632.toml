@@ -1,0 +1,12 @@
+# ELAN eKTF3632 capacitive touch controller (I2C)
+[part]
+id = 'part:elan/ektf3632'
+origin = 'elan'
+name = 'ektf3632'
+summary = "ELAN eKTF3632 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [16]
+

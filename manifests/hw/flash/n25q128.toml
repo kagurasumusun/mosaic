@@ -1,0 +1,12 @@
+# N25Q128 128Mbit SPI flash
+[part]
+id = 'part:micron/n25q128'
+origin = 'micron'
+name = 'n25q128'
+summary = "N25Q128 128Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

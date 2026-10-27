@@ -1,0 +1,12 @@
+# Cirrus CS4270 audio codec (I2S + I2C)
+[part]
+id = 'part:cirrus/cs4270'
+origin = 'cirrus'
+name = 'cs4270'
+summary = "Cirrus CS4270 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73]
+

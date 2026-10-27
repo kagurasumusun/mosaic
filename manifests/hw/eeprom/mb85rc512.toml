@@ -1,0 +1,12 @@
+# MB85RC512 512Kbit FRAM (I2C)
+[part]
+id = 'part:fujitsu/mb85rc512'
+origin = 'fujitsu'
+name = 'mb85rc512'
+summary = "MB85RC512 512Kbit FRAM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

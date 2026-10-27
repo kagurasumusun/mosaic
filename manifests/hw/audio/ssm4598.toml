@@ -1,0 +1,12 @@
+# ADI SSM4598 Class-D amplifier (I2C + I2S)
+[part]
+id = 'part:adi/ssm4598'
+origin = 'adi'
+name = 'ssm4598'
+summary = "ADI SSM4598 Class-D amplifier (I2C + I2S)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [50, 51]
+

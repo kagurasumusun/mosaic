@@ -1,0 +1,12 @@
+# IS25LP032 32Mbit SPI flash
+[part]
+id = 'part:issi/is25lp032'
+origin = 'issi'
+name = 'is25lp032'
+summary = "IS25LP032 32Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

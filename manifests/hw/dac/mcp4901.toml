@@ -1,0 +1,12 @@
+# MCP4901 8-bit 1-channel SPI DAC
+[part]
+id = 'part:microchip/mcp4901'
+origin = 'microchip'
+name = 'mcp4901'
+summary = "MCP4901 8-bit 1-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

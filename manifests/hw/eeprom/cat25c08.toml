@@ -1,0 +1,12 @@
+# CAT25C08 8Kbit SPI EEPROM
+[part]
+id = 'part:onsemi/cat25c08'
+origin = 'onsemi'
+name = 'cat25c08'
+summary = "CAT25C08 8Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

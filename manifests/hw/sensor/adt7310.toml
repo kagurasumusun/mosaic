@@ -1,0 +1,12 @@
+# ADT7310 16-bit digital temperature sensor (SPI)
+[part]
+id = 'part:adi/adt7310'
+origin = 'adi'
+name = 'adt7310'
+summary = "ADT7310 16-bit digital temperature sensor (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

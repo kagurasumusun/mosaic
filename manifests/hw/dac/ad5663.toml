@@ -1,0 +1,12 @@
+# AD5663 16-bit SPI DAC
+[part]
+id = 'part:adi/ad5663'
+origin = 'adi'
+name = 'ad5663'
+summary = "AD5663 16-bit SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

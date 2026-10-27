@@ -1,0 +1,12 @@
+# SSD1331 color OLED controller (SPI)
+[part]
+id = 'part:solomon/ssd1331'
+origin = 'solomon'
+name = 'ssd1331'
+summary = "SSD1331 color OLED controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

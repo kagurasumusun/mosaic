@@ -1,0 +1,12 @@
+# ISL22315 digital temperature sensor (I2C)
+[part]
+id = 'part:renesas/isl22315'
+origin = 'renesas'
+name = 'isl22315'
+summary = "ISL22315 digital temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

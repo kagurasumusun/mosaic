@@ -1,0 +1,12 @@
+# TCA9539 16-bit I2C I/O expander
+[part]
+id = 'part:ti/tca9539'
+origin = 'ti'
+name = 'tca9539'
+summary = "TCA9539 16-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [116, 117, 118, 119]
+

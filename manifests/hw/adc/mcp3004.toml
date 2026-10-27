@@ -1,0 +1,12 @@
+# MCP3004 10-bit 4-channel SPI ADC
+[part]
+id = 'part:microchip/mcp3004'
+origin = 'microchip'
+name = 'mcp3004'
+summary = "MCP3004 10-bit 4-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

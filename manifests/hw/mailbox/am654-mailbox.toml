@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:ti/am654-mailbox'
+summary = "TI AM654 Secure Mailbox"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['mailbox']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

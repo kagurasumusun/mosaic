@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:ibm/pcspk'
+summary = "IBM PC speaker (PIT channel 2)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['misc']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

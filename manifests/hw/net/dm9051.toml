@@ -1,0 +1,12 @@
+# DAVICOM DM9051 SPI 10/100 Ethernet controller
+[part]
+id = 'part:davicom/dm9051'
+origin = 'davicom'
+name = 'dm9051'
+summary = "DAVICOM DM9051 SPI 10/100 Ethernet controller"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

@@ -1,0 +1,12 @@
+# M95160 16Kbit SPI EEPROM
+[part]
+id = 'part:st/m95160'
+origin = 'st'
+name = 'm95160'
+summary = "M95160 16Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

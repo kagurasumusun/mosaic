@@ -1,0 +1,12 @@
+# LM75 digital temperature sensor (I2C, 9-bit)
+[part]
+id = 'part:nxp/lm75'
+origin = 'nxp'
+name = 'lm75'
+summary = "LM75 digital temperature sensor (I2C, 9-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

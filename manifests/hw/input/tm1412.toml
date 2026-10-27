@@ -1,0 +1,12 @@
+# Synaptics TM1412 capacitive touchpad (I2C)
+[part]
+id = 'part:synaptics/tm1412'
+origin = 'synaptics'
+name = 'tm1412'
+summary = "Synaptics TM1412 capacitive touchpad (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [32]
+

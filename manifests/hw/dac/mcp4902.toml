@@ -1,0 +1,12 @@
+# MCP4902 8-bit 2-channel SPI DAC
+[part]
+id = 'part:microchip/mcp4902'
+origin = 'microchip'
+name = 'mcp4902'
+summary = "MCP4902 8-bit 2-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

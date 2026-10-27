@@ -6,6 +6,8 @@ use mosaic_runtime::Machine;
 
 use crate::catalog::ModelEntry;
 use crate::nvram::fw_cfg::FwCfg;
+use crate::nvram::option_bytes_f1::OptionBytesF1;
+use crate::nvram::lpc11xx_flash::Lpc11XxFlash;
 
 /// QEMU fw_cfg: register model.
 fn spawn_fw_cfg(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
@@ -19,3 +21,21 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     outputs: &[],
     spawn: spawn_fw_cfg,
 }];
+
+/// Default spawn for option-bytes-f1: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_option_bytes_f1(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = OptionBytesF1::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for lpc11xx-flash: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc11xx_flash(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc11XxFlash::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}

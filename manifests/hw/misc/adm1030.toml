@@ -1,0 +1,13 @@
+# ADI ADM1030 temp monitor and fan controller (SMBus)
+[part]
+id = 'part:adi/adm1030'
+origin = 'adi'
+name = 'adm1030'
+summary = "ADI ADM1030 temp monitor and fan controller (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+

@@ -1,0 +1,12 @@
+# Goodix GT911 capacitive touch controller (I2C)
+[part]
+id = 'part:goodix/gt911'
+origin = 'goodix'
+name = 'gt911'
+summary = "Goodix GT911 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [20, 93]
+

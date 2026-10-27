@@ -1,0 +1,12 @@
+# DS1780 CPU temperature monitor (I2C)
+[part]
+id = 'part:maxim/ds1780'
+origin = 'maxim'
+name = 'ds1780'
+summary = "DS1780 CPU temperature monitor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

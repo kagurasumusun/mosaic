@@ -1,0 +1,15 @@
+# STMPE811 touch screen controller (I2C/SPI)
+[part]
+id = 'part:st/stmpe811'
+origin = 'st'
+name = 'stmpe811'
+summary = "STMPE811 touch screen controller (I2C/SPI)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [65, 66, 67, 68, 69, 70, 71, 72]
+
+[spi]
+mode = [0]
+

@@ -1,0 +1,12 @@
+# W25X05 512Kbit SPI flash
+[part]
+id = 'part:winbond/w25x05'
+origin = 'winbond'
+name = 'w25x05'
+summary = "W25X05 512Kbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

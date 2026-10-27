@@ -1,0 +1,12 @@
+# MX25L51245G 512Mbit SPI flash
+[part]
+id = 'part:macronix/mx25l51245g'
+origin = 'macronix'
+name = 'mx25l51245g'
+summary = "MX25L51245G 512Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

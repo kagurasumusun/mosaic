@@ -1,0 +1,12 @@
+# STLM75 digital temperature sensor (I2C, 11-bit)
+[part]
+id = 'part:st/stlm75'
+origin = 'st'
+name = 'stlm75'
+summary = "STLM75 digital temperature sensor (I2C, 11-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

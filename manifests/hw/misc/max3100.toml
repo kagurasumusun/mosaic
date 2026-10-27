@@ -1,0 +1,12 @@
+# Maxim MAX3100 SPI UART
+[part]
+id = 'part:maxim/max3100'
+origin = 'maxim'
+name = 'max3100'
+summary = "Maxim MAX3100 SPI UART"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

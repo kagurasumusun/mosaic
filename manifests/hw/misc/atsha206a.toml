@@ -1,0 +1,12 @@
+# Microchip ATSHA206A crypto authentication (I2C)
+[part]
+id = 'part:microchip/atsha206a'
+origin = 'microchip'
+name = 'atsha206a'
+summary = "Microchip ATSHA206A crypto authentication (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [96]
+

@@ -1,0 +1,12 @@
+# MCP7940N I2C real-time clock
+[part]
+id = 'part:microchip/mcp7940n'
+origin = 'microchip'
+name = 'mcp7940n'
+summary = "MCP7940N I2C real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [111]
+

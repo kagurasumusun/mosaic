@@ -1,0 +1,12 @@
+# AD9225 12-bit 25MSPS ADC
+[part]
+id = 'part:adi/ad9225'
+origin = 'adi'
+name = 'ad9225'
+summary = "AD9225 12-bit 25MSPS ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

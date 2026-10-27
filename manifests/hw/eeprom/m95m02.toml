@@ -1,0 +1,12 @@
+# M95M02 2Mbit SPI EEPROM
+[part]
+id = 'part:st/m95m02'
+origin = 'st'
+name = 'm95m02'
+summary = "M95M02 2Mbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

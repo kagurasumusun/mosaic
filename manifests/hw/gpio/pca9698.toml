@@ -1,0 +1,12 @@
+# PCA9698 40-bit I2C I/O expander
+[part]
+id = 'part:nxp/pca9698'
+origin = 'nxp'
+name = 'pca9698'
+summary = "PCA9698 40-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [32, 33, 34, 35, 36, 37, 38, 39]
+

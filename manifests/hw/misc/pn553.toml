@@ -1,0 +1,12 @@
+# NXP PN553 NFC controller (I2C)
+[part]
+id = 'part:nxp/pn553'
+origin = 'nxp'
+name = 'pn553'
+summary = "NXP PN553 NFC controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [40]
+

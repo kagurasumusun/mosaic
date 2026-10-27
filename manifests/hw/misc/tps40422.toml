@@ -1,0 +1,12 @@
+# TI TPS40422 PMBus VRM controller
+[part]
+id = 'part:ti/tps40422'
+origin = 'ti'
+name = 'tps40422'
+summary = "TI TPS40422 PMBus VRM controller"
+bindings = ["pmbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[pmbus]
+address = 92
+

@@ -1,0 +1,12 @@
+# ADS1015 12-bit 4-channel I2C ADC
+[part]
+id = 'part:ti/ads1015'
+origin = 'ti'
+name = 'ads1015'
+summary = "ADS1015 12-bit 4-channel I2C ADC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

@@ -1,0 +1,12 @@
+# W25Q16 16Mbit SPI flash
+[part]
+id = 'part:winbond/w25q16'
+origin = 'winbond'
+name = 'w25q16'
+summary = "W25Q16 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

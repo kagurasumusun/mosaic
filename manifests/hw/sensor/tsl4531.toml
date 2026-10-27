@@ -1,0 +1,12 @@
+# TSL4531 ambient light sensor (I2C)
+[part]
+id = 'part:ams-osram/tsl4531'
+origin = 'ams-osram'
+name = 'tsl4531'
+summary = "TSL4531 ambient light sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [41, 57]
+

@@ -1,0 +1,12 @@
+# PCA8581 128x8 I2C EEPROM
+[part]
+id = 'part:nxp/pca8581'
+origin = 'nxp'
+name = 'pca8581'
+summary = "PCA8581 128x8 I2C EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [80, 81, 82, 83, 84, 85, 86, 87]
+

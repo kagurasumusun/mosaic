@@ -1,0 +1,12 @@
+# DAC8568 16-bit 8-channel SPI DAC
+[part]
+id = 'part:ti/dac8568'
+origin = 'ti'
+name = 'dac8568'
+summary = "DAC8568 16-bit 8-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

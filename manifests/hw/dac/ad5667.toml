@@ -1,0 +1,12 @@
+# AD5667 16-bit 8-channel I2C DAC
+[part]
+id = 'part:adi/ad5667'
+origin = 'adi'
+name = 'ad5667'
+summary = "AD5667 16-bit 8-channel I2C DAC"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30]
+

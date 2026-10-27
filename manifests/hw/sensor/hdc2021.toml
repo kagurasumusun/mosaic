@@ -1,0 +1,12 @@
+# HDC2021 humidity and temperature sensor (I2C, 14-bit)
+[part]
+id = 'part:ti/hdc2021'
+origin = 'ti'
+name = 'hdc2021'
+summary = "HDC2021 humidity and temperature sensor (I2C, 14-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64]
+

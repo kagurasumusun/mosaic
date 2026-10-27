@@ -1,0 +1,12 @@
+# RICOH RV-3032-C7 I2C real-time clock
+[part]
+id = 'part:ricoh/rv3032'
+origin = 'ricoh'
+name = 'rv3032'
+summary = "RICOH RV-3032-C7 I2C real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [81]
+

@@ -1,0 +1,12 @@
+# TSC2004 4-wire touch screen controller (I2C)
+[part]
+id = 'part:ti/tsc2004'
+origin = 'ti'
+name = 'tsc2004'
+summary = "TSC2004 4-wire touch screen controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75]
+

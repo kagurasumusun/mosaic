@@ -1,0 +1,15 @@
+# ICM-20689 6-axis IMU (I2C/SPI, 16-bit)
+[part]
+id = 'part:invensense/icm20689'
+origin = 'invensense'
+name = 'icm20689'
+summary = "ICM-20689 6-axis IMU (I2C/SPI, 16-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105]
+
+[spi]
+mode = [0, 3]
+

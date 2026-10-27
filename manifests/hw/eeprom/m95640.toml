@@ -1,0 +1,12 @@
+# M95640 64Kbit SPI EEPROM
+[part]
+id = 'part:st/m95640'
+origin = 'st'
+name = 'm95640'
+summary = "M95640 64Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

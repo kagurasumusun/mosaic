@@ -1,0 +1,12 @@
+# ISL29028 ambient and proximity sensor (I2C)
+[part]
+id = 'part:renesas/isl29028'
+origin = 'renesas'
+name = 'isl29028'
+summary = "ISL29028 ambient and proximity sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

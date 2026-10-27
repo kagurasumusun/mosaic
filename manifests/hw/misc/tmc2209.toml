@@ -1,0 +1,15 @@
+# Trinamic TMC2209 stepper motor driver (UART)
+[part]
+id = 'part:trinamic/tmc2209'
+origin = 'trinamic'
+name = 'tmc2209'
+summary = "Trinamic TMC2209 stepper motor driver (UART)"
+bindings = ["uart"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[uart]
+baud = 115200
+parity = "none"
+data-bits = 8
+stop-bits = 1
+

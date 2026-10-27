@@ -1,0 +1,12 @@
+# ISL29125 RGB light sensor (I2C, 16-bit)
+[part]
+id = 'part:renesas/isls29125'
+origin = 'renesas'
+name = 'isls29125'
+summary = "ISL29125 RGB light sensor (I2C, 16-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

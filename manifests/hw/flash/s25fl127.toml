@@ -1,0 +1,12 @@
+# S25FL127 128Mbit SPI flash
+[part]
+id = 'part:spansion/s25fl127'
+origin = 'spansion'
+name = 's25fl127'
+summary = "S25FL127 128Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

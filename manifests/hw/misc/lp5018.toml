@@ -1,0 +1,12 @@
+# NXP LP5018 18-channel RGB LED driver (I2C)
+[part]
+id = 'part:nxp/lp5018'
+origin = 'nxp'
+name = 'lp5018'
+summary = "NXP LP5018 18-channel RGB LED driver (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [40, 41, 42, 43, 44, 45, 46, 47]
+

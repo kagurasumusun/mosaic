@@ -1,0 +1,13 @@
+# Maxim MAX1989 multi-channel temp monitor (SMBus)
+[part]
+id = 'part:maxim/max1989'
+origin = 'maxim'
+name = 'max1989'
+summary = "Maxim MAX1989 multi-channel temp monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 24
+pec = false
+

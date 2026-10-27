@@ -1,0 +1,12 @@
+# MX25L6405 64Mbit SPI flash
+[part]
+id = 'part:macronix/mx25l6405'
+origin = 'macronix'
+name = 'mx25l6405'
+summary = "MX25L6405 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,15 @@
+# Maxim MAX3107 SPI/I2C UART
+[part]
+id = 'part:maxim/max3107'
+origin = 'maxim'
+name = 'max3107'
+summary = "Maxim MAX3107 SPI/I2C UART"
+bindings = ["spi", "i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+
+[i2c]
+addresses = [44, 45, 46, 47]
+

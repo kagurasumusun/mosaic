@@ -1,0 +1,12 @@
+# MAX1162 16-bit 8-channel SPI ADC
+[part]
+id = 'part:maxim/max1162'
+origin = 'maxim'
+name = 'max1162'
+summary = "MAX1162 16-bit 8-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

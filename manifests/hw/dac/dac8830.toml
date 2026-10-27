@@ -1,0 +1,12 @@
+# DAC8830 16-bit 2-channel SPI DAC
+[part]
+id = 'part:ti/dac8830'
+origin = 'ti'
+name = 'dac8830'
+summary = "DAC8830 16-bit 2-channel SPI DAC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [1, 3]
+

@@ -1,0 +1,12 @@
+# ScioSense CCS811 air quality (I2C variant)
+[part]
+id = 'part:ams-osram/ccs811-aq'
+origin = 'ams-osram'
+name = 'ccs811-aq'
+summary = "ScioSense CCS811 air quality (I2C variant)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [90, 91]
+

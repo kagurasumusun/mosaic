@@ -1,0 +1,12 @@
+# Melexis MLX90632 IR thermometer (I2C)
+[part]
+id = 'part:melexis/mlx90632'
+origin = 'melexis'
+name = 'mlx90632'
+summary = "Melexis MLX90632 IR thermometer (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [58]
+

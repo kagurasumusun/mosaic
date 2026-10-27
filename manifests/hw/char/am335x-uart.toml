@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:ti/am335x-uart'
+summary = "TI AM335x UART (8250 compatible with enhanced features)"
+spec = ['vendor datasheet']
+variants = []
+
+[tags]
+function = ['char']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

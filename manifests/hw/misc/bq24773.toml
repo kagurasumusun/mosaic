@@ -1,0 +1,13 @@
+# TI BQ24773 SMBus charger
+[part]
+id = 'part:ti/bq24773'
+origin = 'ti'
+name = 'bq24773'
+summary = "TI BQ24773 SMBus charger"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 107
+pec = true
+

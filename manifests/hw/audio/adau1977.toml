@@ -1,0 +1,12 @@
+# ADI ADAU1977 quad ADC (I2C + I2S)
+[part]
+id = 'part:adi/adau1977'
+origin = 'adi'
+name = 'adau1977'
+summary = "ADI ADAU1977 quad ADC (I2C + I2S)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [17]
+

@@ -1,0 +1,13 @@
+# Maxim MAX1668 multi-channel temp monitor (SMBus)
+[part]
+id = 'part:maxim/max1668'
+origin = 'maxim'
+name = 'max1668'
+summary = "Maxim MAX1668 multi-channel temp monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 24
+pec = false
+

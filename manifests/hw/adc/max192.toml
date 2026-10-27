@@ -1,0 +1,12 @@
+# MAX192 10-bit 8-channel SPI ADC
+[part]
+id = 'part:maxim/max192'
+origin = 'maxim'
+name = 'max192'
+summary = "MAX192 10-bit 8-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

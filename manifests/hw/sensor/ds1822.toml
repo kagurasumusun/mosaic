@@ -1,0 +1,12 @@
+# DS1822 1-Wire digital thermometer (12-bit)
+[part]
+id = 'part:maxim/ds1822'
+origin = 'maxim'
+name = 'ds1822'
+summary = "DS1822 1-Wire digital thermometer (12-bit)"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 34
+

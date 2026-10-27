@@ -1,0 +1,12 @@
+# DS1340 I2C RTC with trickle charger
+[part]
+id = 'part:maxim/ds1340'
+origin = 'maxim'
+name = 'ds1340'
+summary = "DS1340 I2C RTC with trickle charger"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

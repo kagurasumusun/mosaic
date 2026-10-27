@@ -1,0 +1,12 @@
+# Microchip ATECC608A crypto authentication (I2C)
+[part]
+id = 'part:microchip/atecc608a'
+origin = 'microchip'
+name = 'atecc608a'
+summary = "Microchip ATECC608A crypto authentication (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [96]
+

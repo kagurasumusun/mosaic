@@ -1,0 +1,12 @@
+# ADXL362 3-axis ultra-low power accelerometer (SPI)
+[part]
+id = 'part:adi/adxl362'
+origin = 'adi'
+name = 'adxl362'
+summary = "ADXL362 3-axis ultra-low power accelerometer (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0]
+

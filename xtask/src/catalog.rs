@@ -411,7 +411,22 @@ pub(super) fn validate_leaf_catalog_manifest(
             // Part descriptions deliberately keep device-specific bus and
             // register sections at the file root; validate each known section
             // while rejecting misspelled top-level sections.
-            reject_unknown(root, &["part", "i2c", "spi", "register"], file_name)?;
+            reject_unknown(
+                root,
+                &[
+                    "part",
+                    "i2c",
+                    "spi",
+                    "onewire",
+                    "smbus",
+                    "pmbus",
+                    "microwire",
+                    "uart",
+                    "can",
+                    "register",
+                ],
+                file_name,
+            )?;
             let part = section(value, "part", file_name)?;
             reject_unknown(
                 part,
@@ -431,7 +446,10 @@ pub(super) fn validate_leaf_catalog_manifest(
                 if !unique_bindings.insert(binding) {
                     return Err(format!("part.bindings: duplicate binding {binding:?}"));
                 }
-                if !matches!(binding.as_str(), "i2c" | "spi") {
+                if !matches!(
+                    binding.as_str(),
+                    "i2c" | "spi" | "onewire" | "smbus" | "pmbus" | "microwire" | "uart" | "can"
+                ) {
                     return Err(format!("part.bindings: unsupported binding {binding:?}"));
                 }
             }
@@ -502,6 +520,159 @@ pub(super) fn validate_leaf_catalog_manifest(
             if bindings.iter().any(|binding| binding.as_str() == "spi") && !root.contains_key("spi")
             {
                 return Err("part.bindings: spi binding has no [spi] section".into());
+            }
+
+            // 1-Wire binding: requires a family code and optional serial.
+            if let Some(onewire) = root.get("onewire") {
+                if !bindings.iter().any(|binding| binding.as_str() == "onewire") {
+                    return Err(
+                        "onewire: section exists but part does not declare an onewire binding"
+                            .into(),
+                    );
+                }
+                let onewire = onewire
+                    .as_table()
+                    .ok_or_else(|| "onewire: expected a table".to_owned())?;
+                reject_unknown(onewire, &["family", "serial"], "onewire")?;
+                if let Some(family) = onewire.get("family") {
+                    non_negative_integer(family, "onewire.family")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "onewire")
+                && !root.contains_key("onewire")
+            {
+                return Err("part.bindings: onewire binding has no [onewire] section".into());
+            }
+
+            // SMBus binding: address + optional pec.
+            if let Some(smbus) = root.get("smbus") {
+                if !bindings.iter().any(|binding| binding.as_str() == "smbus") {
+                    return Err(
+                        "smbus: section exists but part does not declare an smbus binding".into(),
+                    );
+                }
+                let smbus = smbus
+                    .as_table()
+                    .ok_or_else(|| "smbus: expected a table".to_owned())?;
+                reject_unknown(smbus, &["address", "pec"], "smbus")?;
+                if let Some(addr) = smbus.get("address") {
+                    non_negative_integer(addr, "smbus.address")?;
+                }
+                if let Some(pec) = smbus.get("pec") {
+                    if pec.as_bool().is_none() {
+                        return Err("smbus.pec: expected a boolean".to_owned());
+                    }
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "smbus")
+                && !root.contains_key("smbus")
+            {
+                return Err("part.bindings: smbus binding has no [smbus] section".into());
+            }
+
+            // PMBus binding: address.
+            if let Some(pmbus) = root.get("pmbus") {
+                if !bindings.iter().any(|binding| binding.as_str() == "pmbus") {
+                    return Err(
+                        "pmbus: section exists but part does not declare a pmbus binding".into(),
+                    );
+                }
+                let pmbus = pmbus
+                    .as_table()
+                    .ok_or_else(|| "pmbus: expected a table".to_owned())?;
+                reject_unknown(pmbus, &["address"], "pmbus")?;
+                if let Some(addr) = pmbus.get("address") {
+                    non_negative_integer(addr, "pmbus.address")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "pmbus")
+                && !root.contains_key("pmbus")
+            {
+                return Err("part.bindings: pmbus binding has no [pmbus] section".into());
+            }
+
+            // Microwire binding: instruction bits + address bits.
+            if let Some(microwire) = root.get("microwire") {
+                if !bindings.iter().any(|binding| binding.as_str() == "microwire") {
+                    return Err(
+                        "microwire: section exists but part does not declare a microwire binding"
+                            .into(),
+                    );
+                }
+                let microwire = microwire
+                    .as_table()
+                    .ok_or_else(|| "microwire: expected a table".to_owned())?;
+                reject_unknown(microwire, &["instruction-bits", "address-bits"], "microwire")?;
+                for key in ["instruction-bits", "address-bits"] {
+                    if let Some(value) = microwire.get(key) {
+                        positive_integer(value, &format!("microwire.{key}"))?;
+                    }
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "microwire")
+                && !root.contains_key("microwire")
+            {
+                return Err("part.bindings: microwire binding has no [microwire] section".into());
+            }
+
+            // UART binding: optional baud/parity.
+            if let Some(uart) = root.get("uart") {
+                if !bindings.iter().any(|binding| binding.as_str() == "uart") {
+                    return Err(
+                        "uart: section exists but part does not declare a uart binding".into(),
+                    );
+                }
+                let uart = uart
+                    .as_table()
+                    .ok_or_else(|| "uart: expected a table".to_owned())?;
+                reject_unknown(uart, &["baud", "parity", "data-bits", "stop-bits"], "uart")?;
+                if let Some(baud) = uart.get("baud") {
+                    positive_integer(baud, "uart.baud")?;
+                }
+                if let Some(parity) = uart.get("parity") {
+                    let parity = parity.as_str().ok_or_else(|| {
+                        "uart.parity: expected a string (none, even, odd, mark, space)".to_owned()
+                    })?;
+                    if !matches!(parity, "none" | "even" | "odd" | "mark" | "space") {
+                        return Err(format!("uart.parity: invalid parity {parity:?}"));
+                    }
+                }
+                for key in ["data-bits", "stop-bits"] {
+                    if let Some(value) = uart.get(key) {
+                        positive_integer(value, &format!("uart.{key}"))?;
+                    }
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "uart")
+                && !root.contains_key("uart")
+            {
+                return Err("part.bindings: uart binding has no [uart] section".into());
+            }
+
+            // CAN binding: optional base/extended ids.
+            if let Some(can) = root.get("can") {
+                if !bindings.iter().any(|binding| binding.as_str() == "can") {
+                    return Err(
+                        "can: section exists but part does not declare a can binding".into(),
+                    );
+                }
+                let can = can
+                    .as_table()
+                    .ok_or_else(|| "can: expected a table".to_owned())?;
+                reject_unknown(can, &["ids", "extended"], "can")?;
+                if let Some(ids) = can.get("ids") {
+                    integer_array(ids, "can.ids", true)?;
+                }
+                if let Some(ext) = can.get("extended") {
+                    if ext.as_bool().is_none() {
+                        return Err("can.extended: expected a boolean".to_owned());
+                    }
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "can")
+                && !root.contains_key("can")
+            {
+                return Err("part.bindings: can binding has no [can] section".into());
             }
 
             let registers: Vec<&toml::Value> = match root.get("register") {

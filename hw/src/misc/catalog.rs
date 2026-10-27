@@ -7,6 +7,21 @@ use mosaic_runtime::Machine;
 
 use crate::catalog::ModelEntry;
 use crate::misc::rcc_f1::{self, RccF1, RccF1Params};
+use crate::misc::rcc_f4::RccF4;
+use crate::misc::rcc_h7::RccH7;
+use crate::misc::lpc11xx_cgu::Lpc11XxCgu;
+use crate::misc::rp2040_clocks::Rp2040Clocks;
+use crate::misc::cm_am335x::CmAm335X;
+use crate::misc::pcspk::Pcspk;
+use crate::misc::pc_testdev::PcTestdev;
+use crate::misc::pmc::Pmc;
+use crate::misc::pmt::Pmt;
+use crate::misc::p2sb::P2Sb;
+use crate::misc::ast_lpc::AstLpc;
+use crate::misc::npcm_lpc::NpcmLpc;
+use crate::misc::ish::Ish;
+use crate::misc::csme::Csme;
+use crate::misc::arm_smc_mailbox::ArmSmcMailbox;
 
 /// STM32F1 RCC: `rcc` IRQ output (CIR, NVIC position 5), every AHB/APB1/APB2
 /// clock gate as a `gate-*` output port, `hse-hz`/`hsi-hz` parameters.
@@ -80,3 +95,138 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     outputs: RCC_F1_GATES,
     spawn: spawn_rcc_f1,
 }];
+
+/// Default spawn for rcc-f4: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rcc_f4(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RccF4::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for rcc-h7: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rcc_h7(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RccH7::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for lpc11xx-cgu: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc11xx_cgu(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc11XxCgu::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for rp2040-clocks: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rp2040_clocks(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Rp2040Clocks::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for cm-am335x: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_cm_am335x(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = CmAm335X::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for pcspk: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_pcspk(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Pcspk::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for pc-testdev: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_pc_testdev(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = PcTestdev::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for pmc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_pmc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Pmc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for pmt: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_pmt(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Pmt::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for p2sb: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_p2sb(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = P2Sb::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for ast-lpc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_ast_lpc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = AstLpc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for npcm-lpc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_npcm_lpc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = NpcmLpc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for ish: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_ish(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Ish::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for csme: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_csme(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Csme::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for arm-smc-mailbox: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_arm_smc_mailbox(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = ArmSmcMailbox::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}

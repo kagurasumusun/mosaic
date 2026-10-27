@@ -1,0 +1,13 @@
+# TI BQ24259 I2C charger (SMBus)
+[part]
+id = 'part:ti/bq24259'
+origin = 'ti'
+name = 'bq24259'
+summary = "TI BQ24259 I2C charger (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 106
+pec = true
+

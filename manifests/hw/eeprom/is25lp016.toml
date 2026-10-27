@@ -1,0 +1,12 @@
+# IS25LP016 16Mbit SPI flash
+[part]
+id = 'part:issi/is25lp016'
+origin = 'issi'
+name = 'is25lp016'
+summary = "IS25LP016 16Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

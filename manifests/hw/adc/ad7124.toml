@@ -1,0 +1,12 @@
+# AD7124 24-bit 8-channel SPI ADC
+[part]
+id = 'part:adi/ad7124'
+origin = 'adi'
+name = 'ad7124'
+summary = "AD7124 24-bit 8-channel SPI ADC"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

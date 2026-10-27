@@ -1,0 +1,13 @@
+# TI BQ27541 fuel gauge (SMBus)
+[part]
+id = 'part:ti/bq27541'
+origin = 'ti'
+name = 'bq27541'
+summary = "TI BQ27541 fuel gauge (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 11
+pec = true
+

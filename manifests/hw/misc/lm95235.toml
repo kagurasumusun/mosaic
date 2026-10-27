@@ -1,0 +1,13 @@
+# National LM95235 dual remote temp sensor (SMBus)
+[part]
+id = 'part:national/lm95235'
+origin = 'national'
+name = 'lm95235'
+summary = "National LM95235 dual remote temp sensor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 43
+pec = false
+

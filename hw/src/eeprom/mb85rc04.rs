@@ -1,0 +1,7 @@
+//! MB85RC04 4Kbit FRAM (I2C)
+//!
+//! Catalog part `part:fujitsu/mb85rc04` — see manifests/hw/eeprom/mb85rc04.toml.
+
+/// Marker type for catalog discovery.
+#[allow(dead_code)]
+pub struct Placeholder;

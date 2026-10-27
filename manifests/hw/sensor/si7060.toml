@@ -1,0 +1,12 @@
+# Si7060 digital temperature sensor (I2C, 14-bit)
+[part]
+id = 'part:silabs/si7060'
+origin = 'silabs'
+name = 'si7060'
+summary = "Si7060 digital temperature sensor (I2C, 14-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [64]
+

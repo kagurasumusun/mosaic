@@ -1,0 +1,12 @@
+# GD25Q128 128Mbit SPI flash
+[part]
+id = 'part:gigadevice/gd25q128'
+origin = 'gigadevice'
+name = 'gd25q128'
+summary = "GD25Q128 128Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

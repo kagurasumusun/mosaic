@@ -1,0 +1,12 @@
+# MAX31856 thermocouple-to-digital converter (SPI)
+[part]
+id = 'part:maxim/max31856'
+origin = 'maxim'
+name = 'max31856'
+summary = "MAX31856 thermocouple-to-digital converter (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 1, 2, 3]
+

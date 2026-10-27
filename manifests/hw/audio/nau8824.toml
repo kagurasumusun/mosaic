@@ -1,0 +1,12 @@
+# Nuvoton NAU8824 audio codec (I2S + I2C)
+[part]
+id = 'part:nuvoton/nau8824'
+origin = 'nuvoton'
+name = 'nau8824'
+summary = "Nuvoton NAU8824 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [26, 27]
+

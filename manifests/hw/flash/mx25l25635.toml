@@ -1,0 +1,12 @@
+# MX25L25635 256Mbit SPI flash
+[part]
+id = 'part:macronix/mx25l25635'
+origin = 'macronix'
+name = 'mx25l25635'
+summary = "MX25L25635 256Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

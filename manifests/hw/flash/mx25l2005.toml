@@ -1,0 +1,12 @@
+# MX25L2005 2Mbit SPI flash
+[part]
+id = 'part:macronix/mx25l2005'
+origin = 'macronix'
+name = 'mx25l2005'
+summary = "MX25L2005 2Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

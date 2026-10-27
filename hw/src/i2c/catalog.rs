@@ -13,6 +13,23 @@ use mosaic_runtime::Machine;
 
 use crate::catalog::ModelEntry;
 use crate::i2c::dw_apb_i2c::{DwApbI2c, DwApbI2cParams};
+use crate::i2c::lpc11xx_i2c::Lpc11XxI2C;
+use crate::i2c::lpc17xx_i2c::Lpc17XxI2C;
+use crate::i2c::lpc43xx_i2c::Lpc43XxI2C;
+use crate::i2c::i2c_f1::I2CF1;
+use crate::i2c::i2c_f4::I2CF4;
+use crate::i2c::i2c_f7::I2CF7;
+use crate::i2c::i2c_h7::I2CH7;
+use crate::i2c::i2c_l4::I2CL4;
+use crate::i2c::rp2040_i2c::Rp2040I2C;
+use crate::i2c::sunxi_i2c::SunxiI2C;
+use crate::i2c::rk_i2c::RkI2C;
+use crate::i2c::mtk_i2c::MtkI2C;
+use crate::i2c::omap_i2c::OmapI2C;
+use crate::i2c::am335x_i2c::Am335XI2C;
+use crate::i2c::pic32_i2c::Pic32I2C;
+use crate::i2c::esp32_i2c::Esp32I2C;
+use crate::i2c::efm32_i2c::Efm32I2C;
 
 /// The controller-side port over the shared bus fabric: every controller
 /// model that speaks I2C wraps its host attachment in this adapter.
@@ -85,3 +102,156 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     outputs: &[],
     spawn: spawn_dw_apb_i2c,
 }];
+
+/// Default spawn for lpc11xx-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc11xx_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc11XxI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for lpc17xx-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc17xx_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc17XxI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for lpc43xx-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc43xx_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc43XxI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for i2c-f1: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_i2c_f1(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = I2CF1::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for i2c-f4: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_i2c_f4(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = I2CF4::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for i2c-f7: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_i2c_f7(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = I2CF7::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for i2c-h7: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_i2c_h7(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = I2CH7::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for i2c-l4: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_i2c_l4(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = I2CL4::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for rp2040-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rp2040_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Rp2040I2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for sunxi-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_sunxi_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = SunxiI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for rk-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rk_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RkI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for mtk-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_mtk_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = MtkI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for omap-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_omap_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = OmapI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for am335x-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_am335x_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Am335XI2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for pic32-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_pic32_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Pic32I2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for esp32-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_esp32_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Esp32I2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+
+/// Default spawn for efm32-i2c: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_efm32_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Efm32I2C::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}

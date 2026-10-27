@@ -1,0 +1,15 @@
+# L3GD20 3-axis digital gyroscope (I2C/SPI, 16-bit)
+[part]
+id = 'part:st/l3gd20'
+origin = 'st'
+name = 'l3gd20'
+summary = "L3GD20 3-axis digital gyroscope (I2C/SPI, 16-bit)"
+bindings = ["i2c", "spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [106, 107]
+
+[spi]
+mode = [3]
+

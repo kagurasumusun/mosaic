@@ -1,0 +1,12 @@
+# MCP4726 12-bit I2C DAC with EEPROM
+[part]
+id = 'part:microchip/mcp4726'
+origin = 'microchip'
+name = 'mcp4726'
+summary = "MCP4726 12-bit I2C DAC with EEPROM"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [96, 97, 98, 99, 100, 101, 102, 103]
+

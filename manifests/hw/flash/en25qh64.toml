@@ -1,0 +1,12 @@
+# EN25QH64 64Mbit SPI flash
+[part]
+id = 'part:eon/en25qh64'
+origin = 'eon'
+name = 'en25qh64'
+summary = "EN25QH64 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

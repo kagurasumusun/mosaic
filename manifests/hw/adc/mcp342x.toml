@@ -1,0 +1,12 @@
+# MCP342x 18-bit I2C ADC family
+[part]
+id = 'part:microchip/mcp342x'
+origin = 'microchip'
+name = 'mcp342x'
+summary = "MCP342x 18-bit I2C ADC family"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104, 105, 106, 107, 108, 109, 110, 111]
+

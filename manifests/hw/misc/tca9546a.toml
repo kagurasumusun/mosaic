@@ -1,0 +1,12 @@
+# TI TCA9546A 4-channel I2C multiplexer
+[part]
+id = 'part:ti/tca9546a'
+origin = 'ti'
+name = 'tca9546a'
+summary = "TI TCA9546A 4-channel I2C multiplexer"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [112, 113, 114, 115, 116, 117, 118, 119]
+

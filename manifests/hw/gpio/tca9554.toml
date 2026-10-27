@@ -1,0 +1,12 @@
+# TCA9554 8-bit I2C I/O expander
+[part]
+id = 'part:ti/tca9554'
+origin = 'ti'
+name = 'tca9554'
+summary = "TCA9554 8-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [32, 33, 34, 35, 36, 37, 38, 39]
+

@@ -1,0 +1,12 @@
+# MCP98424 digital temperature sensor with 1k EEPROM (I2C)
+[part]
+id = 'part:microchip/mcp98424'
+origin = 'microchip'
+name = 'mcp98424'
+summary = "MCP98424 digital temperature sensor with 1k EEPROM (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [24, 25, 26, 27, 28, 29, 30, 31]
+

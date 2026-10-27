@@ -1,0 +1,12 @@
+# TI TLV320AIC23B audio codec (I2S + I2C)
+[part]
+id = 'part:ti/tlv320aic23b'
+origin = 'ti'
+name = 'tlv320aic23b'
+summary = "TI TLV320AIC23B audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [26, 27]
+

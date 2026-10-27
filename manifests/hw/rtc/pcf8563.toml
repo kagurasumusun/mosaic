@@ -1,0 +1,12 @@
+# PCF8563 I2C real-time clock with alarm
+[part]
+id = 'part:nxp/pcf8563'
+origin = 'nxp'
+name = 'pcf8563'
+summary = "PCF8563 I2C real-time clock with alarm"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [81]
+

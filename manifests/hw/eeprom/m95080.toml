@@ -1,0 +1,12 @@
+# M95080 8Kbit SPI EEPROM
+[part]
+id = 'part:st/m95080'
+origin = 'st'
+name = 'm95080'
+summary = "M95080 8Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

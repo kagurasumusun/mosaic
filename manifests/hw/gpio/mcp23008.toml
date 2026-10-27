@@ -1,0 +1,12 @@
+# MCP23008 8-bit I2C I/O expander
+[part]
+id = 'part:microchip/mcp23008'
+origin = 'microchip'
+name = 'mcp23008'
+summary = "MCP23008 8-bit I2C I/O expander"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [32, 33, 34, 35, 36, 37, 38, 39]
+

@@ -1,0 +1,12 @@
+# DS28E17 1-Wire-to-I2C bridge
+[part]
+id = 'part:maxim/ds28e17'
+origin = 'maxim'
+name = 'ds28e17'
+summary = "DS28E17 1-Wire-to-I2C bridge"
+bindings = ["onewire"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[onewire]
+family = 25
+

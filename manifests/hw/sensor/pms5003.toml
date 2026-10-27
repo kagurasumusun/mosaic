@@ -1,0 +1,15 @@
+# Plantower PMS5003 particulate matter sensor (UART)
+[part]
+id = 'part:plantower/pms5003'
+origin = 'plantower'
+name = 'pms5003'
+summary = "Plantower PMS5003 particulate matter sensor (UART)"
+bindings = ["uart"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[uart]
+baud = 9600
+parity = "none"
+data-bits = 8
+stop-bits = 1
+

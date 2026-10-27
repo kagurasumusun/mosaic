@@ -1,0 +1,12 @@
+# DS620 digital thermometer and thermostat (I2C, 13-bit)
+[part]
+id = 'part:maxim/ds620'
+origin = 'maxim'
+name = 'ds620'
+summary = "DS620 digital thermometer and thermostat (I2C, 13-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [72, 73, 74, 75, 76, 77, 78, 79]
+

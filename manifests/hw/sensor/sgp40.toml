@@ -1,0 +1,12 @@
+# SGP40 air quality sensor (I2C)
+[part]
+id = 'part:sensirion/sgp40'
+origin = 'sensirion'
+name = 'sgp40'
+summary = "SGP40 air quality sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [89]
+

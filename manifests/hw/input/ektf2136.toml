@@ -1,0 +1,12 @@
+# ELAN eKTF2136 capacitive touch controller (I2C)
+[part]
+id = 'part:elan/ektf2136'
+origin = 'elan'
+name = 'ektf2136'
+summary = "ELAN eKTF2136 capacitive touch controller (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [16]
+

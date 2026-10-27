@@ -1,0 +1,12 @@
+# ISL29023 ambient light sensor (I2C, 15-bit)
+[part]
+id = 'part:renesas/isl29023'
+origin = 'renesas'
+name = 'isl29023'
+summary = "ISL29023 ambient light sensor (I2C, 15-bit)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [68]
+

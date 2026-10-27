@@ -1,0 +1,12 @@
+# Cirrus CS4271 audio codec (I2S + SPI)
+[part]
+id = 'part:cirrus/cs4271'
+origin = 'cirrus'
+name = 'cs4271'
+summary = "Cirrus CS4271 audio codec (I2S + SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

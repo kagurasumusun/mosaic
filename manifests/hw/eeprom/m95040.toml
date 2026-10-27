@@ -1,0 +1,12 @@
+# M95040 4Kbit SPI EEPROM
+[part]
+id = 'part:st/m95040'
+origin = 'st'
+name = 'm95040'
+summary = "M95040 4Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,13 @@
+# TI BQ27441 fuel gauge (SMBus)
+[part]
+id = 'part:ti/bq27441'
+origin = 'ti'
+name = 'bq27441'
+summary = "TI BQ27441 fuel gauge (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 85
+pec = true
+

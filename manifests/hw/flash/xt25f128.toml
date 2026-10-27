@@ -1,0 +1,12 @@
+# XT25F128 128Mbit SPI flash
+[part]
+id = 'part:xtx/xt25f128'
+origin = 'xtx'
+name = 'xt25f128'
+summary = "XT25F128 128Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

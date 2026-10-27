@@ -1,0 +1,13 @@
+# TI BQ24725 SMBus charger
+[part]
+id = 'part:ti/bq24725'
+origin = 'ti'
+name = 'bq24725'
+summary = "TI BQ24725 SMBus charger"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 106
+pec = true
+

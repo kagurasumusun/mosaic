@@ -1,0 +1,12 @@
+# ILI9325 color TFT LCD controller (parallel/SPI)
+[part]
+id = 'part:ilitek/ili9325'
+origin = 'ilitek'
+name = 'ili9325'
+summary = "ILI9325 color TFT LCD controller (parallel/SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

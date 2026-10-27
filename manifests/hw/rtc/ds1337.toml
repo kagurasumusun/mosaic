@@ -1,0 +1,12 @@
+# DS1337 I2C serial real-time clock
+[part]
+id = 'part:maxim/ds1337'
+origin = 'maxim'
+name = 'ds1337'
+summary = "DS1337 I2C serial real-time clock"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [104]
+

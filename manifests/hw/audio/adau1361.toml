@@ -1,0 +1,12 @@
+# ADI ADAU1361 audio codec (I2S + I2C)
+[part]
+id = 'part:adi/adau1361'
+origin = 'adi'
+name = 'adau1361'
+summary = "ADI ADAU1361 audio codec (I2S + I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [56, 57]
+

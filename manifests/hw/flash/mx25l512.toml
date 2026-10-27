@@ -1,0 +1,12 @@
+# MX25L512 512Kbit SPI flash
+[part]
+id = 'part:macronix/mx25l512'
+origin = 'macronix'
+name = 'mx25l512'
+summary = "MX25L512 512Kbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

@@ -1,0 +1,12 @@
+# ILI9342 color TFT LCD controller (SPI)
+[part]
+id = 'part:ilitek/ili9342'
+origin = 'ilitek'
+name = 'ili9342'
+summary = "ILI9342 color TFT LCD controller (SPI)"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

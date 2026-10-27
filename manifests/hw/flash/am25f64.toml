@@ -1,0 +1,12 @@
+# AM25F64 64Mbit SPI flash
+[part]
+id = 'part:amacro/am25f64'
+origin = 'amacro'
+name = 'am25f64'
+summary = "AM25F64 64Mbit SPI flash"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

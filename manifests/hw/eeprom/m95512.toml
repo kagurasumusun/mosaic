@@ -1,0 +1,12 @@
+# M95512 512Kbit SPI EEPROM
+[part]
+id = 'part:st/m95512'
+origin = 'st'
+name = 'm95512'
+summary = "M95512 512Kbit SPI EEPROM"
+bindings = ["spi"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[spi]
+mode = [0, 3]
+

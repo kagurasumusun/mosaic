@@ -1,0 +1,12 @@
+# SCD30 CO2 humidity temperature sensor (I2C)
+[part]
+id = 'part:sensirion/scd30'
+origin = 'sensirion'
+name = 'scd30'
+summary = "SCD30 CO2 humidity temperature sensor (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [97]
+

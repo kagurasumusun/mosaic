@@ -1,0 +1,12 @@
+# BMM150 3-axis magnetometer (I2C)
+[part]
+id = 'part:bosch/bmm150'
+origin = 'bosch'
+name = 'bmm150'
+summary = "BMM150 3-axis magnetometer (I2C)"
+bindings = ["i2c"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[i2c]
+addresses = [16, 17, 18, 19]
+

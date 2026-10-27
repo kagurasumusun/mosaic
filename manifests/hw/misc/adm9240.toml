@@ -1,0 +1,13 @@
+# ADI ADM9240 system monitor (SMBus)
+[part]
+id = 'part:adi/adm9240'
+origin = 'adi'
+name = 'adm9240'
+summary = "ADI ADM9240 system monitor (SMBus)"
+bindings = ["smbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'high' }
+
+[smbus]
+address = 44
+pec = false
+
