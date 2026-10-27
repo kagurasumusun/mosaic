@@ -664,9 +664,87 @@ impl VgaRegisters {
 }
 
 /// PC port space: the only way a real guest reaches these devices.
+/// Channel-0 timer shadow: the divisor and mode the guest programmed into
+/// the PIT, snooped on the port path, so the machine can convert executed
+/// instructions into IRQ-0 edges. A real machine wires the PIT output to the
+/// PIC input; until the clock tree (ADR 0003's resolved clock) reaches this
+/// interim, this shadow is the wire, and the catalog PIT model keeps serving
+/// register reads exactly as before.
+#[derive(Debug, Default)]
+struct PitIrqShadow {
+    /// Divider written to channel 0 (0 means 65536).
+    divisor: u32,
+    /// Nanoseconds of channel-0 countdown left until the next edge.
+    countdown_ns: u64,
+    /// Which half of the two-byte divisor write sequence is next.
+    lobyte: bool,
+}
+
+impl PitIrqShadow {
+    /// One instruction is one tick of a nominal 100 MHz core. The ratio only
+    /// has to be *consistent* for a deterministic guest; the kernel derives
+    /// everything it needs from the edges themselves.
+    const NS_PER_INSTRUCTION: u64 = 10;
+
+    fn observe_write(&mut self, port: u16, value: u8) {
+        match port {
+            0x43 => {
+                // Command: access mode bits say how the next channel-0 count
+                // write arrives; latch-only commands leave the divisor alone.
+                let access = (value >> 4) & 0x3;
+                self.lobyte = access == 0;
+            }
+            0x40 => {
+                let access_lobyte = self.lobyte;
+                self.lobyte = !self.lobyte;
+                let divisor = self.divisor;
+                self.divisor = match (access_lobyte, divisor) {
+                    // Both halves arrive; the second byte completes them.
+                    (true, _) => u32::from(value),
+                    (false, high) => (high & 0xFF) | (u32::from(value) << 8),
+                };
+                // A new period starts from the write.
+                self.reload();
+            }
+            _ => {}
+        }
+    }
+
+    fn reload(&mut self) {
+        let divisor = if self.divisor == 0 {
+            65_536
+        } else {
+            self.divisor
+        };
+        // The PIT's input clock is 1 193 182 Hz: one count is 838 ns.
+        self.countdown_ns = u64::from(divisor) * 838;
+    }
+
+    /// Advance by the instructions the last quantum retired, returning the
+    /// number of channel-0 edges that fired.
+    fn advance(&mut self, instructions: u64) -> u32 {
+        let mut nanos = instructions.saturating_mul(Self::NS_PER_INSTRUCTION);
+        let mut edges = 0u32;
+        while nanos > 0 && self.countdown_ns > 0 {
+            if nanos >= self.countdown_ns {
+                nanos -= self.countdown_ns;
+                self.countdown_ns = 0;
+                self.reload();
+                edges += 1;
+            } else {
+                self.countdown_ns -= nanos;
+                nanos = 0;
+            }
+        }
+        edges
+    }
+}
+
 struct PcPorts {
-    pic: Pic8259,
+    pic: Arc<Mutex<Pic8259>>,
     pit: Pit8254,
+    /// Channel-0 IRQ shadow, shared with the machine loop.
+    timer: Arc<Mutex<PitIrqShadow>>,
     rtc: RtcMc146818,
     serial: Arc<Mutex<Serial16550>>,
     vga: VgaRegisters,
@@ -679,12 +757,14 @@ impl PortBus for PcPorts {
         match port {
             0x20..=0x21 => {
                 let offset = u64::from(port - 0x20);
-                let value = self.pic.read(&mut ctx, offset, AccessSize::Byte, &attr)?;
+                let mut pic = self.pic.lock().map_err(|_| BusFault::Device)?;
+                let value = pic.read(&mut ctx, offset, AccessSize::Byte, &attr)?;
                 Ok((value & 0xFF) as u32)
             }
             0xA0..=0xA1 => {
                 let offset = u64::from(port - 0xA0) + 2;
-                let value = self.pic.read(&mut ctx, offset, AccessSize::Byte, &attr)?;
+                let mut pic = self.pic.lock().map_err(|_| BusFault::Device)?;
+                let value = pic.read(&mut ctx, offset, AccessSize::Byte, &attr)?;
                 Ok((value & 0xFF) as u32)
             }
             0x40..=0x43 => {
@@ -731,16 +811,19 @@ impl PortBus for PcPorts {
         match port {
             0x20..=0x21 => {
                 let offset = u64::from(port - 0x20);
-                self.pic
-                    .write(&mut ctx, offset, AccessSize::Byte, u64::from(byte), &attr)
+                let mut pic = self.pic.lock().map_err(|_| BusFault::Device)?;
+                pic.write(&mut ctx, offset, AccessSize::Byte, u64::from(byte), &attr)
             }
             0xA0..=0xA1 => {
                 let offset = u64::from(port - 0xA0) + 2;
-                self.pic
-                    .write(&mut ctx, offset, AccessSize::Byte, u64::from(byte), &attr)
+                let mut pic = self.pic.lock().map_err(|_| BusFault::Device)?;
+                pic.write(&mut ctx, offset, AccessSize::Byte, u64::from(byte), &attr)
             }
             0x40..=0x43 => {
                 let offset = u64::from(port - 0x40);
+                if let Ok(mut timer) = self.timer.lock() {
+                    timer.observe_write(port, byte);
+                }
                 self.pit
                     .write(&mut ctx, offset, AccessSize::Byte, u64::from(byte), &attr)
             }
@@ -1733,10 +1816,13 @@ fn run_with(
         .map_err(|error| format!("lapic map: {error:?}"))?;
 
     let serial = Arc::new(Mutex::new(Serial16550::default()));
+    let pic = Arc::new(Mutex::new(Pic8259::new()));
+    let timer = Arc::new(Mutex::new(PitIrqShadow::default()));
     engine
         .attach_ports(Box::new(PcPorts {
-            pic: Pic8259::new(),
+            pic: Arc::clone(&pic),
             pit: Pit8254::new(),
+            timer: Arc::clone(&timer),
             rtc: RtcMc146818::new(),
             serial: Arc::clone(&serial),
             vga: VgaRegisters::default(),
@@ -1875,6 +1961,40 @@ fn run_with(
         ));
         outcome = engine.run(quantum);
         executed += outcome.instruction_hooks;
+        // The virtual PIT: retired instructions become nanoseconds, edges
+        // become IRQ-0 raises the way the wire would carry them. The PIC
+        // decides (mask, priority) and names the vector; the engine delivers
+        // it through the guest's own IDT at the next quantum.
+        let edges = timer
+            .lock()
+            .map(|mut shadow| shadow.advance(outcome.instruction_hooks))
+            .unwrap_or(0);
+        for _ in 0..edges {
+            // Level semantics: while one IRQ-0 raise is still waiting for the
+            // guest to open `IF`, later edges fold into it — a guest that
+            // programmed a fast tick must not drown in its own timer, and a
+            // guest that never opens `IF` (a boot sector that only polls)
+            // keeps exactly one pending raise, exactly like a PIC wired to a
+            // core that masks interrupts.
+            if engine.pending_interrupts() > 0 {
+                break;
+            }
+            let vector = pic.lock().map(|mut pic| {
+                let mut ctx = FirmwareCtx;
+                pic.set_irq(&mut ctx, 0, true);
+                let vector = pic.acknowledge(&mut ctx);
+                pic.set_irq(&mut ctx, 0, false);
+                vector
+            });
+            if let Ok(vector) = vector {
+                // The only source this machine raises is IRQ 0; a spurious
+                // acknowledge (masked or wrong state) answers icw2+7 and is
+                // dropped, never injected.
+                if vector & 0x07 == 0 {
+                    engine.queue_interrupt(vector);
+                }
+            }
+        }
         if outcome.reason != StopReason::BudgetExhausted {
             break;
         }

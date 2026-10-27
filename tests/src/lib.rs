@@ -328,10 +328,19 @@ pub fn resolve(entry: &ImageEntry) -> Resolved {
     }
 }
 
+/// One boot at a time. Guest images reach hundreds of mebibytes, and the
+/// machine holds the image, its BIOS copy and the guest RAM at once; two
+/// boots in parallel are an OOM, not a speedup.
+#[cfg(feature = "unicorn")]
+static BOOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The library entry point each OS-family test calls: boot one real image
 /// and assert the milestone the catalog recorded for it.
 #[cfg(feature = "unicorn")]
 pub fn boot_case(entry: &ImageEntry) {
+    let _guard = BOOT_LOCK
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     if let EntryStatus::MachinePending = entry.status {
         eprintln!(
             "skip {}: machine '{}' is not implemented yet: {}",
@@ -371,6 +380,15 @@ pub fn run_entry(
     entry: &ImageEntry,
     data: &[u8],
 ) -> Result<mosaic_apps_system::SystemReport, String> {
+    // The CD image stays attached while the kernel boots out of it, so the
+    // machine owns exactly one copy: `data` itself.
+    run_entry_with(entry, data.to_vec())
+}
+
+fn run_entry_with(
+    entry: &ImageEntry,
+    data: Vec<u8>,
+) -> Result<mosaic_apps_system::SystemReport, String> {
     use mosaic_apps_system::{BootSource, DriveSpec, MediaKind, SystemConfig};
     let mut config = SystemConfig {
         machine: mosaic_apps_system::MachineKind::try_from(entry.machine.as_str())
@@ -391,20 +409,20 @@ pub fn run_entry(
         BootPlan::Cdrom => {
             config.drives.push(DriveSpec {
                 media: MediaKind::Cdrom,
-                data: data.to_vec(),
+                data,
             });
         }
         BootPlan::Floppy => {
             config.drives.push(DriveSpec {
                 media: MediaKind::Floppy,
-                data: data.to_vec(),
+                data,
             });
             config.boot = BootSource::Order("a".into());
         }
         BootPlan::HardDisk => {
             config.drives.push(DriveSpec {
                 media: MediaKind::HardDisk,
-                data: data.to_vec(),
+                data,
             });
             config.boot = BootSource::Order("c".into());
         }
@@ -413,21 +431,21 @@ pub fn run_entry(
             initrd,
             append,
         } => {
-            let kernel_bytes = mosaic_apps_system::linux_boot::iso_file(data, kernel)
-                .and_then(|file| file.read(data))
+            let kernel_bytes = mosaic_apps_system::linux_boot::iso_file(&data, kernel)
+                .and_then(|file| file.read(&data))
                 .ok_or_else(|| format!("{kernel} is not in the ISO image"))?;
             let initrd_bytes = initrd
                 .as_ref()
                 .map(|path| {
-                    mosaic_apps_system::linux_boot::iso_file(data, path)
-                        .and_then(|file| file.read(data))
+                    mosaic_apps_system::linux_boot::iso_file(&data, path)
+                        .and_then(|file| file.read(&data))
                         .ok_or_else(|| format!("{path} is not in the ISO image"))
                 })
                 .transpose()?;
             // The CD stays attached: the initramfs often needs modules from it.
             config.drives.push(DriveSpec {
                 media: MediaKind::Cdrom,
-                data: data.to_vec(),
+                data,
             });
             config.boot = BootSource::DirectKernel(mosaic_apps_system::DirectKernel {
                 image: kernel_bytes,
@@ -449,7 +467,7 @@ pub fn run_entry(
                 })
                 .transpose()?;
             config.boot = BootSource::DirectKernel(mosaic_apps_system::DirectKernel {
-                image: data.to_vec(),
+                image: data,
                 initrd: initrd_bytes,
                 cmdline: append.clone(),
             });

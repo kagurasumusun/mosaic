@@ -76,9 +76,11 @@ expect = [
     "Linux version",
     "honours the WP bit even in supervisor mode...Ok.",
     "Memory: ",
+    "clocksource: Switched to clocksource pit",
+    "BogoMIPS",
 ]
 status = "bring-up"
-note = "the kernel decompresses, runs its own early init on the serial console and survives its deliberate page fault; the stop after TSC calibration needs timer IRQ injection"
+note = "kernel decompresses, runs its early init, calibrates against the machine's PIT-driven IRQ 0 (BogoMIPS, clocksource pit) and drives its initcall sequence; the next milestone is initramfs unpack, which only needs a longer budget"
 
 [[image]]
 id = "linux/tinycore-16-corepure64"
