@@ -7,19 +7,19 @@
 //! synthetic boot path in this crate: every run needs a real image, exactly
 //! like selecting a CD in a system emulator.
 //!
-//! The machine registry is the seam where later machines (`virt-64` for
-//! AArch64, `versatile-pb` for ARM32, ...) plug in. Each machine owns its own
-//! assembly; this front-end only translates a [`SystemConfig`] into the
-//! machine's own configuration type and runs it.
+//! This crate is QEMU's `softmmu/vl.c` and nothing more: it parses options,
+//! lists machines and translates a [`SystemConfig`] into the selected
+//! machine's own configuration type. The machines themselves are catalog
+//! board models (ADR 0023) — `pc` lives in `catalog/board/ibm/pc`
+//! (`mosaic-board-ibm-pc-glue`) — and each new machine (`virt-64`, `goldfish`,
+//! `versatile-pb`, ...) is a new board crate plus one arm in the dispatch
+//! below, the way QEMU's `hw/<arch>` machines register `MODULE_INFO` without
+//! `vl.c` growing machine code.
 
 pub mod report_json;
 
-pub mod linux_boot;
 #[cfg(feature = "unicorn")]
-pub mod pc_boot;
-
-#[cfg(feature = "unicorn")]
-pub use pc_boot::{run_pc_machine, PcBootOptions, PcBootReport, PcMachineConfig};
+pub use mosaic_board_ibm_pc_glue::{run_pc_machine, PcBootOptions, PcBootReport, PcMachineConfig};
 
 /// A kernel the operator asked the machine to boot directly, bypassing every
 /// loader in the attached images (QEMU's `-kernel`/`-initrd`/`-append`).
@@ -34,10 +34,11 @@ pub struct DirectKernel {
 }
 
 /// One machine type the front-end knows how to build, the way QEMU's `-M`
-/// names a board. Adding a machine here is adding a `-M` choice.
+/// names a board. The machine's implementation is a catalog board crate;
+/// an arm here only translates options and calls into it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineKind {
-    /// i386 PC: BIOS software-interrupt firmware interim, PIC/PIT/RTC/16550
+    /// `board:ibm/pc`: BIOS software-interrupt firmware interim, PIC/PIT/RTC
     /// port space, VGA text console. Boots El Torito CDs, boot sectors and
     /// `bzImage` kernels through the documented i386 boot protocol.
     Pc,
@@ -49,21 +50,21 @@ impl MachineKind {
     /// The `-M` spelling of this machine.
     pub fn name(self) -> &'static str {
         match self {
-            MachineKind::Pc => "pc",
+            MachineKind::Pc => mosaic_board_ibm_pc_glue::MACHINE_NAME,
         }
     }
 
     /// One-line description, as `mosaic-system -M help` prints it.
     pub fn summary(self) -> &'static str {
         match self {
-            MachineKind::Pc => "i386 PC (BIOS INT services, ISA port space, VGA text)",
+            MachineKind::Pc => mosaic_board_ibm_pc_glue::MACHINE_SUMMARY,
         }
     }
 
     /// CPU architectures the machine's engines cover, as `-M help` prints it.
     pub fn architectures(self) -> &'static [&'static str] {
         match self {
-            MachineKind::Pc => &["i386", "x86_64"],
+            MachineKind::Pc => mosaic_board_ibm_pc_glue::ARCHITECTURES,
         }
     }
 
@@ -96,7 +97,7 @@ impl std::fmt::Display for UnknownMachine {
 impl TryFrom<&str> for MachineKind {
     type Error = UnknownMachine;
 
-    fn try_from(name: &str) -> Result<Self, Self::Error> {
+    fn try_from(name: &str) -> Result<Self, UnknownMachine> {
         MachineKind::from_name(name).ok_or(UnknownMachine { name: name.into() })
     }
 }
@@ -255,7 +256,11 @@ fn to_pc_config(config: &SystemConfig) -> Result<PcMachineConfig, String> {
             machine.with_boot_order(order.clone());
         }
         BootSource::DirectKernel(kernel) => {
-            machine.with_kernel(kernel.clone());
+            machine.with_kernel(mosaic_board_ibm_pc_glue::DirectKernel {
+                image: kernel.image.clone(),
+                initrd: kernel.initrd.clone(),
+                cmdline: kernel.cmdline.clone(),
+            });
         }
     }
     Ok(machine)

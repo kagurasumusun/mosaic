@@ -19,7 +19,7 @@ PC のファームウェア境界はソフトウェア割り込み表そのも�
   `service(vector, &mut dyn SoftwareInterruptCpu)` が呼ばれ、`true` を返せば
   ゲストは `INT` の次の命令から続く。`false` はゲスト自身のハンドラに
   譲ることを意味する。
-- サービスの実装は `pc` マシン側（`apps/system/src/pc_boot.rs`）に置く。エンジンは
+- サービスの実装は `pc` マシン側（ADR 0023 以降は `catalog/board/ibm/pc/glue/src/machine.rs`、旧 `apps/system/src/pc_boot.rs`）に置く。エンジンは
   「誰が答えるか」を知らない。
 - 低メモリに実機と同じ配置を用意する。IVT の全 256 エントリが `F000h` の
   トランポリン（`INT n; IRET`）を指し、BDA（`0040h`）に機器ワード・

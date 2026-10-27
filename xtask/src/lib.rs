@@ -383,7 +383,9 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
             },
             Some("board.toml") => match parse_board(&value) {
                 Ok(manifest) => {
-                    references.push((relative.clone(), manifest.board.soc.clone()));
+                    if let Some(soc) = &manifest.board.soc {
+                        references.push((relative.clone(), soc.clone()));
+                    }
                     references.extend(
                         manifest
                             .part
@@ -428,23 +430,29 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
     }
     let mut port_checked_socs = BTreeSet::new();
     for (id, located) in &board_manifests {
-        match soc_manifests.get(&located.value.board.soc) {
-            Some(soc) => match MachineGraph::build(&soc.value, Some(&located.value)) {
-                Ok(graph) => {
-                    errors.extend(
-                        validate_graph_ports(&graph, &leaf_metadata)
-                            .into_iter()
-                            .map(|error| format!("{}: {error}", located.source.display())),
-                    );
-                    port_checked_socs.insert(located.value.board.soc.clone());
-                }
-                Err(error) => errors.push(format!("{}: {error}", located.source.display())),
+        match &located.value.board.soc {
+            Some(soc_id) => match soc_manifests.get(soc_id) {
+                Some(soc) => match MachineGraph::build(&soc.value, Some(&located.value)) {
+                    Ok(graph) => {
+                        errors.extend(
+                            validate_graph_ports(&graph, &leaf_metadata)
+                                .into_iter()
+                                .map(|error| format!("{}: {error}", located.source.display())),
+                        );
+                        port_checked_socs.insert(soc_id.clone());
+                    }
+                    Err(error) => errors.push(format!("{}: {error}", located.source.display())),
+                },
+                None => errors.push(format!(
+                    "{}: cannot build graph; referenced SoC {soc_id:?} has no valid manifest",
+                    located.source.display()
+                )),
             },
-            None => errors.push(format!(
-                "{}: cannot build graph; referenced SoC {:?} has no valid manifest",
-                located.source.display(),
-                located.value.board.soc
-            )),
+            // A SoC-less board (multi-chip machine, ADR 0023) has no
+            // declarative graph: its glue crate assembles it, and the lint
+            // has nothing to build. Parts/connections were already rejected
+            // by the manifest validation.
+            None => {}
         }
         if !ids.contains_key(id) {
             errors.push(format!(

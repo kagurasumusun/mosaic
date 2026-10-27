@@ -119,13 +119,14 @@ Send の不変条件と 1 箇所の unsafe impl については [ADR 0007](../ad
 - `MODE_16` のインスタンスに `CR0` を書く経路は失敗する。モード遷移は
   ゲストの `CR0` 書き込みに任せる。
 
-PC マシンは `apps/system` にあり、実 ISO で駆動する（ADR 0021/0022）。
+PC マシンは `catalog/board/ibm/pc/glue`（`mosaic-board-ibm-pc-glue`、ADR 0023）にあり、
+実 ISO で駆動する（ADR 0021/0022）。フロントエンド `apps/system` はディスパッチのみ。
 
 ```sh
 cargo test -p mosaic-tests-boot --features unicorn -- --nocapture boot_matrix
 ```
 
-`pc_boot` は低メモリ（IVT・BDA・ベクタごとの `INT n; IRET` トランポリン）、
+`machine` モジュール（旧 `pc_boot`）は低メモリ（IVT・BDA・ベクタごとの `INT n; IRET` トランポリン）、
 El Torito ローダ、`INT 10h`/`11h`/`12h`/`13h`（`AH=4Bh` を含む）/`15h`/`16h`/`1Ah`
 のサービスを持つ。Tiny Core の isolinux は自分自身のコードで CD を検出し、
 第 2 段を読み込み、バナーを VGA テキスト窓に出すところまで到達する。

@@ -1,4 +1,13 @@
-//! Booting a real Linux kernel on the PC machine: the i386 boot protocol.
+//! Booting a real Linux kernel on the `pc` machine: the i386 boot protocol.
+//!
+//! This is the machine's `-kernel` path — the QEMU `hw/i386/x86.c`
+//! `x86_load_linux()` role, not a machine of its own and not front-end code.
+//! `-kernel`/`-initrd`/`-append` are machine-neutral words the front-end
+//! parses (QEMU stores them in `MachineState`); what they *mean* on a given
+//! machine is the machine's boot protocol, and this module is the PC's. When
+//! a second x86 machine arrives (`q35`, ...) this module promotes to a shared
+//! modelkit crate unchanged, the way `x86_load_linux` serves every x86
+//! machine type (design §4 Rule of two).
 //!
 //! A Linux CD is two problems stacked on each other. The first is the boot
 //! loader (isolinux), which reads the kernel file off the ISO and hands control
@@ -6,7 +15,8 @@
 //! the machine state a protected-mode kernel expects. This module takes the
 //! second half seriously: it *is* the boot loader for a `bzImage`, following
 //! the documented protocol rather than guessing, so the guest that runs next is
-//! the kernel's own decompressor and its own 32-bit entry code.
+//! the kernel's own decompressor and its own 32-bit entry code. (Pulling a file
+//! out of an ISO is a format concern and lives in `mosaic-modelkit-iso9660`.)
 //!
 //! Clean-room from `Documentation/arch/x86/boot.rst`: the header at offset
 //! `0x1F1`, the real-mode part in the low 32 KiB of the file, the 32-bit part
@@ -35,114 +45,6 @@ pub const VIDEO_TYPE_VGAC: u8 = 0x22;
 /// Size of the RAM above 1 MiB a default machine reports, in KiB. A machine
 /// configured with `-m` passes its own number through to `prepare_setup`.
 pub const DEFAULT_EXTENDED_KIB: u64 = 63 * 1024;
-
-/// One file inside an ISO9660 image, located but not copied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct IsoFile {
-    pub lba: u32,
-    pub size: u32,
-}
-
-impl IsoFile {
-    /// Copy the file out of the image.
-    pub fn read(&self, iso: &[u8]) -> Option<Vec<u8>> {
-        let start = self.lba as usize * 2048;
-        let end = start.checked_add(self.size as usize)?;
-        iso.get(start..end).map(|bytes| bytes.to_vec())
-    }
-}
-
-/// Locate a file by path inside an ISO9660 image.
-///
-/// The walk follows the directory records from the primary volume descriptor's
-/// root directory: each record carries its own length, so a record that does
-/// not fit in the rest of a 2048-byte block is followed by a zero byte and the
-/// block ends. Version suffixes (`;1`) are ignored and names compare without
-/// case, because that is how the format actually stores them.
-pub fn iso_file(iso: &[u8], path: &str) -> Option<IsoFile> {
-    let mut root = None;
-    for sector in 16..40u32 {
-        let block = iso.get(sector as usize * 2048..)?;
-        match block[0] {
-            1 => {
-                // Primary volume descriptor: the root directory record sits at
-                // 0x9C and is itself a directory record.
-                let record = block.get(0x9C..0x9C + 34)?;
-                root = Some((
-                    u32::from_le_bytes([record[2], record[3], record[4], record[5]]),
-                    u32::from_le_bytes([record[10], record[11], record[12], record[13]]),
-                ));
-                break;
-            }
-            255 => break,
-            _ => {}
-        }
-    }
-    let (mut lba, mut size) = root?;
-    let mut current = (lba, size);
-    let parts: Vec<String> = path
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .map(|part| part.to_ascii_uppercase())
-        .collect();
-    for (index, wanted) in parts.iter().enumerate() {
-        let last = index + 1 == parts.len();
-        lba = current.0;
-        size = current.1;
-        let mut found = None;
-        for record in directory_records(iso, lba, size) {
-            let entry = &record.0;
-            let name = record.1;
-            let normalised = name.split(';').next().unwrap_or(&name).to_string();
-            if normalised != *wanted && normalised != format!("{wanted}.") {
-                continue;
-            }
-            let extent = u32::from_le_bytes([entry[2], entry[3], entry[4], entry[5]]);
-            let length = u32::from_le_bytes([entry[10], entry[11], entry[12], entry[13]]);
-            // A directory name in the middle of the path must be a directory,
-            // and the final component must not be one.
-            let is_dir = entry[25] & 0x02 != 0;
-            if last == is_dir {
-                continue;
-            }
-            found = Some((extent, length));
-            break;
-        }
-        current = found?;
-    }
-    Some(IsoFile {
-        lba: current.0,
-        size: current.1,
-    })
-}
-
-/// Every record of a directory, with its decoded name.
-fn directory_records(iso: &[u8], lba: u32, size: u32) -> Vec<(&[u8], String)> {
-    let mut records = Vec::new();
-    let start = lba as usize * 2048;
-    let end = (start + size as usize).min(iso.len());
-    let mut at = start;
-    while at < end {
-        let length = iso[at] as usize;
-        if length == 0 {
-            // No further record fits: advance to the next block boundary.
-            at = (at / 2048 + 1) * 2048;
-            continue;
-        }
-        if let Some(record) = iso.get(at..at + length) {
-            if record.len() >= 34 {
-                let name_len = record[32] as usize;
-                if let Some(name) = record.get(33..33 + name_len) {
-                    records.push((record, String::from_utf8_lossy(name).to_string()));
-                }
-            }
-            at += length;
-        } else {
-            break;
-        }
-    }
-    records
-}
 
 /// A parsed `bzImage`: the real-mode part and the protected-mode part, plus the
 /// header fields a boot loader is required to honour.

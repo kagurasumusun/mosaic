@@ -1,0 +1,16 @@
+[package]
+name = "mosaic-modelkit-iso9660"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "framework"
+kind = "modelkit"
+level = 2
+
+[lints]
+workspace = true
+
+[dependencies]

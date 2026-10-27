@@ -27,6 +27,11 @@ main で固定の合成イメージを回すだけ、テストは `run_generic_p
    マシンの追加はここへの追加であり、新しいアプリを作らないこと。
    `virt-64`（AArch64）や `versatile-pb`（ARM32）、`goldfish-arm` は
    実イメージが起動できるようになってから登録する（ADR 0022 の台帳参照）。
+   （2026-10 修正・ADR 0023: 「ここへの追加」はディスパッチ 1 arm のことで
+   あって機械コードを `apps/system` に置くことではない。機械モデルは
+   `catalog/board/<origin>/<board>/glue` に置き、`pc` は
+   `catalog/board/ibm/pc`（`mosaic-board-ibm-pc`）に移設済み。
+   `PcBootOptions`/`PcBootReport` は同クレートからの再エクスポート。）
 
 3. **合成イメージの禁止**: フロントエンドはイメージのバイト列しか受け取らず、
    何も合成しない。イメージがなければ操作エラーとして拒否する。旧

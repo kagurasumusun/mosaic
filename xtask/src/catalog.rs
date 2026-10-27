@@ -902,6 +902,17 @@ pub(super) fn parse_board(value: &toml::Value) -> Result<BoardManifest, String> 
     reject_unknown(root, &["board", "conn", "part"], "board.toml")?;
     let board_table = section(value, "board", "board.toml")?;
     reject_unknown(board_table, &["id", "soc", "summary"], "board.toml [board]")?;
+    // `soc` is optional: a multi-chip machine (the IBM PC/AT) mounts discrete
+    // chips instead of one SoC and wires them in its own glue crate (ADR 0023).
+    let soc = match board_table.get("soc") {
+        Some(value) => Some(
+            value
+                .as_str()
+                .ok_or_else(|| "board.toml [board] soc: expected a string".to_owned())?
+                .to_owned(),
+        ),
+        None => None,
+    };
     let conn = optional_array(value, "conn", "board.toml")?
         .into_iter()
         .enumerate()
@@ -950,7 +961,7 @@ pub(super) fn parse_board(value: &toml::Value) -> Result<BoardManifest, String> 
     let manifest = BoardManifest {
         board: BoardIdentity {
             id: string(board_table, "id", "board.toml [board]")?,
-            soc: string(board_table, "soc", "board.toml [board]")?,
+            soc,
             summary: string(board_table, "summary", "board.toml [board]")?,
         },
         conn,

@@ -248,7 +248,7 @@ fn read_image(path: &str, what: &str) -> Result<Vec<u8>, String> {
 fn read_kernel_operand(text: &str, what: &str) -> Result<Vec<u8>, String> {
     if let Some((iso_path, inner)) = text.split_once('!') {
         let iso = read_image(iso_path, what)?;
-        let file = mosaic_apps_system::linux_boot::iso_file(&iso, inner)
+        let file = mosaic_modelkit_iso9660::iso_file(&iso, inner)
             .ok_or_else(|| format!("{what}: '{inner}' is not a file in {iso_path}"))?;
         return file
             .read(&iso)

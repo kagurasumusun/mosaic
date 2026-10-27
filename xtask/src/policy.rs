@@ -77,6 +77,14 @@ pub fn validate_layer(path: &str, layer: &Layer) -> bool {
 }
 
 /// R1/R2/R3/R5. Equal-level framework dependencies are explicitly enumerated.
+///
+/// R5 as amended by ADR 0023: a composite `glue` crate (board/soc/subsys/
+/// module/world code) additionally reaches the catalog leaves it mounts
+/// (ip/part/cpu/ip-lib), the model-authoring tooling (modelkit, isa) and the
+/// engine adapters its boot loop drives — the same reach QEMU's `hw/<arch>`
+/// machine models have. Composition services (assemble/host/ops/bridge/
+/// describe/runtime) stay composition-root concerns, and glue still never
+/// touches another composite.
 pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
     let f = from.kind.as_str();
     let t = to.kind.as_str();
@@ -84,13 +92,18 @@ pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
         "tooling" | "apps" | "tests" => true,
         "catalog" => {
             if to.domain == "catalog" {
-                return !COMPOSITE_KINDS.contains(&f) && t == "ip-lib";
+                if COMPOSITE_KINDS.contains(&f) {
+                    // Glue wires the chips it mounts, but never another
+                    // composite (R3: boards do not see each other).
+                    return matches!(t, "ip" | "part" | "cpu" | "ip-lib");
+                }
+                return t == "ip-lib";
             }
             if to.domain != "framework" {
                 return false;
             }
             if COMPOSITE_KINDS.contains(&f) {
-                return matches!(t, "types" | "contract");
+                return matches!(t, "types" | "contract" | "modelkit" | "isa" | "engine");
             }
             matches!(t, "prim" | "types" | "contract" | "modelkit" | "isa")
         }
@@ -233,13 +246,35 @@ mod tests {
         assert!(dependency_allowed(&cat("ip"), &cat("ip-lib")));
     }
     #[test]
-    fn glue_can_only_use_types_and_contracts() {
+    fn glue_uses_models_tools_leaves_and_engines_but_not_composition() {
         for kind in COMPOSITE_KINDS {
             assert!(dependency_allowed(&cat(kind), &fw("contract")));
             assert!(dependency_allowed(&cat(kind), &fw("types")));
+            assert!(dependency_allowed(&cat(kind), &fw("modelkit")));
+            assert!(dependency_allowed(&cat(kind), &fw("isa")));
+            assert!(dependency_allowed(&cat(kind), &fw("engine")));
+            assert!(dependency_allowed(&cat(kind), &cat("ip")));
+            assert!(dependency_allowed(&cat(kind), &cat("part")));
+            assert!(dependency_allowed(&cat(kind), &cat("cpu")));
+            assert!(dependency_allowed(&cat(kind), &cat("ip-lib")));
+            // Composition services and other composites stay out of glue
+            // (ADR 0023): glue is a machine, not a composition root.
             assert!(!dependency_allowed(&cat(kind), &fw("prim")));
-            assert!(!dependency_allowed(&cat(kind), &fw("modelkit")));
-            assert!(!dependency_allowed(&cat(kind), &cat("ip-lib")));
+            assert!(!dependency_allowed(&cat(kind), &fw("runtime")));
+            assert!(!dependency_allowed(&cat(kind), &fw("assemble")));
+            assert!(!dependency_allowed(&cat(kind), &fw("describe")));
+            assert!(!dependency_allowed(&cat(kind), &fw("host")));
+            assert!(!dependency_allowed(&cat(kind), &fw("ops")));
+            assert!(!dependency_allowed(&cat(kind), &fw("bridge")));
+            assert!(!dependency_allowed(&cat(kind), &cat("board")));
+            assert!(!dependency_allowed(&cat(kind), &cat("soc")));
+        }
+    }
+    #[test]
+    fn catalog_leaves_stay_under_r2() {
+        for kind in ["cpu", "ip", "part", "ip-lib"] {
+            assert!(!dependency_allowed(&cat(kind), &fw("engine")));
+            assert!(!dependency_allowed(&cat(kind), &fw("assemble")));
         }
     }
     #[test]

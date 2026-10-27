@@ -1,0 +1,8 @@
+# IBM PC/AT 互換機。SoC を持たないマルチチップマシン（8259A PIC・8254 PIT・
+# MC146818 RTC はボード上の個別チップ）なので [board] soc は宣言しない。
+# 機械の組立はこの宣言に隣接する glue クレート（mosaic-board-ibm-pc-glue）が
+# 行う — QEMU の hw/i386/pc_piix.c と同じ役割（ADR 0023）。
+# ブート経路は El Torito CD / ブートセクタ / -kernel（i386 boot protocol）。
+[board]
+id = 'board:ibm/pc'
+summary = 'IBM PC/AT-compatible machine: BIOS INT firmware interim, i8259A/i8254/MC146818 port space, VGA text, El Torito and bzImage boot (QEMU pc)'

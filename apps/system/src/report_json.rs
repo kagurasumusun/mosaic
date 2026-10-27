@@ -6,7 +6,7 @@
 //! emitter below keeps it that way by construction.
 
 #[cfg(feature = "unicorn")]
-use crate::pc_boot::PcBootReport;
+use crate::PcBootReport;
 
 /// Escape one string into a JSON string literal (without the quotes).
 fn escape_into(out: &mut String, text: &str) {

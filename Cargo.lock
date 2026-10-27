@@ -280,23 +280,9 @@ dependencies = [
 name = "mosaic-apps-system"
 version = "0.1.0"
 dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-runtime",
- "mosaic-core-types",
+ "mosaic-board-ibm-pc-glue",
  "mosaic-engine-unicorn",
- "mosaic-ip-arm-pl011",
- "mosaic-ip-x86-fw-cfg",
- "mosaic-ip-x86-ioapic",
- "mosaic-ip-x86-pic-8259",
- "mosaic-ip-x86-pit-8254",
- "mosaic-ip-x86-rtc-mc146818",
- "mosaic-isa-aarch64",
- "mosaic-isa-arm",
- "mosaic-isa-x86",
- "mosaic-isa-x86-64",
+ "mosaic-modelkit-iso9660",
 ]
 
 [[package]]
@@ -334,6 +320,22 @@ dependencies = [
  "mosaic-engine-unicorn",
  "mosaic-isa-arm",
  "mosaic-isa-riscv",
+]
+
+[[package]]
+name = "mosaic-board-ibm-pc-glue"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract-cpu-engine",
+ "mosaic-contract-mmio",
+ "mosaic-contract-model",
+ "mosaic-core-types",
+ "mosaic-engine-unicorn",
+ "mosaic-ip-x86-pic-8259",
+ "mosaic-ip-x86-pit-8254",
+ "mosaic-ip-x86-rtc-mc146818",
+ "mosaic-isa-x86",
+ "mosaic-modelkit-iso9660",
 ]
 
 [[package]]
@@ -804,6 +806,10 @@ name = "mosaic-modelkit-fifo"
 version = "0.1.0"
 
 [[package]]
+name = "mosaic-modelkit-iso9660"
+version = "0.1.0"
+
+[[package]]
 name = "mosaic-part-bosch-bme280"
 version = "0.1.0"
 dependencies = [
@@ -841,6 +847,7 @@ name = "mosaic-tests-boot"
 version = "0.1.0"
 dependencies = [
  "mosaic-apps-system",
+ "mosaic-modelkit-iso9660",
  "toml",
 ]
 

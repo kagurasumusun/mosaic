@@ -144,7 +144,7 @@
 │  ├─ subsys/<origin>/<name>/         # 例 arm/cortex-a53-cluster
 │  ├─ soc/<origin>/<family>/<chip>/   # 例 raspberrypi/rp2/rp2040
 │  ├─ module/<origin>/<name>/         # 例 raspberrypi/compute-module-4
-│  ├─ board/<origin>/<board>/         # 例 raspberrypi/pico
+│  ├─ board/<origin>/<board>/         # 例 raspberrypi/pico。宣言(board.toml)+必要なら glue/ クレート
 │  ├─ world/<scenario>/               # 複数ボード + 環境
 │  └─ firmware/                       # ブートROM等の記述(ハッシュ・入手方法)。バイナリは置かない
 ├─ apps/                  # cli/ gui/ server/(リモート制御)
@@ -206,7 +206,7 @@ apps ─► assemble ─► core/runtime ─► contract ─► core/types ─�
 ```
 
 - **R1** 依存は下位層へのみ。同じ L3 同士(interconnect, engine, core/runtime)は互いに依存しない。
-- **R2** catalog が使える framework は prim, core/types, contract, modelkit, isa のみ。実行エンジンの実装・assemble・host・ops・bridge は使えない。
+- **R2** catalog が使える framework は prim, core/types, contract, modelkit, isa のみ。実行エンジンの実装・assemble・host・ops・bridge は使えない。**ただし composite(board/soc/subsys/module/world)の `glue` クレートに限り、搭載する機械のブートループが直接駆動する `engine` と、catalog の葉(ip/part/cpu/ip-lib)への依存を認める**(ADR 0023。QEMU の `hw/<arch>` 機械が cpu コアを直接使うのと同じ到達範囲。合成サービス層と他の composite へは依存したまま禁止)。
 - **R3** catalog 内の横依存は禁止(ip から ip、parts から ip など)。共有ロジックは modelkit に入れるか、概念名の独立クレート(例: ARM PrimeCell の ID レジスタ群を `primecell-id`)にして manifest に `kind = 'ip-lib'` と書く。ip-lib だけが他モデルから依存できる(デバイス登録は持たない)。
 - **R4** 複合 IP(USB OTG = コントローラ + PHY + DMA など)はコード依存ではなく、subsys の宣言(グラフ)で合成する。
 - **R5** soc / subsys / module / board / world のコードは任意の `glue` クレートに限り、contract と core/types だけに依存できる。glue の行数が閾値(初期値 500 行、要調整)を超えたら昇格(ip 化)か見直しを促す警告を出す。
@@ -614,6 +614,9 @@ add     = [ { region = 'rpu-tcm', at = 0x0, size = 0x10000 } ]   # RPU の専用
 | 外部の C/C++ 資産(既存デバイスモデル) | `ffi/*-sys` + `bridge/c-abi` | `catalog` には直接入れない |
 | GUI・CLI・リモート制御 | `apps/*` | 全部に依存してよいのは apps のみ |
 | 検証用のテストベンチ(CPU なし) | `catalog/board` 相当 + tests | CPU の無い machine も同じ仕組み |
+| SoC を持たないマルチチップマシン全体(PC/AT など) | `catalog/board/<origin>/<board>`(soc 宣言なし)+ `glue` | 8259A/PIT/RTC は個別チップ。組立は glue が担い、parts/conn は宣言できない(ADR 0023) |
+| `-kernel` による直接カーネル起動の実装 | 各機械(board)のブート経路モジュール | QEMU の `hw/i386/x86.c::x86_load_linux` / `hw/arm/boot.c` と同じ分担。語彙はフロントエンドが機械中立に保持。2 台目の同 ISA 機で modelkit へ昇格 |
+| ゲストイメージの形式解析(ISO9660, El Torito, 将来の FAT/ELF) | `framework/modelkit` の形式クレート | QEMU の `hw/core/loader.c` + `block/` 相当。CLI・機械・テストの 3 者が共有する形式関心事 |
 
 ## 16. pack とカスタム SoC / ボード
 

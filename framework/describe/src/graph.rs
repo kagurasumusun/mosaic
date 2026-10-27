@@ -74,12 +74,26 @@ impl MachineGraph {
         soc.validate()?;
         if let Some(board) = board {
             board.validate()?;
-            if board.board.soc != soc.soc.id {
+            if let Some(board_soc) = &board.board.soc {
+                if board_soc != &soc.soc.id {
+                    return Err(DescriptorError::new(
+                        "board.soc",
+                        format!(
+                            "board {:?} targets {:?}, but supplied SoC is {:?}",
+                            board.board.id, board_soc, soc.soc.id
+                        ),
+                    ));
+                }
+            } else {
+                // A SoC-less board (a multi-chip machine, ADR 0023) contributes
+                // no graph of its own; its glue crate assembles it. Supplying a
+                // SoC alongside one is a caller error.
                 return Err(DescriptorError::new(
                     "board.soc",
                     format!(
-                        "board {:?} targets {:?}, but supplied SoC is {:?}",
-                        board.board.id, board.board.soc, soc.soc.id
+                        "board {:?} declares no SoC, so it has no graph to build \
+                         with {:?}",
+                        board.board.id, soc.soc.id
                     ),
                 ));
             }

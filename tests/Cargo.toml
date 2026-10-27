@@ -19,6 +19,7 @@ path = "src/lib.rs"
 
 [dependencies]
 mosaic-apps-system = { path = "../apps/system" }
+mosaic-modelkit-iso9660 = { path = "../framework/modelkit/iso9660" }
 
 [dependencies.toml]
 version = "0.8"

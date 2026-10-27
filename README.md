@@ -69,10 +69,12 @@ cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
 
 - `framework/`: 共通語彙、契約、ランタイム、実行エンジン、記述・組立の境界。
 - `catalog/`: 種別 → 出自で配置するモデルと宣言。ARM IP（pl011 / sp804 / pl022 / pl061 / mhu /
-  dw-apb-i2c）、ARM926EJ-S・SiFive E31 の CPU 宣言、Bosch / TI の部品、
-  SoC・ボード宣言を登録済みです。
+  dw-apb-i2c）、x86 IP（8259A PIC / 8254 PIT / MC146818 RTC）、ARM926EJ-S・SiFive E31 の
+  CPU 宣言、Bosch / TI の部品、SoC・ボード宣言に加え、機械モデルの
+  `board:ibm/pc`（`mosaic-board-ibm-pc-glue`、`-M pc` の実体）を登録済みです（ADR 0023）。
 - `apps/`: 実行アプリケーション。`apps/system`（`mosaic-system`）が VM の
-  実行入り口。`bringup`・`sensorbus`・`multicore` は縦スライスの実証アプリ。
+  実行入り口（QEMU の `vl.c` 相当 — オプション解析と機械選択のみで、機械の
+  実装は catalog 側）。`bringup`・`sensorbus`・`multicore` は縦スライスの実証アプリ。
 - `tests/`: 機械レベルのブートテスト（実イメージの台帳と汎用ハーネス）。
 - `xtask/`: Cargo の依存宣言に基づく層・命名の検査。
 - `docs/adr/`: 初日の設計判断と未決事項。

@@ -170,7 +170,7 @@ fn connection_names_and_part_names_use_separate_namespaces() {
     let board = BoardManifest {
         board: BoardIdentity {
             id: "board:test".into(),
-            soc: "soc:test".into(),
+            soc: Some("soc:test".into()),
             summary: "test board".into(),
         },
         conn: vec![BoardConnection {
@@ -286,7 +286,7 @@ fn rejects_unknown_part_binding_kinds() {
     let board = BoardManifest {
         board: BoardIdentity {
             id: "board:test".into(),
-            soc: "soc:test".into(),
+            soc: Some("soc:test".into()),
             summary: "test board".into(),
         },
         conn: Vec::new(),
@@ -315,7 +315,7 @@ fn validates_bus_address_and_chip_select_uniqueness() {
     let board = BoardManifest {
         board: BoardIdentity {
             id: "board:test".into(),
-            soc: "soc:test".into(),
+            soc: Some("soc:test".into()),
             summary: "test board".into(),
         },
         conn: Vec::new(),

@@ -1,5 +1,12 @@
 //! The `pc` machine: a firmware interim, an El Torito loader, a BIOS drive
-//! table and a running machine, assembled by the system front-end.
+//! table and a running machine — `board:ibm/pc`, the machine a system
+//! front-end runs under the name `-M pc`.
+//!
+//! This crate is the QEMU `hw/i386/pc_piix.c` + `hw/i386/pc.c` role: the
+//! machine model itself, living in the catalog where every later machine
+//! (`board:*/virt`, `board:*/goldfish`, ...) will live beside it. The
+//! front-end (`apps/system`, QEMU's `softmmu/vl.c`) only names machines and
+//! translates its options into [`PcMachineConfig`]; it owns no machine code.
 //!
 //! The design document puts firmware where a PC actually has it: nowhere in
 //! the CPU engine. A PC's firmware interface *is* the software-interrupt table,
@@ -34,6 +41,7 @@ use crate::linux_boot::SETUP_BASE;
 use mosaic_ip_x86_pic_8259::Pic8259;
 use mosaic_ip_x86_pit_8254::Pit8254;
 use mosaic_ip_x86_rtc_mc146818::RtcMc146818;
+use mosaic_modelkit_iso9660::{el_torito_image, ElToritoImage};
 
 /// Conventional memory below the EBDA, as a PC reports it through `INT 12h`.
 pub const CONVENTIONAL_KIB: u64 = 640;
@@ -63,10 +71,9 @@ pub const ROM_GAP_SIZE: u64 = 0x0003_0000;
 pub const LOCAL_APIC_BASE: u64 = 0xFEE0_0000;
 pub const LOCAL_APIC_SIZE: u64 = 0x0000_1000;
 
-/// Where an El Torito no-emulation image is conventionally loaded.
-pub const DEFAULT_LOAD_SEGMENT: u16 = 0x07C0;
 /// Extended memory reported through `INT 15h`, in KiB, for the default
-/// machine size.
+/// machine size. The default load segment of an El Torito image is a format
+/// fact and lives in `mosaic-modelkit-iso9660` with its parser.
 pub const EXTENDED_KIB: u64 = EXTENDED_RAM / 1024;
 /// `F000h`-relative offset of the interrupt trampolines (see [`firmware_image`]).
 pub const BIOS_STUB_OFFSET: u64 = 0x1000;
@@ -1456,27 +1463,10 @@ impl InterruptService for PcBios {
     }
 }
 
-/// An El Torito no-emulation boot image extracted from an ISO9660 image.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ElToritoImage {
-    pub load_segment: u16,
-    pub sector_count: u16,
-    pub load_lba: u32,
-    pub media: u8,
-    pub bytes: Vec<u8>,
-}
-
-const ISO_SECTOR: usize = 2048;
-
-/// Locate and extract the El Torito boot image of an ISO9660 image.
-///
-/// Clean-room from the El Torito 1.0 specification: the Boot Record Volume
-/// Descriptor is the volume descriptor with type 0, and its bytes 0x47..0x4B
-/// name the boot catalog's LBA. The catalog's initial entry describes the
-/// default boot image.
 /// Bytes a real firmware would have left in low memory before the boot
 /// image runs: the interrupt vector table, the BIOS data area and the
-/// trampolines the vectors point at.
+/// trampolines the vectors point at. (The El Torito extraction itself lives in
+/// `mosaic-modelkit-iso9660`; this is the machine's use of its result.)
 ///
 /// The vectors matter more than they look. A boot loader hooks a vector and
 /// then *calls through* the copy it saved, so every `INT` entry must name
@@ -1547,84 +1537,6 @@ impl FirmwareImage {
     pub fn rom(&self) -> &[u8] {
         &self.image
     }
-}
-
-pub fn el_torito_image(iso: &[u8]) -> Result<ElToritoImage, String> {
-    // Volume descriptors start at LBA 16 and run until a terminator.
-    let mut boot_record = None;
-    for lba in 16..32usize {
-        let at = lba * ISO_SECTOR;
-        if at + ISO_SECTOR > iso.len() {
-            break;
-        }
-        let descriptor = &iso[at..at + ISO_SECTOR];
-        if &descriptor[1..6] != b"CD001" {
-            return Err(format!("volume descriptor {lba} is not CD001"));
-        }
-        match descriptor[0] {
-            0 => {
-                if &descriptor[7..30] == b"EL TORITO SPECIFICATION" {
-                    boot_record = Some(descriptor);
-                }
-            }
-            255 => break,
-            _ => {}
-        }
-    }
-    let Some(boot_record) = boot_record else {
-        return Err("no El Torito boot record volume descriptor".into());
-    };
-    let catalog_lba = u32::from_le_bytes([
-        boot_record[0x47],
-        boot_record[0x48],
-        boot_record[0x49],
-        boot_record[0x4A],
-    ]);
-    let catalog_at = catalog_lba as usize * ISO_SECTOR;
-    if catalog_at + 64 > iso.len() {
-        return Err("boot catalog lies outside the image".into());
-    }
-    let catalog = &iso[catalog_at..catalog_at + 64];
-    // Validation entry: header id 0x01, a 16-bit word checksum over the first
-    // 32 bytes that sums to zero, and the 0x55AA key. The 24-byte id string in
-    // between is vendor text and is deliberately not interpreted.
-    if catalog[0] != 0x01 {
-        return Err("boot catalog validation entry has no header id".into());
-    }
-    let sum: u32 = catalog[..32]
-        .chunks(2)
-        .map(|pair| u32::from(u16::from_le_bytes([pair[0], pair[1]])))
-        .sum();
-    if sum % 0x1_0000 != 0 {
-        return Err("boot catalog validation entry checksum mismatch".into());
-    }
-    if catalog[30] != 0x55 || catalog[31] != 0xAA {
-        return Err("boot catalog validation entry key is missing".into());
-    }
-    let entry = &catalog[32..64];
-    if entry[0] != 0x88 {
-        return Err("boot catalog initial entry is not bootable".into());
-    }
-    let media = entry[1] & 0x0F;
-    let load_segment = u16::from_le_bytes([entry[2], entry[3]]);
-    let sector_count = u16::from_le_bytes([entry[6], entry[7]]);
-    let load_lba = u32::from_le_bytes([entry[8], entry[9], entry[10], entry[11]]);
-    let start = load_lba as usize * ISO_SECTOR;
-    let length = usize::from(sector_count) * 512;
-    if sector_count == 0 || start + length > iso.len() {
-        return Err("boot image lies outside the image".into());
-    }
-    Ok(ElToritoImage {
-        load_segment: if load_segment == 0 {
-            DEFAULT_LOAD_SEGMENT
-        } else {
-            load_segment
-        },
-        sector_count,
-        load_lba,
-        media,
-        bytes: iso[start..start + length].to_vec(),
-    })
 }
 
 /// Boot the configured PC and run it. This is the machine's whole

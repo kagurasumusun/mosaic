@@ -359,7 +359,11 @@ pub struct BoardManifest {
 #[derive(Clone, Debug)]
 pub struct BoardIdentity {
     pub id: String,
-    pub soc: String,
+    /// The SoC this board mounts, if it has one. A multi-chip machine — the
+    /// IBM PC/AT is the canonical case: its PIC/PIT/RTC are discrete chips,
+    /// not blocks of one SoC — declares none and wires its parts in its own
+    /// `glue` crate (ADR 0023).
+    pub soc: Option<String>,
     pub summary: String,
 }
 
@@ -382,7 +386,20 @@ pub struct PartInstance {
 impl BoardManifest {
     pub fn validate(&self) -> Result<(), DescriptorError> {
         validate_catalog_id("board.id", &self.board.id, &["board"])?;
-        validate_catalog_id("board.soc", &self.board.soc, &["soc"])?;
+        if let Some(soc) = &self.board.soc {
+            validate_catalog_id("board.soc", soc, &["soc"])?;
+        } else if !self.conn.is_empty() || !self.part.is_empty() {
+            // Without a SoC there is no graph to hang parts and connections
+            // off; such a board is assembled by its own glue crate.
+            return Err(DescriptorError::new(
+                "board",
+                format!(
+                    "board {:?} declares no SoC, so it cannot declare parts or \
+                     connections either",
+                    self.board.id
+                ),
+            ));
+        }
         non_empty("board.summary", &self.board.summary)?;
 
         // Connection declaration names and part instance names occupy separate
