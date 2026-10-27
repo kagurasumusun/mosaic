@@ -1,0 +1,7 @@
+535:test catalog::tests::graph_builder_rejects_unknown_bus_nodes ... FAILED
+536:test policy::tests::metadata_cannot_spoof_a_layer ... FAILED
+539:failures:
+543:thread 'catalog::tests::graph_builder_rejects_unknown_bus_nodes' panicked at xtask/src/catalog.rs:1272:41:
+566:thread 'policy::tests::metadata_cannot_spoof_a_layer' panicked at xtask/src/policy.rs:239:9:
+586:failures:
+590:test result: FAILED. 19 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

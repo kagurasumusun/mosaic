@@ -1,20 +1,15 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40447128814
-commit: d10fc130476f3e1c4e217fa8a010f50ff437c519
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40467910294
+commit: f2fa2130f191f2cd13fc3456454a4bd8fd2f7100
 ref: refs/heads/master
-started: 2026-10-27T03:58:50Z
+started: 2026-10-27T07:34:48Z
 formatting: ok
 xtask: ok
-clippy: ok
+clippy: fail (code=101)
 build: ok
-test: ok
+test: fail (code=101)
 runtime-events: ok
 runtime-machine: ok
 runtime-snapshot: ok
-smoke-unicorn: ok
 front-end: ok
-bringup: ok
-sensorbus: ok
-multicore: ok
-vic-thermal: ok
 doctor: ok
-finished: 2026-10-27T04:04:15Z
+finished: 2026-10-27T07:42:22Z
