@@ -1,4 +1,4 @@
-[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.05s
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_bringup-7467dc8a6dad5638)
 
 running 0 tests
@@ -17,7 +17,7 @@ running 2 tests
 test firmware_boots_and_emits_the_golden_uart_output ... ok
 test independent_runs_are_deterministic ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 [1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_apps_cli-9d2c08130aae754d)
 
@@ -26,7 +26,7 @@ test unicorn::tests::unicorn_passes_backend_independent_a32_fixture ... ok
 test unicorn::tests::smoke_trace_is_repeatable ... ok
 test unicorn::tests::partitioning_instruction_budgets_preserves_registers_and_memory ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_multicore-433d30c24657b75d)
 
@@ -47,7 +47,7 @@ test cpu_declarations_match_the_engines_they_drive ... ok
 test heterogeneous_configuration_reaches_the_golden_outcome ... ok
 test quantum_shape_does_not_change_observable_outcomes ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_sensorbus-d78a8b57a9a24f6b)
 
@@ -67,17 +67,17 @@ running 2 tests
 test firmware_reaches_the_same_sensor_over_controller_and_bitbang_paths ... ok
 test independent_runs_are_deterministic ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_stm32f103-e391d215cba7aab9)
 
 running 4 tests
 test image::tests::firmware_vector_table_and_entry ... ok
-test board::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq ... ok
 test board::tests::the_declaration_is_the_rm0008_map_not_a_synthetic_fixture ... ok
+test board::tests::device_chain_gates_clocks_and_aggregates_the_usart_irq ... ok
 test native::tests::native_core_prints_the_golden_console ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
 [1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_apps_stm32f103-4405058834826938)
 
@@ -85,14 +85,13 @@ running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_system-bd0bc4f3742698de)
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_apps_system-79b5f7ea5d1d1ee5)
 
-running 1 test
-test linux_boot::tests::a_header_without_the_magic_is_rejected ... ok
+running 0 tests
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_system-8bb3f02959f89463)
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_system-b4a11ef17adeeb2b)
 
 running 0 tests
 
@@ -117,30 +116,38 @@ running 25 tests
 test clockbind::tests::a_closed_gate_cannot_drive_a_core ... ok
 test clockbind::tests::a_divided_source_becomes_the_instruction_period ... ok
 test bus::tests::engine_bus_resolves_offsets_and_synthesizes_the_master_attribute ... ok
+test driver::tests::bus_faults_abort_the_step_with_the_recorded_access ... ok
 test driver::tests::step_runs_the_quantum_then_delivers_queued_signals ... ok
-test driver::tests::clocked_step_advances_vtime_and_drains_due_timer_events ... ok
+test driver::tests::clocked_step_reports_time_overflow_instead_of_wrapping ... ok
 test irq::tests::an_engine_failure_is_reported_after_partial_delivery ... ok
 test irq::tests::mailbox_edges_restore_without_replacing_the_engine_binding ... ok
-test irq::tests::sink_edges_flush_to_the_engine_in_fifo_order ... ok
 test irq::tests::unsupported_line_is_reported_when_nothing_was_delivered ... ok
 test materialize::tests::a_missing_factory_is_not_replaced_with_a_stub ... ok
+test driver::tests::clocked_step_advances_vtime_and_drains_due_timer_events ... ok
 test materialize::tests::a_raised_output_is_delivered_to_the_declared_input ... ok
 test materialize::tests::declared_irq_reaches_the_sink_and_the_alias_shares_one_backing ... ok
-test driver::tests::clocked_step_reports_time_overflow_instead_of_wrapping ... ok
-test driver::tests::bus_faults_abort_the_step_with_the_recorded_access ... ok
+test irq::tests::sink_edges_flush_to_the_engine_in_fifo_order ... ok
 test driver::tests::wired_signal_reaches_the_engine_irq_line ... ok
-test multicore::tests::clocked_rounds_advance_the_shared_timeline_per_core_period ... ok
 test multicore::tests::heterogeneous_rounds_mix_arm_and_riscv_cores ... ok
+test multicore::tests::clocked_rounds_advance_the_shared_timeline_per_core_period ... ok
 test multicore::tests::round_robin_exchanges_data_through_shared_ram_in_one_round ... ok
+test multicore::tests::unknown_core_indexes_are_rejected ... ok
 test unicorn_bind::tests::a_later_core_does_not_overwrite_the_shared_page ... ok
 test unicorn_bind::tests::non_page_aligned_views_are_rejected_before_anything_is_mapped ... ok
-test unicorn_bind::tests::guest_mmio_and_ram_traverse_the_flatview_binding ... ok
-test multicore::tests::identical_schedules_replay_identically ... ok
-test multicore::tests::unknown_core_indexes_are_rejected ... ok
 test unicorn_bind::tests::shared_leaves_must_fit_the_host_buffer ... ok
+test unicorn_bind::tests::guest_mmio_and_ram_traverse_the_flatview_binding ... ok
 test unicorn_bind::tests::shared_leaves_map_one_host_buffer_into_every_core ... ok
+test multicore::tests::identical_schedules_replay_identically ... ok
 
-test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_board_ibm_pc_glue-ef090e6b4525228d)
+
+running 2 tests
+test tests::the_machine_name_matches_the_catalog_id ... ok
+test linux_boot::tests::a_header_without_the_magic_is_rejected ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_contract_can-fc6eb42b1a4fb586)
 
@@ -231,30 +238,30 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_core_runtime-18067ea9bf7ebfa0)
 
 running 63 tests
-test address::tests::construction_order_does_not_override_declared_priorities ... ok
 test address::tests::container_holes_fall_through_to_lower_priority_siblings ... ok
-test address::tests::nested_offsets_and_device_local_offsets_are_distinct ... ok
-test address::tests::permissions_and_independent_views_are_enforced ... ok
+test address::tests::construction_order_does_not_override_declared_priorities ... ok
 test address::tests::high_priority_overlay_splits_and_preserves_backing_offsets ... ok
 test address::tests::excessive_nesting_is_rejected ... ok
 test address::tests::top_address_byte_is_valid_but_a_cross_boundary_access_is_not ... ok
+test address::tests::nested_offsets_and_device_local_offsets_are_distinct ... ok
+test address::tests::permissions_and_independent_views_are_enforced ... ok
 test address::tests::rejects_ambiguous_empty_out_of_parent_and_overflowing_regions ... ok
-test arena::tests::a_taken_device_is_unavailable_until_restored ... ok
 test arena::tests::duplicate_registration_is_rejected ... ok
+test arena::tests::a_taken_device_is_unavailable_until_restored ... ok
 test arena::tests::unknown_nodes_are_distinct_from_taken_nodes ... ok
-test backing::tests::blocks_reject_duplicates_and_zero_size ... ok
 test backing::tests::endianness_is_honored_for_every_width ... ok
 test backing::tests::guest_and_loader_accesses_are_bounds_checked_without_panics ... ok
+test backing::tests::blocks_reject_duplicates_and_zero_size ... ok
 test clocktree::tests::a_rejected_update_does_not_commit ... ok
 test clocktree::tests::divider_gate_and_mux_resolve_without_cross_domain_jitter ... ok
 test clocktree::tests::one_gigahertz_is_the_historical_instruction_period ... ok
-test clocktree::tests::snapshot_restores_dynamics_and_rejects_a_different_tree ... ok
-test context::tests::context_uses_virtual_time_and_node_local_timer_identity ... ok
 test clocktree::tests::zero_ticks_do_not_invent_time_and_sub_picosecond_clocks_are_refused ... ok
+test context::tests::context_uses_virtual_time_and_node_local_timer_identity ... ok
 test context::tests::contexts_cannot_cancel_other_nodes_timers ... ok
 test context::tests::full_queue_rejects_signal_without_mutation ... ok
 test context::tests::relative_time_overflow_is_not_saturated_or_wrapped ... ok
 test context::tests::runtime_handles_preserve_the_send_contract ... ok
+test clocktree::tests::snapshot_restores_dynamics_and_rejects_a_different_tree ... ok
 test context::tests::signal_changes_are_deferred_and_keep_order_with_same_time_timers ... ok
 test context::tests::unknown_signal_is_rejected_without_mutation ... ok
 test events::tests::cancellation_is_owner_scoped_and_idempotent ... ok
@@ -265,30 +272,30 @@ test events::tests::exhausted_id_counter_never_wraps ... ok
 test events::tests::failed_reschedule_keeps_the_old_event_and_timeline ... ok
 test events::tests::invalid_snapshots_leave_existing_state_untouched ... ok
 test events::tests::past_reservation_is_rejected_without_mutation ... ok
-test events::tests::reservation_does_not_advance_time ... ok
 test events::tests::rescheduling_at_capacity_replaces_the_old_event_atomically ... ok
+test events::tests::identical_inputs_produce_identical_traces ... ok
+test events::tests::reservation_does_not_advance_time ... ok
 test events::tests::snapshot_input_order_does_not_change_dispatch_order ... ok
 test events::tests::snapshot_round_trip_preserves_order_cancellation_and_next_id ... ok
 test events::tests::time_window_includes_its_boundary_but_never_skips_events ... ok
-test events::tests::zero_capacity_is_well_defined ... ok
-test events::tests::identical_inputs_produce_identical_traces ... ok
 test events::tests::time_window_partition_does_not_change_event_trace ... ok
-test machine::tests::construction_and_verification_reject_broken_wiring ... ok
+test events::tests::zero_capacity_is_well_defined ... ok
 test machine::tests::event_budget_bounds_endless_same_time_rescheduling ... ok
+test machine::tests::construction_and_verification_reject_broken_wiring ... ok
+test machine::tests::identical_inputs_produce_identical_machine_traces ... ok
 test machine::tests::full_runtime_snapshot_restores_memory_device_state_and_events_reusably ... ok
 test machine::tests::idle_run_advances_time_and_unknown_timers_are_reported ... ok
 test machine::tests::machine_keeps_the_send_contract ... ok
-test machine::tests::identical_inputs_produce_identical_machine_traces ... ok
 test machine::tests::machine_snapshot_refuses_devices_without_snapshot_support ... ok
-test machine::tests::machine_snapshot_prevalidates_every_device_before_mutating ... ok
 test machine::tests::machine_snapshot_rejects_graph_mismatch_without_mutation ... ok
+test machine::tests::machine_snapshot_prevalidates_every_device_before_mutating ... ok
 test machine::tests::mmio_throughput_probe ... ignored, manual throughput probe; never part of deterministic CI output
 test machine::tests::mmio_dispatch_passes_offsets_and_attributes_to_the_device ... ok
 test machine::tests::per_master_views_resolve_the_same_address_independently ... ok
 test machine::tests::queue_checkpoint_replay_reproduces_the_machine_trace ... ok
 test machine::tests::ram_rom_and_view_permissions_are_enforced ... ok
-test machine::tests::snapshot_rollback_restores_the_device_that_rejected_load ... ok
 test machine::tests::taken_device_reports_reentrant_and_is_restored_afterward ... ok
+test machine::tests::snapshot_rollback_restores_the_device_that_rejected_load ... ok
 test machine::tests::save_restore_replay_keeps_the_state_hash_and_clock_gates ... ok
 test machine::tests::timer_events_drive_wired_signals_in_deterministic_order ... ok
 test machine::tests::verify_checks_per_master_views ... ok
@@ -335,17 +342,17 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_describe-2a9ebcf5f9c4de56)
 
 running 12 tests
-test tests::connection_names_and_part_names_use_separate_namespaces ... ok
 test tests::endpoint_parser_rejects_empty_or_malformed_port_segments ... ok
+test tests::connection_names_and_part_names_use_separate_namespaces ... ok
 test tests::graph_normalization_is_independent_of_region_declaration_order ... ok
 test tests::rejects_duplicate_cpu_block_names_and_unknown_view_references ... ok
 test tests::rejects_empty_regions_and_address_overflow ... ok
 test tests::graph_validation_rejects_duplicate_edges_and_wrong_region_targets ... ok
 test tests::namespace_qualified_irq_endpoints_validate_consistently ... ok
-test tests::rejects_equal_priority_overlaps_but_allows_explicit_overlays ... ok
 test tests::rejects_malformed_catalog_ids_before_graph_construction ... ok
-test tests::rejects_unknown_part_binding_kinds ... ok
+test tests::rejects_equal_priority_overlaps_but_allows_explicit_overlays ... ok
 test tests::rejects_mmio_regions_without_a_matching_declared_block ... ok
+test tests::rejects_unknown_part_binding_kinds ... ok
 test tests::validates_bus_address_and_chip_select_uniqueness ... ok
 
 test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
@@ -360,12 +367,12 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 12 tests
 test tests::adds_and_cmp_set_architectural_flags ... ok
-test tests::exception_entry_stacks_and_return_restores ... ok
 test tests::bl_matches_the_t32_immediate_formula ... ok
-test tests::hex_nibble_extract_matches_the_firmware_sequence ... ok
+test tests::exception_entry_stacks_and_return_restores ... ok
 test tests::it_eq_skips_the_following_add_when_z_is_clear ... ok
-test tests::partitioned_budget_matches_one_run ... ok
+test tests::hex_nibble_extract_matches_the_firmware_sequence ... ok
 test tests::mmio_word_is_one_bus_transaction ... ok
+test tests::partitioned_budget_matches_one_run ... ok
 test tests::push_blx_and_pop_pc_roundtrip ... ok
 test tests::store_to_execute_only_memory_is_a_permission_fault ... ok
 test tests::sxth_and_rev_use_the_opcode_byte_not_a_dead_mask ... ok
@@ -378,38 +385,38 @@ test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 running 31 tests
 test tests::arm64_backend_executes_instructions ... ok
-test tests::an_infinite_guest_loop_stops_at_the_instruction_budget ... ok
 test tests::context_save_and_restore_preserves_registers ... ok
-test tests::a_created_and_used_engine_can_move_between_threads_sequentially ... ok
 test tests::faults_and_unsupported_budgets_do_not_report_success ... ok
+test tests::an_infinite_guest_loop_stops_at_the_instruction_budget ... ok
 test tests::instruction_budget_and_resume_are_exact_for_a32 ... ok
-test tests::guest_permissions_are_not_bypassed_by_loader_access ... ok
+test tests::a_created_and_used_engine_can_move_between_threads_sequentially ... ok
 test tests::mapping_and_register_errors_do_not_panic ... ok
-test tests::mmio_bus_fault_stops_emulation_and_is_reported_once ... ok
-test tests::mclass_backend_executes_t32_from_reset ... ok
+test tests::guest_permissions_are_not_bypassed_by_loader_access ... ok
 test tests::mapped_pages_are_private_to_each_instance ... ok
+test tests::mmio_hooks_forward_guest_accesses_to_the_attached_bus ... ok
+test tests::mmio_bus_fault_stops_emulation_and_is_reported_once ... ok
 test tests::riscv32::instruction_budget_and_resume_are_exact_for_rv32i ... ok
 test tests::riscv32::lines_and_registers_reject_out_of_vocabulary_input ... ok
 test tests::riscv32::mmio_and_shared_paths_match_the_arm_adapter ... ok
 test tests::riscv32::the_register_table_matches_the_backend_enum ... ok
-test tests::mmio_hooks_forward_guest_accesses_to_the_attached_bus ... ok
 test tests::mmio_registration_rejects_misuse_and_stays_out_of_loader_spans ... ok
+test tests::mclass_backend_executes_t32_from_reset ... ok
 test tests::set_line_records_edges_and_rejects_unknown_arm_lines ... ok
 test tests::patching_code_invalidates_translated_blocks ... ok
-test tests::shared_mappings_validate_like_native_regions ... ok
 test tests::x86_64_backend_executes_instructions ... ok
-test tests::shared_ram_is_coherent_across_engine_instances ... ok
-test tests::x86_masked_interrupt_stays_queued_until_if_is_set ... ok
 test tests::x86_exception_enters_the_real_mode_ivt_handler ... ok
-test tests::x86_page_fault_enters_the_idt_gate_with_an_error_code ... ok
-test tests::x86_protected_mode_interrupt_uses_the_gate_and_masks_if ... ok
-test tests::x86_real_mode_interrupt_pushes_a_16_bit_frame_from_the_ivt ... ok
-test tests::x86_software_interrupt_service_answers_and_resumes_after_the_int ... ok
-test tests::x86_port_io_reaches_the_port_bus_in_both_directions ... ok
 test tests::x86_boot_core_resumes_across_a_real_mode_far_jump ... ok
+test tests::x86_page_fault_enters_the_idt_gate_with_an_error_code ... ok
+test tests::shared_mappings_validate_like_native_regions ... ok
+test tests::x86_port_io_reaches_the_port_bus_in_both_directions ... ok
+test tests::x86_protected_mode_interrupt_uses_the_gate_and_masks_if ... ok
+test tests::x86_software_interrupt_service_answers_and_resumes_after_the_int ... ok
+test tests::x86_real_mode_interrupt_pushes_a_16_bit_frame_from_the_ivt ... ok
+test tests::x86_masked_interrupt_stays_queued_until_if_is_set ... ok
 test tests::x86_unclaimed_exception_stops_the_quantum_and_names_the_vector ... ok
+test tests::shared_ram_is_coherent_across_engine_instances ... ok
 
-test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_interconnect_can_bus-ee7152f516a0ff02)
 
@@ -423,12 +430,12 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_interconnect_gpio_net-634b5c9c1ecaa9cd)
 
 running 8 tests
-test tests::conflicting_strong_drivers_flag_a_deterministic_collision ... ok
 test tests::duplicate_sink_registration_is_rejected_without_replacing_the_original ... ok
-test tests::pull_up_idles_high_and_strong_low_overrides_it ... ok
 test tests::open_drain_high_releases_the_net ... ok
-test tests::sink_can_reenter_the_same_net_and_notifications_are_drained_fifo ... ok
+test tests::conflicting_strong_drivers_flag_a_deterministic_collision ... ok
 test tests::pin_internal_pull_is_resolved_separately_from_board_pull ... ok
+test tests::sink_can_reenter_the_same_net_and_notifications_are_drained_fifo ... ok
+test tests::pull_up_idles_high_and_strong_low_overrides_it ... ok
 test tests::sinks_receive_only_resolved_edge_changes ... ok
 test tests::unknown_nodes_are_reported_not_panicked ... ok
 
@@ -447,8 +454,8 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_interconnect_pinmux-a0eb03836fbd8946)
 
 running 3 tests
-test tests::context_aware_switch_releases_the_last_selected_function ... ok
 test tests::drives_follow_the_selected_function ... ok
+test tests::context_aware_switch_releases_the_last_selected_function ... ok
 test tests::geometry_errors_are_bounds_checked ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
@@ -484,8 +491,8 @@ running 7 tests
 test tests::banks_drive_independent_signals ... ok
 test tests::non_word_sizes_are_rejected_and_stat_writes_are_ignored ... ok
 test tests::offsets_outside_the_banks_follow_the_unmapped_policy ... ok
-test tests::partial_clear_keeps_the_irq_asserted_until_stat_reaches_zero ... ok
 test tests::repeated_set_ors_bits_without_extra_edges ... ok
+test tests::partial_clear_keeps_the_irq_asserted_until_stat_reaches_zero ... ok
 test tests::set_stat_clear_cycle_drives_one_irq_edge_pair ... ok
 test tests::typed_snapshot_round_trip_restores_doorbells_and_rejects_bad_versions ... ok
 
@@ -506,21 +513,21 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_ip_arm_pl022-144f9f5ef51d81b9)
 
 running 15 tests
+test tests::disabled_or_slave_writes_do_not_exchange ... ok
 test tests::cr0_cpol_cpha_reach_the_exchange_mode ... ok
 test tests::dr_write_exchanges_one_byte_and_dr_read_pops_it ... ok
-test tests::dss_truncates_the_frame_width ... ok
-test tests::disabled_or_slave_writes_do_not_exchange ... ok
 test tests::exchange_failure_reports_rorris ... ok
 test tests::irq_line_follows_masked_rx_status ... ok
 test tests::loopback_returns_the_byte_without_touching_the_bus ... ok
 test tests::missing_chip_select_does_not_cache_an_unacknowledged_assertion ... ok
+test tests::dss_truncates_the_frame_width ... ok
 test tests::por_status_has_empty_fifos_and_txris_set ... ok
-test tests::primecell_identification_reads_back ... ok
 test tests::rejected_chip_select_can_be_retried_without_an_extra_cr1_edge ... ok
+test tests::primecell_identification_reads_back ... ok
 test tests::rx_overrun_sets_and_icr_clears_rorris ... ok
-test tests::sse_edges_drive_chip_select ... ok
 test tests::unmapped_and_oversized_accesses_follow_policy ... ok
 test tests::unwired_port_tolerates_dr_writes ... ok
+test tests::sse_edges_drive_chip_select ... ok
 
 test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -530,11 +537,11 @@ running 13 tests
 test tests::afsel_detaches_pins_from_gpio ... ok
 test tests::attach_is_bounds_checked ... ok
 test tests::both_edge_interrupts_latch_and_clear ... ok
-test tests::disconnected_pins_read_zero_and_ignore_writes ... ok
-test tests::full_data_access_reads_and_writes_all_pins ... ok
-test tests::input_pins_latch_but_do_not_drive ... ok
-test tests::level_interrupts_are_live_and_reassert_after_clear ... ok
 test tests::dir_writes_forward_configuration_with_preserved_pull_and_drive ... ok
+test tests::input_pins_latch_but_do_not_drive ... ok
+test tests::full_data_access_reads_and_writes_all_pins ... ok
+test tests::disconnected_pins_read_zero_and_ignore_writes ... ok
+test tests::level_interrupts_are_live_and_reassert_after_clear ... ok
 test tests::masked_data_write_drives_only_selected_pins ... ok
 test tests::por_registers_are_cleared ... ok
 test tests::primecell_identification_reads_back ... ok
@@ -548,9 +555,9 @@ test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 running 8 tests
 test tests::bind_input_validates_lines_and_duplicates ... ok
 test tests::double_word_transfers_are_rejected ... ok
+test tests::primecell_identity_window_reports_pl190 ... ok
 test tests::enabled_lines_drive_irq_and_fiq_outputs_with_edge_tracking ... ok
 test tests::protection_register_blocks_unprivileged_access ... ok
-test tests::primecell_identity_window_reports_pl190 ... ok
 test tests::software_interrupts_flow_through_the_same_aggregation ... ok
 test tests::unmapped_offsets_follow_the_policy ... ok
 test tests::vectaddr_read_resolves_priority_and_write_pops_the_stack ... ok
@@ -561,8 +568,8 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 3 tests
 test tests::encodes_the_pl011_primecell_identity ... ok
-test tests::revision_and_part_fields_stay_inside_their_bit_widths ... ok
 test tests::only_the_word_aligned_identification_window_is_covered ... ok
+test tests::revision_and_part_fields_stay_inside_their_bit_widths ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -572,11 +579,11 @@ running 8 tests
 test snapshot_roundtrip::systick_reservation_and_nvic_masks_restore ... ok
 test tests::aircr_requires_vectkey ... ok
 test tests::id_registers_match_cortex_m3 ... ok
-test tests::nvic_set_clear_pending_and_priority ... ok
 test tests::reserved_regions_are_raz_wi ... ok
 test tests::systick_counts_down_in_virtual_time ... ok
 test tests::vtor_and_shpr_storage ... ok
 test tests::wired_irq_input_sets_and_clears_pending ... ok
+test tests::nvic_set_clear_pending_and_priority ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -589,9 +596,9 @@ test tests::invalid_timer_token_does_not_alias_timer2 ... ok
 test tests::live_control_update_preserves_the_frozen_counter_value ... ok
 test tests::one_shot_expiry_disables_the_timer_without_reschedule ... ok
 test tests::periodic_expiry_fires_irq_and_reschedules ... ok
-test tests::primecell_window_and_guest_faults_are_safe ... ok
 test tests::sixteen_bit_mode_truncates_count_without_truncating_load_register ... ok
 test tests::timer2_block_and_prescale_are_independent ... ok
+test tests::primecell_window_and_guest_faults_are_safe ... ok
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -626,8 +633,8 @@ running 5 tests
 test tests::cir_interrupt_output_follows_ready_and_enable ... ok
 test tests::enable_registers_drive_gate_signals_on_change ... ok
 test tests::pll_switch_reports_sws_and_frequencies ... ok
-test tests::reset_state_matches_rm0008 ... ok
 test tests::sw_request_to_unready_source_is_ignored ... ok
+test tests::reset_state_matches_rm0008 ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -635,14 +642,14 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 9 tests
 test tests::a_third_waiting_byte_sets_ore_until_sr_then_dr ... ok
-test tests::clock_gate_hides_the_registers ... ok
 test tests::brr_cr2_cr3_gtpr_storage ... ok
+test tests::clock_gate_hides_the_registers ... ok
 test tests::receive_moves_one_byte_into_rdr_and_dr_read_clears_rxne ... ok
 test tests::receive_state_roundtrips_without_the_host_stream ... ok
 test tests::rxneie_follows_the_receive_flag ... ok
 test tests::transmit_requires_ue_and_te ... ok
-test tests::txeie_drives_the_combined_irq_output ... ok
 test tests::debug_read_does_not_consume_rdr ... ok
+test tests::txeie_drives_the_combined_irq_output ... ok
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -652,21 +659,21 @@ running 18 tests
 test tests::command_queue_and_rx_restore_without_replacing_the_initiator ... ok
 test tests::data_cmd_is_ignored_while_disabled ... ok
 test tests::disable_flushes_queue_and_rx_fifo ... ok
-test tests::master_mode_disabled_aborts_with_master_dis ... ok
 test tests::irq_line_follows_masked_raw_status ... ok
 test tests::multi_byte_restart_read_fills_the_rx_fifo_in_order ... ok
+test tests::master_mode_disabled_aborts_with_master_dis ... ok
 test tests::por_values_match_the_databook ... ok
-test tests::read_only_registers_ignore_writes ... ok
 test tests::nack_raises_tx_abrt_with_source_and_clears_it ... ok
 test tests::reserved_addresses_abort_without_touching_the_bus ... ok
+test tests::read_only_registers_ignore_writes ... ok
 test tests::restart_read_becomes_one_write_read_transaction ... ok
 test tests::rx_full_is_a_level_bit_against_rx_tl ... ok
 test tests::rx_under_is_reported_and_cleared ... ok
+test tests::restart_without_restart_en_aborts ... ok
 test tests::speed_field_reaches_the_initiator ... ok
 test tests::stop_executes_the_queued_write_batch ... ok
 test tests::unmapped_and_oversized_accesses_follow_policy ... ok
 test tests::write_then_read_without_restart_are_two_transactions ... ok
-test tests::restart_without_restart_en_aborts ... ok
 
 test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -763,24 +770,34 @@ test tests::zero_capacity_never_accepts_a_byte ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_modelkit_iso9660-5a36248d4d233fc0)
+
+running 4 tests
+test tests::a_file_is_found_by_path_and_read_back ... ok
+test tests::a_missing_file_is_not_found ... ok
+test tests::a_volume_without_a_boot_record_is_rejected ... ok
+test tests::the_boot_catalog_yields_its_image ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_part_bosch_bme280-25f4cee7a11b49c7)
 
 running 17 tests
 test bind_i2c::snapshot_roundtrip::pointer_and_register_bank_restore ... ok
 test bind_i2c::tests::chip_id_read_matches_the_transaction_path ... ok
 test bind_i2c::tests::host_side_compensation_matches_the_documented_scene ... ok
-test bind_i2c::tests::multi_byte_write_sets_control_then_increments ... ok
 test bind_i2c::tests::pointer_write_then_burst_read_crosses_register_blocks ... ok
 test bind_i2c::tests::wrong_address_is_rejected ... ok
 test bind_spi::tests::burst_read_walks_the_data_registers ... ok
+test bind_i2c::tests::multi_byte_write_sets_control_then_increments ... ok
 test bind_spi::tests::deselect_resets_the_command_latch ... ok
-test bind_spi::tests::read_command_returns_id_after_the_dummy_byte ... ok
 test bind_spi::tests::write_command_updates_control_registers ... ok
 test tests::calibration_round_trips_through_the_register_bank ... ok
 test tests::chip_id_is_read_only ... ok
+test bind_spi::tests::read_command_returns_id_after_the_dummy_byte ... ok
 test tests::control_registers_are_read_write_and_reset_restores_defaults ... ok
-test tests::data_and_calibration_writes_are_ignored ... ok
 test tests::data_registers_hold_the_scene_raw_values ... ok
+test tests::data_and_calibration_writes_are_ignored ... ok
 test tests::datasheet_example_compensates_to_documented_values ... ok
 test tests::sign_extension_covers_negative_humidity_coefficients ... ok
 
@@ -790,14 +807,14 @@ test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 running 9 tests
 test tests::interrupt_mode_latches_until_the_temp_register_is_read ... ok
-test tests::os_polarity_selects_the_active_level ... ok
 test tests::negative_thresholds_and_temperature_encode_twos_complement ... ok
+test tests::os_polarity_selects_the_active_level ... ok
+test tests::other_addresses_are_nacked ... ok
 test tests::power_up_defaults_match_the_datasheet ... ok
 test tests::reads_stream_across_registers_and_wrap_around ... ok
 test tests::shutdown_freezes_the_os_state ... ok
 test tests::temp_register_writes_are_ignored ... ok
 test tests::tos_write_drives_the_comparator_os_output_with_hysteresis ... ok
-test tests::other_addresses_are_nacked ... ok
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -807,8 +824,8 @@ running 5 tests
 test tests::attach_is_bounds_checked ... ok
 test tests::control_register_write_and_read_back ... ok
 test tests::disabled_channels_do_not_leak_forwarded_frames ... ok
-test tests::downstream_parts_are_invisible_until_enabled ... ok
 test tests::power_on_disconnects_every_channel ... ok
+test tests::downstream_parts_are_invisible_until_enabled ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -818,19 +835,19 @@ running 5 tests
 test tests::field_extracts_bits_without_panic_on_range_errors ... ok
 test tests::short_buffer_is_reported_without_panic ... ok
 test tests::u16_round_trip_in_both_endians ... ok
-test tests::u32_round_trip_in_both_endians ... ok
 test tests::u64_round_trip_in_both_endians ... ok
+test tests::u32_round_trip_in_both_endians ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_tests_boot-cf220c0987ebf43a)
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_tests_boot-2c308b7df46f4268)
 
 running 1 test
 test sha256::tests::nist_vectors ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-[1m[32m     Running[0m tests/boot_matrix.rs (target/debug/deps/boot_matrix-8a59b607a5e9ffb2)
+[1m[32m     Running[0m tests/boot_matrix.rs (target/debug/deps/boot_matrix-1da88c24c5507e96)
 
 running 5 tests
 test other_images ... ok
@@ -838,14 +855,14 @@ test android_images has been running for over 60 seconds
 test linux_images has been running for over 60 seconds
 test rtos_images has been running for over 60 seconds
 test windows_images has been running for over 60 seconds
-test linux_images ... ok
 test android_images ... ok
 test rtos_images ... ok
 test windows_images ... ok
+test linux_images ... ok
 
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 443.48s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 230.71s
 
-[1m[32m     Running[0m tests/front_end.rs (target/debug/deps/front_end-4502b0e176596016)
+[1m[32m     Running[0m tests/front_end.rs (target/debug/deps/front_end-d708cef57300540a)
 
 running 5 tests
 test a_missing_boot_source_is_a_usage_error ... ok
@@ -854,37 +871,38 @@ test an_unknown_machine_is_a_usage_error ... ok
 test the_iso_kernel_operand_boots_the_kernel_directly ... ok
 test boots_the_committed_cd_and_writes_a_report ... ok
 
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.34s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.39s
 
 [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/mosaic_xtask-e334e8a88f6ff140)
 
-running 24 tests
+running 25 tests
+test catalog::tests::leaf_metadata_checks_port_role_and_declared_count ... ok
 test catalog::tests::graph_regions_must_fit_the_catalog_mmio_window ... ok
 test catalog::tests::leaf_metadata_checks_parameter_default_type_and_range ... ok
-test catalog::tests::leaf_metadata_checks_port_role_and_declared_count ... ok
 test catalog::tests::leaf_metadata_rejects_misspelled_port_properties ... ok
 test catalog::tests::parser_rejects_misspelled_schema_keys ... ok
 test catalog::tests::parser_rejects_unknown_memory_kind ... ok
 test policy::tests::catalog_dependencies_are_restricted ... ok
-test policy::tests::contracts_can_share_contracts_but_not_model_implementations ... ok
+test policy::tests::catalog_leaves_stay_under_r2 ... ok
 test catalog::tests::part_metadata_requires_a_declared_origin ... ok
 test policy::tests::framework_cannot_depend_on_catalog_or_upper_layers ... ok
-test policy::tests::glue_can_only_use_types_and_contracts ... ok
+test policy::tests::contracts_can_share_contracts_but_not_model_implementations ... ok
 test policy::tests::metadata_cannot_spoof_a_layer ... ok
+test policy::tests::glue_uses_models_tools_leaves_and_engines_but_not_composition ... ok
 test policy::tests::names_use_tokens_not_substrings ... ok
 test policy::tests::unicorn_is_allowlisted_only_at_its_adapter_boundary ... ok
 test policy::tests::unresolved_local_dependency_is_not_an_escape_hatch ... ok
+test catalog::tests::graph_builder_rejects_unknown_bus_nodes ... ok
 test tests::catalog_id_suffix_must_match_canonical_path ... ok
 test tests::catalog_lint_rejects_duplicate_global_ids ... ok
-test catalog::tests::graph_builder_rejects_unknown_bus_nodes ... ok
 test catalog::tests::parser_uses_typed_schema_for_checked_in_manifests ... ok
 test tests::name_lint_accepts_a_canonical_origin ... ok
-test tests::unicorn_dependency_is_pinned_arm_only_and_unsafe_is_scoped ... ok
 test tests::name_lint_checks_origins_and_forbidden_directory_tokens ... ok
+test tests::unicorn_dependency_is_pinned_arm_only_and_unsafe_is_scoped ... ok
 test tests::cargo_metadata_checks_optional_dev_and_inactive_target_dependencies ... ok
 test tests::checked_in_catalog_manifests_validate_and_resolve ... ok
 
-test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 [1m[32m     Running[0m unittests src/main.rs (target/debug/deps/mosaic_xtask-8a35ade6fccaebb8)
 
@@ -929,6 +947,12 @@ running 0 tests
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 [1m[32m   Doc-tests[0m mosaic_assemble
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m   Doc-tests[0m mosaic_board_ibm_pc_glue
 
 running 0 tests
 
@@ -1259,6 +1283,12 @@ running 0 tests
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 [1m[32m   Doc-tests[0m mosaic_modelkit_fifo
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m   Doc-tests[0m mosaic_modelkit_iso9660
 
 running 0 tests
 

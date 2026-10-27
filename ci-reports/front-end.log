@@ -1,3 +1,4 @@
+[1m[32m   Compiling[0m mosaic-board-ibm-pc-glue v0.1.0 (/home/runner/work/mosaic/mosaic/catalog/board/ibm/pc/glue)
 [1m[32m   Compiling[0m mosaic-apps-system v0.1.0 (/home/runner/work/mosaic/mosaic/apps/system)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.94s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.63s
 [1m[32m     Running[0m `target/debug/mosaic-system -cdrom tests/assets/tinycore-16-core.iso -m 64M --instruction-limit 8000000 --report ci-reports/front-end.json -q`

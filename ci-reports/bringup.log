@@ -1,6 +1,6 @@
 [1m[32m   Compiling[0m mosaic-apps-bringup v0.1.0 (/home/runner/work/mosaic/mosaic/apps/bringup)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.69s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
 [1m[32m     Running[0m `target/debug/mosaic-apps-bringup`
 console="mosaic\n"
 hooks=64 events=0 irq_edges=0
-elapsed_us=7956 instr_per_s=8044
+elapsed_us=4028 instr_per_s=15888
