@@ -1,0 +1,11 @@
+# Megahertz XJ2288 PC Card 28.8 data/fax modem with XJack connector
+[part]
+id = 'part:megahertz/megahertz-xj2288'
+origin = 'megahertz'
+name = 'megahertz-xj2288'
+summary = "Megahertz XJ2288 PC Card 28.8 data/fax modem with XJack connector"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

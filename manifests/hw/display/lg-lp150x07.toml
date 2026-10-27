@@ -1,0 +1,11 @@
+# LG Philips LP150X07 15" XGA laptop panel (1024x768, LVDS)
+[part]
+id = 'part:lg/lg-lp150x07'
+origin = 'lg'
+name = 'lg-lp150x07'
+summary = "LG Philips LP150X07 15\" XGA laptop panel (1024x768, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

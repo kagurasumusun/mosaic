@@ -1,0 +1,11 @@
+# Winbond W958D6FB 512 Mbit HyperRAM (166 MHz DDR, x16)
+[part]
+id = 'part:winbond/winbond-w958d6fb'
+origin = 'winbond'
+name = 'winbond-w958d6fb'
+summary = "Winbond W958D6FB 512 Mbit HyperRAM (166 MHz DDR, x16)"
+bindings = ["hyperbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[hyperbus]
+size-mb = 64

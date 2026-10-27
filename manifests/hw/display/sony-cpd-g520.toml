@@ -1,0 +1,11 @@
+# Sony CPD-G520 21" CRT monitor (analog VGA, 300 MHz video)
+[part]
+id = 'part:sony/sony-cpd-g520'
+origin = 'sony'
+name = 'sony-cpd-g520'
+summary = "Sony CPD-G520 21\" CRT monitor (analog VGA, 300 MHz video)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 300000

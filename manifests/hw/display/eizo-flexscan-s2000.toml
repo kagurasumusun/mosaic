@@ -1,0 +1,11 @@
+# EIZO FlexScan S2000 20.1" DVI LCD monitor (1600x1200)
+[part]
+id = 'part:eizo/eizo-flexscan-s2000'
+origin = 'eizo'
+name = 'eizo-flexscan-s2000'
+summary = "EIZO FlexScan S2000 20.1\" DVI LCD monitor (1600x1200)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

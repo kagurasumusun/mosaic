@@ -1,0 +1,11 @@
+# Micron MTFC IN128GAIQ 128 GB UFS 2.1 embedded flash
+[part]
+id = 'part:micron/micron-mtfc-in128gaiq'
+origin = 'micron'
+name = 'micron-mtfc-in128gaiq'
+summary = "Micron MTFC IN128GAIQ 128 GB UFS 2.1 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

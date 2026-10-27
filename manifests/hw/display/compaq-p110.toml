@@ -1,0 +1,11 @@
+# Compaq P110 21" CRT monitor (analog VGA)
+[part]
+id = 'part:compaq/compaq-p110'
+origin = 'compaq'
+name = 'compaq-p110'
+summary = "Compaq P110 21\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 300000

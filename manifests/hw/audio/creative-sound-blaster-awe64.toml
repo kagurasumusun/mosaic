@@ -1,0 +1,11 @@
+# Creative Sound Blaster AWE64 Gold ISA sound card (EMU8000 wavetable)
+[part]
+id = 'part:creative/creative-sound-blaster-awe64'
+origin = 'creative'
+name = 'creative-sound-blaster-awe64'
+summary = "Creative Sound Blaster AWE64 Gold ISA sound card (EMU8000 wavetable)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 3

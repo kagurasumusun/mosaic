@@ -1,0 +1,11 @@
+# NMB-MAT 1608FK 40 mm 4-pin PWM blower fan
+[part]
+id = 'part:nmb/nmb-1608fk'
+origin = 'nmb'
+name = 'nmb-1608fk'
+summary = "NMB-MAT 1608FK 40 mm 4-pin PWM blower fan"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

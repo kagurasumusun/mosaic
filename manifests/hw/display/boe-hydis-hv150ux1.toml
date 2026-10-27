@@ -1,0 +1,11 @@
+# BOE Hydis HV150UX1-100 15" UXGA laptop panel (1600x1200, LVDS)
+[part]
+id = 'part:boe/boe-hydis-hv150ux1'
+origin = 'boe'
+name = 'boe-hydis-hv150ux1'
+summary = "BOE Hydis HV150UX1-100 15\" UXGA laptop panel (1600x1200, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 8

@@ -1,0 +1,11 @@
+# Winbond W25Q256JW 256 Mbit HyperBus NOR flash (166 MHz DDR)
+[part]
+id = 'part:winbond/winbond-w25q256jw'
+origin = 'winbond'
+name = 'winbond-w25q256jw'
+summary = "Winbond W25Q256JW 256 Mbit HyperBus NOR flash (166 MHz DDR)"
+bindings = ["hyperbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[hyperbus]
+size-mb = 32

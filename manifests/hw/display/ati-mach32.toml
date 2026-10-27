@@ -1,0 +1,11 @@
+# ATI Mach32 ISA VGA adapter (8514/A-compatible accelerator)
+[part]
+id = 'part:ati/ati-mach32'
+origin = 'ati'
+name = 'ati-mach32'
+summary = "ATI Mach32 ISA VGA adapter (8514/A-compatible accelerator)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 0

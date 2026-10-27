@@ -1,0 +1,11 @@
+# ARCTIC P12 PWM 120 mm 4-pin fan (1800 RPM, PST)
+[part]
+id = 'part:arctic/arctic-p12-pwm'
+origin = 'arctic'
+name = 'arctic-p12-pwm'
+summary = "ARCTIC P12 PWM 120 mm 4-pin fan (1800 RPM, PST)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

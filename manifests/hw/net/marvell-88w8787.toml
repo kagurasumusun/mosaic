@@ -1,0 +1,11 @@
+# Marvell 88W8787 SDIO Wi-Fi/BT module (802.11n, mwifiex SD8787)
+[part]
+id = 'part:marvell/marvell-88w8787'
+origin = 'marvell'
+name = 'marvell-88w8787'
+summary = "Marvell 88W8787 SDIO Wi-Fi/BT module (802.11n, mwifiex SD8787)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 2

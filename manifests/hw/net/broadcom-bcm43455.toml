@@ -1,0 +1,11 @@
+# Broadcom BCM43455 SDIO Wi-Fi module (802.11ac, Raspberry Pi 3B+/4)
+[part]
+id = 'part:broadcom/broadcom-bcm43455'
+origin = 'broadcom'
+name = 'broadcom-bcm43455'
+summary = "Broadcom BCM43455 SDIO Wi-Fi module (802.11ac, Raspberry Pi 3B+/4)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 2

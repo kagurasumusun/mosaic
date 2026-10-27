@@ -1,0 +1,11 @@
+# US Robotics Sportster 28800 PC Card data/fax modem
+[part]
+id = 'part:usr/usr-sportster-28800-pccard'
+origin = 'usr'
+name = 'usr-sportster-28800-pccard'
+summary = "US Robotics Sportster 28800 PC Card data/fax modem"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

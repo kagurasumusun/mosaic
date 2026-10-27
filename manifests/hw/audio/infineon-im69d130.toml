@@ -1,0 +1,11 @@
+# Infineon IM69D130 PDM MEMS microphone (69 dB SNR, high AOP)
+[part]
+id = 'part:infineon/infineon-im69d130'
+origin = 'infineon'
+name = 'infineon-im69d130'
+summary = "Infineon IM69D130 PDM MEMS microphone (69 dB SNR, high AOP)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

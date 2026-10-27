@@ -1,0 +1,11 @@
+# ST MP34DT01-M PDM MEMS microphone (64 dB SNR, bottom port)
+[part]
+id = 'part:st/st-mp34dt01'
+origin = 'st'
+name = 'st-mp34dt01'
+summary = "ST MP34DT01-M PDM MEMS microphone (64 dB SNR, bottom port)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

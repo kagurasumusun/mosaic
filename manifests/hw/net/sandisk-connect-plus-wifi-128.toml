@@ -1,0 +1,11 @@
+# SanDisk Connect Plus 128 MB 802.11b Wi-Fi + storage PC Card
+[part]
+id = 'part:sandisk/sandisk-connect-plus-wifi-128'
+origin = 'sandisk'
+name = 'sandisk-connect-plus-wifi-128'
+summary = "SanDisk Connect Plus 128 MB 802.11b Wi-Fi + storage PC Card"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

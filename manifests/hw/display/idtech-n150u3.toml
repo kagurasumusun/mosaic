@@ -1,0 +1,11 @@
+# IDTech N150U3-L01 15" UXGA laptop panel (1600x1200, LVDS)
+[part]
+id = 'part:idtech/idtech-n150u3'
+origin = 'idtech'
+name = 'idtech-n150u3'
+summary = "IDTech N150U3-L01 15\" UXGA laptop panel (1600x1200, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 8

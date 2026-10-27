@@ -1,0 +1,11 @@
+# HP/Agilent 33220A 20 MHz function/arbitrary waveform generator (GPIB)
+[part]
+id = 'part:hp/hp-33220a'
+origin = 'hp'
+name = 'hp-33220a'
+summary = "HP/Agilent 33220A 20 MHz function/arbitrary waveform generator (GPIB)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 10

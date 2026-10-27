@@ -1,0 +1,11 @@
+# Sony SDM-HS95P 19" DVI LCD monitor (1280x1024)
+[part]
+id = 'part:sony/sony-sdm-hs95p'
+origin = 'sony'
+name = 'sony-sdm-hs95p'
+summary = "Sony SDM-HS95P 19\" DVI LCD monitor (1280x1024)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

@@ -1,0 +1,11 @@
+# Infineon (Cypress) S26KS512S 512 Mbit HyperFlash (1.8 V, 200 MHz DDR)
+[part]
+id = 'part:infineon/infineon-s26ks512s'
+origin = 'infineon'
+name = 'infineon-s26ks512s'
+summary = "Infineon (Cypress) S26KS512S 512 Mbit HyperFlash (1.8 V, 200 MHz DDR)"
+bindings = ["hyperbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[hyperbus]
+size-mb = 64

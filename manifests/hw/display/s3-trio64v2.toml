@@ -1,0 +1,11 @@
+# S3 Trio64V2/DX ISA VGA adapter (2 MB, 2D accelerator)
+[part]
+id = 'part:s3/s3-trio64v2'
+origin = 's3'
+name = 's3-trio64v2'
+summary = "S3 Trio64V2/DX ISA VGA adapter (2 MB, 2D accelerator)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 0

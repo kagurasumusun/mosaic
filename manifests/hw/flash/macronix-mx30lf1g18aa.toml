@@ -1,0 +1,13 @@
+# Macronix MX30LF1G18AA 1 Gbit SLC NAND (2048+64 B pages)
+[part]
+id = 'part:macronix/macronix-mx30lf1g18aa'
+origin = 'macronix'
+name = 'macronix-mx30lf1g18aa'
+summary = "Macronix MX30LF1G18AA 1 Gbit SLC NAND (2048+64 B pages)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 2048
+oob-size = 64
+blocks = 65536

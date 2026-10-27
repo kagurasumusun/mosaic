@@ -36,3 +36,4 @@ pub mod uart_l4;
 pub mod usart_f4;
 pub mod usart_f7;
 pub mod usart_h7;
+pub mod usr_sportster_14400_int;

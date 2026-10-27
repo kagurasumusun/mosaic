@@ -1,0 +1,11 @@
+# Mitsubishi Diamond Pro 2070SB 22" CRT monitor (analog VGA, aperture grille)
+[part]
+id = 'part:mitsubishi/mitsubishi-diamond-pro-2070sb'
+origin = 'mitsubishi'
+name = 'mitsubishi-diamond-pro-2070sb'
+summary = "Mitsubishi Diamond Pro 2070SB 22\" CRT monitor (analog VGA, aperture grille)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 370000

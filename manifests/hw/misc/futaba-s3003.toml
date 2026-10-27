@@ -1,0 +1,11 @@
+# Futaba S3003 standard analog RC servo (PWM 50 Hz, 3.2 kg-cm)
+[part]
+id = 'part:futaba/futaba-s3003'
+origin = 'futaba'
+name = 'futaba-s3003'
+summary = "Futaba S3003 standard analog RC servo (PWM 50 Hz, 3.2 kg-cm)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

@@ -1,0 +1,11 @@
+# Tektronix TDS 210 two-channel 60 MHz digital oscilloscope (GPIB option)
+[part]
+id = 'part:tektronix/tektronix-tds210'
+origin = 'tektronix'
+name = 'tektronix-tds210'
+summary = "Tektronix TDS 210 two-channel 60 MHz digital oscilloscope (GPIB option)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 1

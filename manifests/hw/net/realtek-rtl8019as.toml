@@ -1,0 +1,11 @@
+# Realtek RTL8019AS NE2000-compatible ISA Ethernet NIC (10BASE-T)
+[part]
+id = 'part:realtek/realtek-rtl8019as'
+origin = 'realtek'
+name = 'realtek-rtl8019as'
+summary = "Realtek RTL8019AS NE2000-compatible ISA Ethernet NIC (10BASE-T)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 1

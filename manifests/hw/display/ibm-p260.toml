@@ -1,0 +1,11 @@
+# IBM P260 21" CRT monitor (analog VGA, Sony chassis)
+[part]
+id = 'part:ibm/ibm-p260'
+origin = 'ibm'
+name = 'ibm-p260'
+summary = "IBM P260 21\" CRT monitor (analog VGA, Sony chassis)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 300000

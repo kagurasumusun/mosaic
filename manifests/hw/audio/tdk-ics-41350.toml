@@ -1,0 +1,11 @@
+# TDK InvenSense ICS-41350 PDM MEMS microphone (high-AOP, bottom port)
+[part]
+id = 'part:tdk/tdk-ics-41350'
+origin = 'tdk'
+name = 'tdk-ics-41350'
+summary = "TDK InvenSense ICS-41350 PDM MEMS microphone (high-AOP, bottom port)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

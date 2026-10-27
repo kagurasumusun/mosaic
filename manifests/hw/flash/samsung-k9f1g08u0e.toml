@@ -1,0 +1,13 @@
+# Samsung K9F1G08U0E 1 Gbit SLC NAND (2048+64 B pages, 64K blocks)
+[part]
+id = 'part:samsung/samsung-k9f1g08u0e'
+origin = 'samsung'
+name = 'samsung-k9f1g08u0e'
+summary = "Samsung K9F1G08U0E 1 Gbit SLC NAND (2048+64 B pages, 64K blocks)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 2048
+oob-size = 64
+blocks = 65536

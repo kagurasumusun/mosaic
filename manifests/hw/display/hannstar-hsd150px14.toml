@@ -1,0 +1,11 @@
+# HannStar HSD150PX14-A00 15" XGA laptop panel (1024x768, LVDS)
+[part]
+id = 'part:hannstar/hannstar-hsd150px14'
+origin = 'hannstar'
+name = 'hannstar-hsd150px14'
+summary = "HannStar HSD150PX14-A00 15\" XGA laptop panel (1024x768, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

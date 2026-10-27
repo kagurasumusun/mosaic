@@ -1,0 +1,11 @@
+# Espressif ESP8089 SDIO Wi-Fi module (802.11n)
+[part]
+id = 'part:espressif/espressif-esp8089'
+origin = 'espressif'
+name = 'espressif-esp8089'
+summary = "Espressif ESP8089 SDIO Wi-Fi module (802.11n)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 1

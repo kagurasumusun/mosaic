@@ -1,0 +1,11 @@
+# SK hynix HN8T13AAH 32 GB UFS 2.1 embedded flash
+[part]
+id = 'part:hynix/hynix-hn8t13aah'
+origin = 'hynix'
+name = 'hynix-hn8t13aah'
+summary = "SK hynix HN8T13AAH 32 GB UFS 2.1 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

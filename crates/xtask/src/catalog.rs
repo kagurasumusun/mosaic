@@ -435,6 +435,18 @@ pub(super) fn validate_leaf_catalog_manifest(
                     "soundwire",
                     "slimbus",
                     "firewire",
+                    "vga",
+                    "dvi",
+                    "lvds",
+                    "sdio",
+                    "pdm",
+                    "pwm",
+                    "nand",
+                    "isa",
+                    "pcmcia",
+                    "ufs",
+                    "hyperbus",
+                    "gpib",
                     "register",
                 ],
                 file_name,
@@ -480,6 +492,18 @@ pub(super) fn validate_leaf_catalog_manifest(
                         | "soundwire"
                         | "slimbus"
                         | "firewire"
+                        | "vga"
+                        | "dvi"
+                        | "lvds"
+                        | "sdio"
+                        | "pdm"
+                        | "pwm"
+                        | "nand"
+                        | "isa"
+                        | "pcmcia"
+                        | "ufs"
+                        | "hyperbus"
+                        | "gpib"
                 ) {
                     return Err(format!("part.bindings: unsupported binding {binding:?}"));
                 }
@@ -854,6 +878,245 @@ pub(super) fn validate_leaf_catalog_manifest(
                 && !root.contains_key("gameport")
             {
                 return Err("part.bindings: gameport binding has no [gameport] section".into());
+            }
+            if let Some(sec) = root.get("vga") {
+                if !bindings.iter().any(|binding| binding.as_str() == "vga") {
+                    return Err(
+                        "vga: section exists but part does not declare a vga binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "vga: expected a table".to_owned())?;
+                reject_unknown(sec, &["max-pixel-clock-khz"], "vga")?;
+                if let Some(value) = sec.get("max-pixel-clock-khz") {
+                    non_negative_integer(value, "vga.max-pixel-clock-khz")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "vga") && !root.contains_key("vga")
+            {
+                return Err("part.bindings: vga binding has no [vga] section".into());
+            }
+            if let Some(sec) = root.get("dvi") {
+                if !bindings.iter().any(|binding| binding.as_str() == "dvi") {
+                    return Err(
+                        "dvi: section exists but part does not declare a dvi binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "dvi: expected a table".to_owned())?;
+                reject_unknown(sec, &["lanes"], "dvi")?;
+                if let Some(value) = sec.get("lanes") {
+                    non_negative_integer(value, "dvi.lanes")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "dvi") && !root.contains_key("dvi")
+            {
+                return Err("part.bindings: dvi binding has no [dvi] section".into());
+            }
+            if let Some(sec) = root.get("lvds") {
+                if !bindings.iter().any(|binding| binding.as_str() == "lvds") {
+                    return Err(
+                        "lvds: section exists but part does not declare a lvds binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "lvds: expected a table".to_owned())?;
+                reject_unknown(sec, &["lanes"], "lvds")?;
+                if let Some(value) = sec.get("lanes") {
+                    non_negative_integer(value, "lvds.lanes")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "lvds")
+                && !root.contains_key("lvds")
+            {
+                return Err("part.bindings: lvds binding has no [lvds] section".into());
+            }
+            if let Some(sec) = root.get("sdio") {
+                if !bindings.iter().any(|binding| binding.as_str() == "sdio") {
+                    return Err(
+                        "sdio: section exists but part does not declare a sdio binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "sdio: expected a table".to_owned())?;
+                reject_unknown(sec, &["functions"], "sdio")?;
+                if let Some(value) = sec.get("functions") {
+                    non_negative_integer(value, "sdio.functions")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "sdio")
+                && !root.contains_key("sdio")
+            {
+                return Err("part.bindings: sdio binding has no [sdio] section".into());
+            }
+            if let Some(sec) = root.get("pdm") {
+                if !bindings.iter().any(|binding| binding.as_str() == "pdm") {
+                    return Err(
+                        "pdm: section exists but part does not declare a pdm binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "pdm: expected a table".to_owned())?;
+                reject_unknown(sec, &["channels"], "pdm")?;
+                if let Some(value) = sec.get("channels") {
+                    non_negative_integer(value, "pdm.channels")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "pdm") && !root.contains_key("pdm")
+            {
+                return Err("part.bindings: pdm binding has no [pdm] section".into());
+            }
+            if let Some(sec) = root.get("pwm") {
+                if !bindings.iter().any(|binding| binding.as_str() == "pwm") {
+                    return Err(
+                        "pwm: section exists but part does not declare a pwm binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "pwm: expected a table".to_owned())?;
+                reject_unknown(sec, &["channels"], "pwm")?;
+                if let Some(value) = sec.get("channels") {
+                    non_negative_integer(value, "pwm.channels")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "pwm") && !root.contains_key("pwm")
+            {
+                return Err("part.bindings: pwm binding has no [pwm] section".into());
+            }
+            if let Some(sec) = root.get("nand") {
+                if !bindings.iter().any(|binding| binding.as_str() == "nand") {
+                    return Err(
+                        "nand: section exists but part does not declare a nand binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "nand: expected a table".to_owned())?;
+                reject_unknown(sec, &["page-size", "oob-size", "blocks"], "nand")?;
+                if let Some(value) = sec.get("page-size") {
+                    non_negative_integer(value, "nand.page-size")?;
+                }
+                if let Some(value) = sec.get("oob-size") {
+                    non_negative_integer(value, "nand.oob-size")?;
+                }
+                if let Some(value) = sec.get("blocks") {
+                    non_negative_integer(value, "nand.blocks")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "nand")
+                && !root.contains_key("nand")
+            {
+                return Err("part.bindings: nand binding has no [nand] section".into());
+            }
+            if let Some(sec) = root.get("isa") {
+                if !bindings.iter().any(|binding| binding.as_str() == "isa") {
+                    return Err(
+                        "isa: section exists but part does not declare a isa binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "isa: expected a table".to_owned())?;
+                reject_unknown(sec, &["dma-channels"], "isa")?;
+                if let Some(value) = sec.get("dma-channels") {
+                    non_negative_integer(value, "isa.dma-channels")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "isa") && !root.contains_key("isa")
+            {
+                return Err("part.bindings: isa binding has no [isa] section".into());
+            }
+            if let Some(sec) = root.get("ufs") {
+                if !bindings.iter().any(|binding| binding.as_str() == "ufs") {
+                    return Err(
+                        "ufs: section exists but part does not declare a ufs binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "ufs: expected a table".to_owned())?;
+                reject_unknown(sec, &["lu-count"], "ufs")?;
+                if let Some(value) = sec.get("lu-count") {
+                    non_negative_integer(value, "ufs.lu-count")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "ufs") && !root.contains_key("ufs")
+            {
+                return Err("part.bindings: ufs binding has no [ufs] section".into());
+            }
+            if let Some(sec) = root.get("hyperbus") {
+                if !bindings
+                    .iter()
+                    .any(|binding| binding.as_str() == "hyperbus")
+                {
+                    return Err(
+                        "hyperbus: section exists but part does not declare a hyperbus binding"
+                            .into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "hyperbus: expected a table".to_owned())?;
+                reject_unknown(sec, &["size-mb"], "hyperbus")?;
+                if let Some(value) = sec.get("size-mb") {
+                    non_negative_integer(value, "hyperbus.size-mb")?;
+                }
+            }
+            if bindings
+                .iter()
+                .any(|binding| binding.as_str() == "hyperbus")
+                && !root.contains_key("hyperbus")
+            {
+                return Err("part.bindings: hyperbus binding has no [hyperbus] section".into());
+            }
+            if let Some(sec) = root.get("gpib") {
+                if !bindings.iter().any(|binding| binding.as_str() == "gpib") {
+                    return Err(
+                        "gpib: section exists but part does not declare a gpib binding".into(),
+                    );
+                }
+                let sec = sec
+                    .as_table()
+                    .ok_or_else(|| "gpib: expected a table".to_owned())?;
+                reject_unknown(sec, &["address"], "gpib")?;
+                if let Some(value) = sec.get("address") {
+                    non_negative_integer(value, "gpib.address")?;
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "gpib")
+                && !root.contains_key("gpib")
+            {
+                return Err("part.bindings: gpib binding has no [gpib] section".into());
+            }
+            if let Some(pc) = root.get("pcmcia") {
+                if !bindings.iter().any(|binding| binding.as_str() == "pcmcia") {
+                    return Err(
+                        "pcmcia: section exists but part does not declare a pcmcia binding".into(),
+                    );
+                }
+                let pc = pc
+                    .as_table()
+                    .ok_or_else(|| "pcmcia: expected a table".to_owned())?;
+                reject_unknown(pc, &["slot"], "pcmcia")?;
+                if let Some(slot) = pc.get("slot") {
+                    let s = slot.as_str().ok_or_else(|| {
+                        "pcmcia.slot: expected a string (16bit|cardbus)".to_owned()
+                    })?;
+                    if !matches!(s, "16bit" | "cardbus") {
+                        return Err(format!("pcmcia.slot: unsupported {s:?}"));
+                    }
+                }
+            }
+            if bindings.iter().any(|binding| binding.as_str() == "pcmcia")
+                && !root.contains_key("pcmcia")
+            {
+                return Err("part.bindings: pcmcia binding has no [pcmcia] section".into());
             }
 
             let registers: Vec<&toml::Value> = match root.get("register") {

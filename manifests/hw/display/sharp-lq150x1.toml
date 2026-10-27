@@ -1,0 +1,11 @@
+# Sharp LQ150X1LW71 15" XGA laptop panel (1024x768, LVDS)
+[part]
+id = 'part:sharp/sharp-lq150x1'
+origin = 'sharp'
+name = 'sharp-lq150x1'
+summary = "Sharp LQ150X1LW71 15\" XGA laptop panel (1024x768, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

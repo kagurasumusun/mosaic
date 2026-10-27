@@ -1,0 +1,11 @@
+# TDK InvenSense ICS-43434 PDM MEMS microphone (65 dB SNR)
+[part]
+id = 'part:tdk/tdk-ics-43434'
+origin = 'tdk'
+name = 'tdk-ics-43434'
+summary = "TDK InvenSense ICS-43434 PDM MEMS microphone (65 dB SNR)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

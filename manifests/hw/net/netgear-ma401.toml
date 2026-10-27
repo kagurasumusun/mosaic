@@ -1,0 +1,11 @@
+# NETGEAR MA401 802.11b PC Card (Intersil Prism 2.5)
+[part]
+id = 'part:netgear/netgear-ma401'
+origin = 'netgear'
+name = 'netgear-ma401'
+summary = "NETGEAR MA401 802.11b PC Card (Intersil Prism 2.5)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

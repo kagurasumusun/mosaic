@@ -1,0 +1,11 @@
+# Samsung LTN154X3-L02 15.4" WXGA laptop panel (1280x800, LVDS)
+[part]
+id = 'part:samsung/samsung-ltn154x3'
+origin = 'samsung'
+name = 'samsung-ltn154x3'
+summary = "Samsung LTN154X3-L02 15.4\" WXGA laptop panel (1280x800, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

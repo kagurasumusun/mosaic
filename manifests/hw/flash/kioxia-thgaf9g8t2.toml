@@ -1,0 +1,11 @@
+# KIOXIA THGAF9G8T23BAWL 64 GB UFS 2.1 embedded flash
+[part]
+id = 'part:kioxia/kioxia-thgaf9g8t2'
+origin = 'kioxia'
+name = 'kioxia-thgaf9g8t2'
+summary = "KIOXIA THGAF9G8T23BAWL 64 GB UFS 2.1 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

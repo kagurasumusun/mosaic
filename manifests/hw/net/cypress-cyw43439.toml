@@ -1,0 +1,11 @@
+# Cypress CYW43439 SDIO Wi-Fi module (802.11n, Raspberry Pi Pico W)
+[part]
+id = 'part:cypress/cypress-cyw43439'
+origin = 'cypress'
+name = 'cypress-cyw43439'
+summary = "Cypress CYW43439 SDIO Wi-Fi module (802.11n, Raspberry Pi Pico W)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 1

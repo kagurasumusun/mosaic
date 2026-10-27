@@ -1,0 +1,11 @@
+# Western Digital iNAND 7250 128 GB UFS 2.1 embedded flash
+[part]
+id = 'part:wdc/wdc-inand-7250-128'
+origin = 'wdc'
+name = 'wdc-inand-7250-128'
+summary = "Western Digital iNAND 7250 128 GB UFS 2.1 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 2

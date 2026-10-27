@@ -1,0 +1,11 @@
+# Dell P1110 21" CRT monitor (analog VGA, Sony G520 chassis)
+[part]
+id = 'part:dell/dell-p1110'
+origin = 'dell'
+name = 'dell-p1110'
+summary = "Dell P1110 21\" CRT monitor (analog VGA, Sony G520 chassis)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 340000

@@ -1,0 +1,11 @@
+# Agilent 34410A 6.5-digit high-performance digital multimeter (GPIB/LAN)
+[part]
+id = 'part:agilent/agilent-34410a'
+origin = 'agilent'
+name = 'agilent-34410a'
+summary = "Agilent 34410A 6.5-digit high-performance digital multimeter (GPIB/LAN)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 22

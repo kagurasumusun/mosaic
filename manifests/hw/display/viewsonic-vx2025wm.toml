@@ -1,0 +1,11 @@
+# ViewSonic VX2025wm 20.1" widescreen DVI LCD monitor (1680x1050)
+[part]
+id = 'part:viewsonic/viewsonic-vx2025wm'
+origin = 'viewsonic'
+name = 'viewsonic-vx2025wm'
+summary = "ViewSonic VX2025wm 20.1\" widescreen DVI LCD monitor (1680x1050)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

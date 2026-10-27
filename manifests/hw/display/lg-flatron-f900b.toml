@@ -1,0 +1,11 @@
+# LG Flatron F900B 19" flat-face CRT monitor (analog VGA)
+[part]
+id = 'part:lg/lg-flatron-f900b'
+origin = 'lg'
+name = 'lg-flatron-f900b'
+summary = "LG Flatron F900B 19\" flat-face CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 250000

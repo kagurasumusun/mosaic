@@ -1,0 +1,11 @@
+# TI WiLink8 WL1835 SDIO module (802.11n dual-band + BT)
+[part]
+id = 'part:ti/ti-wl1835'
+origin = 'ti'
+name = 'ti-wl1835'
+summary = "TI WiLink8 WL1835 SDIO module (802.11n dual-band + BT)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 2

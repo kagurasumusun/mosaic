@@ -1,0 +1,11 @@
+# Samsung SyncMaster 955df 19" CRT monitor (analog VGA)
+[part]
+id = 'part:samsung/samsung-syncmaster-955df'
+origin = 'samsung'
+name = 'samsung-syncmaster-955df'
+summary = "Samsung SyncMaster 955df 19\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 240000

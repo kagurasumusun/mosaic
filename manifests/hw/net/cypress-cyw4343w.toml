@@ -1,0 +1,11 @@
+# Cypress CYW4343W SDIO Wi-Fi/BT module (802.11n)
+[part]
+id = 'part:cypress/cypress-cyw4343w'
+origin = 'cypress'
+name = 'cypress-cyw4343w'
+summary = "Cypress CYW4343W SDIO Wi-Fi/BT module (802.11n)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 2

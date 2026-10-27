@@ -1,0 +1,11 @@
+# HP 34401A 6.5-digit digital multimeter (GPIB, 1000 readings/s)
+[part]
+id = 'part:hp/hp-34401a'
+origin = 'hp'
+name = 'hp-34401a'
+summary = "HP 34401A 6.5-digit digital multimeter (GPIB, 1000 readings/s)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 22

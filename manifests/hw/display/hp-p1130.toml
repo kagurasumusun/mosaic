@@ -1,0 +1,11 @@
+# HP P1130 21" CRT monitor (analog VGA)
+[part]
+id = 'part:hp/hp-p1130'
+origin = 'hp'
+name = 'hp-p1130'
+summary = "HP P1130 21\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 340000

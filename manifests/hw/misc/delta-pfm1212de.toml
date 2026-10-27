@@ -1,0 +1,11 @@
+# Delta PFM1212DE 120 mm 4-pin PWM server fan (high static pressure)
+[part]
+id = 'part:delta/delta-pfm1212de'
+origin = 'delta'
+name = 'delta-pfm1212de'
+summary = "Delta PFM1212DE 120 mm 4-pin PWM server fan (high static pressure)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

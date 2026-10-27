@@ -1,0 +1,11 @@
+# NETGEAR MA701 802.11b CompactFlash card (in PC Card passive adapter)
+[part]
+id = 'part:netgear/netgear-ma701'
+origin = 'netgear'
+name = 'netgear-ma701'
+summary = "NETGEAR MA701 802.11b CompactFlash card (in PC Card passive adapter)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

@@ -1,0 +1,11 @@
+# be quiet! Pure Wings 2 120 mm 4-pin PWM fan (1500 RPM)
+[part]
+id = 'part:bequiet/bequiet-pure-wings-2'
+origin = 'bequiet'
+name = 'bequiet-pure-wings-2'
+summary = "be quiet! Pure Wings 2 120 mm 4-pin PWM fan (1500 RPM)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

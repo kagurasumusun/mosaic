@@ -1,0 +1,11 @@
+# NZXT FZ120 120 mm 4-pin RGB PWM fan (1500 RPM)
+[part]
+id = 'part:nzxt/nzxt-fz120'
+origin = 'nzxt'
+name = 'nzxt-fz120'
+summary = "NZXT FZ120 120 mm 4-pin RGB PWM fan (1500 RPM)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

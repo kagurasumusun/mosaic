@@ -1,0 +1,11 @@
+# HP LP2065 20.1" dual-input DVI LCD monitor (1600x1200)
+[part]
+id = 'part:hp/hp-lp2065'
+origin = 'hp'
+name = 'hp-lp2065'
+summary = "HP LP2065 20.1\" dual-input DVI LCD monitor (1600x1200)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

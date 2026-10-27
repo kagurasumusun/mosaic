@@ -1,0 +1,11 @@
+# Ad Lib Gold 1000 ISA sound card (YMF289B + MSC191 surround)
+[part]
+id = 'part:adlib/adlib-gold-1000'
+origin = 'adlib'
+name = 'adlib-gold-1000'
+summary = "Ad Lib Gold 1000 ISA sound card (YMF289B + MSC191 surround)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 1

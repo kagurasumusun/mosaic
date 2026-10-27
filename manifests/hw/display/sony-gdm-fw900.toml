@@ -1,0 +1,11 @@
+# Sony GDM-FW900 24" widescreen CRT monitor (analog VGA)
+[part]
+id = 'part:sony/sony-gdm-fw900'
+origin = 'sony'
+name = 'sony-gdm-fw900'
+summary = "Sony GDM-FW900 24\" widescreen CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 380000

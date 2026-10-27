@@ -1,0 +1,11 @@
+# Intel EtherExpress 16 ISA Ethernet NIC (10BASE-T, i82586)
+[part]
+id = 'part:intel/intel-etherexpress-16'
+origin = 'intel'
+name = 'intel-etherexpress-16'
+summary = "Intel EtherExpress 16 ISA Ethernet NIC (10BASE-T, i82586)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 1

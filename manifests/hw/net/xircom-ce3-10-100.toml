@@ -1,0 +1,11 @@
+# Xircom CreditCard Ethernet 10/100 CE3-10-100 PC Card
+[part]
+id = 'part:xircom/xircom-ce3-10-100'
+origin = 'xircom'
+name = 'xircom-ce3-10-100'
+summary = "Xircom CreditCard Ethernet 10/100 CE3-10-100 PC Card"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

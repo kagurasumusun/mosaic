@@ -1,0 +1,11 @@
+# Sunon MagLev PMD1208PQB1-A 120 mm 4-pin PWM fan
+[part]
+id = 'part:sunon/sunon-maglev-pmd1208'
+origin = 'sunon'
+name = 'sunon-maglev-pmd1208'
+summary = "Sunon MagLev PMD1208PQB1-A 120 mm 4-pin PWM fan"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

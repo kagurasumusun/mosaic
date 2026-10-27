@@ -1,0 +1,11 @@
+# US Robotics Sportster 14400 internal ISA data/fax modem
+[part]
+id = 'part:usr/usr-sportster-14400-int'
+origin = 'usr'
+name = 'usr-sportster-14400-int'
+summary = "US Robotics Sportster 14400 internal ISA data/fax modem"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 0

@@ -1,0 +1,11 @@
+# HP 33120A 15 MHz function/arbitrary waveform generator (GPIB)
+[part]
+id = 'part:hp/hp-33120a'
+origin = 'hp'
+name = 'hp-33120a'
+summary = "HP 33120A 15 MHz function/arbitrary waveform generator (GPIB)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 10

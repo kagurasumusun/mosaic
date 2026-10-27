@@ -1,0 +1,11 @@
+# ViewSonic G90fb 19" CRT monitor (analog VGA)
+[part]
+id = 'part:viewsonic/viewsonic-g90fb'
+origin = 'viewsonic'
+name = 'viewsonic-g90fb'
+summary = "ViewSonic G90fb 19\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 260000

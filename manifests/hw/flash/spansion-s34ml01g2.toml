@@ -1,0 +1,13 @@
+# Spansion S34ML01G2 1 Gbit SLC NAND (2048+64 B pages)
+[part]
+id = 'part:spansion/spansion-s34ml01g2'
+origin = 'spansion'
+name = 'spansion-s34ml01g2'
+summary = "Spansion S34ML01G2 1 Gbit SLC NAND (2048+64 B pages)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 2048
+oob-size = 64
+blocks = 65536

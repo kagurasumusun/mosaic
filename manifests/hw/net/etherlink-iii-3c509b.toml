@@ -1,0 +1,11 @@
+# 3Com EtherLink III 3C509B ISA Ethernet NIC (10BASE-T)
+[part]
+id = 'part:3com/etherlink-iii-3c509b'
+origin = '3com'
+name = 'etherlink-iii-3c509b'
+summary = "3Com EtherLink III 3C509B ISA Ethernet NIC (10BASE-T)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 1

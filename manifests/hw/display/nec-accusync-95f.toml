@@ -1,0 +1,11 @@
+# NEC AccuSync 95F 19" CRT monitor (analog VGA)
+[part]
+id = 'part:nec/nec-accusync-95f'
+origin = 'nec'
+name = 'nec-accusync-95f'
+summary = "NEC AccuSync 95F 19\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 210000

@@ -1,0 +1,11 @@
+# Hitec HS-311 standard analog RC servo (PWM 50 Hz, 3.0 kg-cm)
+[part]
+id = 'part:hitec/hitec-hs-311'
+origin = 'hitec'
+name = 'hitec-hs-311'
+summary = "Hitec HS-311 standard analog RC servo (PWM 50 Hz, 3.0 kg-cm)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

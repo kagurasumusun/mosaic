@@ -1,0 +1,11 @@
+# TowerPro MG996R metal-gear analog RC servo (PWM 50 Hz, 11 kg-cm)
+[part]
+id = 'part:towerpro/towerpro-mg996r'
+origin = 'towerpro'
+name = 'towerpro-mg996r'
+summary = "TowerPro MG996R metal-gear analog RC servo (PWM 50 Hz, 11 kg-cm)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

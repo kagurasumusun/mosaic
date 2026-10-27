@@ -1,0 +1,11 @@
+# Chunghwa CLAA154WA05 15.4" WXGA laptop panel (1280x800, LVDS)
+[part]
+id = 'part:chunghwa/chunghwa-claa154wa'
+origin = 'chunghwa'
+name = 'chunghwa-claa154wa'
+summary = "Chunghwa CLAA154WA05 15.4\" WXGA laptop panel (1280x800, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

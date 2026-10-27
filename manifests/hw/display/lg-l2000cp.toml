@@ -1,0 +1,11 @@
+# LG L2000CP 20.1" DVI LCD monitor (1600x1200)
+[part]
+id = 'part:lg/lg-l2000cp'
+origin = 'lg'
+name = 'lg-l2000cp'
+summary = "LG L2000CP 20.1\" DVI LCD monitor (1600x1200)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

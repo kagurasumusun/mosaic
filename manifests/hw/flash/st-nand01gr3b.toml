@@ -1,0 +1,13 @@
+# ST NAND01GR3B 1 Gbit SLC NAND (2048+64 B pages, 8-bit bus)
+[part]
+id = 'part:st/st-nand01gr3b'
+origin = 'st'
+name = 'st-nand01gr3b'
+summary = "ST NAND01GR3B 1 Gbit SLC NAND (2048+64 B pages, 8-bit bus)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 2048
+oob-size = 64
+blocks = 65536

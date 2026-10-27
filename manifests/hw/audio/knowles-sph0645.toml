@@ -1,0 +1,11 @@
+# Knowles SPH0645HT4H-1 PDM MEMS microphone (high-Temperature, top port)
+[part]
+id = 'part:knowles/knowles-sph0645'
+origin = 'knowles'
+name = 'knowles-sph0645'
+summary = "Knowles SPH0645HT4H-1 PDM MEMS microphone (high-Temperature, top port)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

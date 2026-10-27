@@ -1,0 +1,11 @@
+# Chi Mei N154C5-L05 15.4" WXGA laptop panel (1280x800, LVDS)
+[part]
+id = 'part:chi_mei/chi-mei-n154c5'
+origin = 'chi_mei'
+name = 'chi-mei-n154c5'
+summary = "Chi Mei N154C5-L05 15.4\" WXGA laptop panel (1280x800, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

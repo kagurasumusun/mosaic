@@ -1,0 +1,11 @@
+# Cirrus Logic GD5428 ISA VGA adapter (CL-GD5428, 1-2 MB)
+[part]
+id = 'part:cirrus/cirrus-gd5428'
+origin = 'cirrus'
+name = 'cirrus-gd5428'
+summary = "Cirrus Logic GD5428 ISA VGA adapter (CL-GD5428, 1-2 MB)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 0

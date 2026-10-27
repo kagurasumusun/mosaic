@@ -1,0 +1,11 @@
+# Samsung SyncMaster 213T 21.3" DVI LCD monitor (1600x1200)
+[part]
+id = 'part:samsung/samsung-syncmaster-213t'
+origin = 'samsung'
+name = 'samsung-syncmaster-213t'
+summary = "Samsung SyncMaster 213T 21.3\" DVI LCD monitor (1600x1200)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

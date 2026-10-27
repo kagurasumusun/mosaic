@@ -1,0 +1,11 @@
+# HP 3458A 8.5-digit digital multimeter (GPIB, 100 kS/s digitizing)
+[part]
+id = 'part:hp/hp-3458a'
+origin = 'hp'
+name = 'hp-3458a'
+summary = "HP 3458A 8.5-digit digital multimeter (GPIB, 100 kS/s digitizing)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 22

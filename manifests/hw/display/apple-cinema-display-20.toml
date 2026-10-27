@@ -1,0 +1,11 @@
+# Apple Cinema Display 20" DVI-D LCD monitor (1680x1050)
+[part]
+id = 'part:apple/apple-cinema-display-20'
+origin = 'apple'
+name = 'apple-cinema-display-20'
+summary = "Apple Cinema Display 20\" DVI-D LCD monitor (1680x1050)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

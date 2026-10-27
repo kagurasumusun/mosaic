@@ -1,0 +1,13 @@
+# SK hynix HY27UF082G2M 2 Gbit SLC NAND (2048+64 B pages)
+[part]
+id = 'part:hynix/hynix-hy27uf082g2m'
+origin = 'hynix'
+name = 'hynix-hy27uf082g2m'
+summary = "SK hynix HY27UF082G2M 2 Gbit SLC NAND (2048+64 B pages)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 2048
+oob-size = 64
+blocks = 131072

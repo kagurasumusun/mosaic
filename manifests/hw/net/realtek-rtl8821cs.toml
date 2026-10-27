@@ -1,0 +1,11 @@
+# Realtek RTL8821CS SDIO Wi-Fi/BT module (802.11ac)
+[part]
+id = 'part:realtek/realtek-rtl8821cs'
+origin = 'realtek'
+name = 'realtek-rtl8821cs'
+summary = "Realtek RTL8821CS SDIO Wi-Fi/BT module (802.11ac)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 2

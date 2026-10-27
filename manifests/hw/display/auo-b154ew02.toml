@@ -1,0 +1,11 @@
+# AUO B154EW02-V0 15.4" WXGA laptop panel (1280x800, LVDS)
+[part]
+id = 'part:auo/auo-b154ew02'
+origin = 'auo'
+name = 'auo-b154ew02'
+summary = "AUO B154EW02-V0 15.4\" WXGA laptop panel (1280x800, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

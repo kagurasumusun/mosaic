@@ -1,0 +1,11 @@
+# HP E3631A triple-output DC power supply (GPIB, 80 W)
+[part]
+id = 'part:hp/hp-e3631a'
+origin = 'hp'
+name = 'hp-e3631a'
+summary = "HP E3631A triple-output DC power supply (GPIB, 80 W)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 5

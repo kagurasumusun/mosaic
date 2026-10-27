@@ -1,0 +1,11 @@
+# 3Com EtherLink III 3C589C 16-bit PC Card Ethernet (10BASE-T, RJ45)
+[part]
+id = 'part:3com/etherlink-iii-3c589c'
+origin = '3com'
+name = 'etherlink-iii-3c589c'
+summary = "3Com EtherLink III 3C589C 16-bit PC Card Ethernet (10BASE-T, RJ45)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

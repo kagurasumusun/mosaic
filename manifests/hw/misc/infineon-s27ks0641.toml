@@ -1,0 +1,11 @@
+# Infineon (Cypress) S27KS0641 64 Mbit HyperRAM (1.8 V, 200 MHz DDR)
+[part]
+id = 'part:infineon/infineon-s27ks0641'
+origin = 'infineon'
+name = 'infineon-s27ks0641'
+summary = "Infineon (Cypress) S27KS0641 64 Mbit HyperRAM (1.8 V, 200 MHz DDR)"
+bindings = ["hyperbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[hyperbus]
+size-mb = 8

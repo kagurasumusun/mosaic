@@ -1,0 +1,11 @@
+# Realtek RTL8189ES SDIO Wi-Fi module (802.11n)
+[part]
+id = 'part:realtek/realtek-rtl8189es'
+origin = 'realtek'
+name = 'realtek-rtl8189es'
+summary = "Realtek RTL8189ES SDIO Wi-Fi module (802.11n)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 1

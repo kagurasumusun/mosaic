@@ -1,0 +1,11 @@
+# iiyama Vision Master Pro 514 (HM204DT) 22" CRT monitor (analog VGA)
+[part]
+id = 'part:iiyama/iiyama-vision-master-pro-514'
+origin = 'iiyama'
+name = 'iiyama-vision-master-pro-514'
+summary = "iiyama Vision Master Pro 514 (HM204DT) 22\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 360000

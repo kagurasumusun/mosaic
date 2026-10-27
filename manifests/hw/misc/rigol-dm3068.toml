@@ -1,0 +1,11 @@
+# Rigol DM3068 6.5-digit digital multimeter (GPIB, USB)
+[part]
+id = 'part:rigol/rigol-dm3068'
+origin = 'rigol'
+name = 'rigol-dm3068'
+summary = "Rigol DM3068 6.5-digit digital multimeter (GPIB, USB)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 18

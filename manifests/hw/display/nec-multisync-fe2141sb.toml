@@ -1,0 +1,11 @@
+# NEC MultiSync FE2141SB 22" CRT monitor (analog VGA)
+[part]
+id = 'part:nec/nec-multisync-fe2141sb'
+origin = 'nec'
+name = 'nec-multisync-fe2141sb'
+summary = "NEC MultiSync FE2141SB 22\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 345000

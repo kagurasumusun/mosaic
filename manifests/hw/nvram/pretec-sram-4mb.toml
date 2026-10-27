@@ -1,0 +1,11 @@
+# Pretec 4 MB SRAM PC Card (attribute-mapped linear SRAM)
+[part]
+id = 'part:pretec/pretec-sram-4mb'
+origin = 'pretec'
+name = 'pretec-sram-4mb'
+summary = "Pretec 4 MB SRAM PC Card (attribute-mapped linear SRAM)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

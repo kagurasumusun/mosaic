@@ -1,0 +1,11 @@
+# SK hynix HN8TC18AJ 128 GB UFS 2.2 embedded flash
+[part]
+id = 'part:hynix/hynix-hn8tc18aj'
+origin = 'hynix'
+name = 'hynix-hn8tc18aj'
+summary = "SK hynix HN8TC18AJ 128 GB UFS 2.2 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

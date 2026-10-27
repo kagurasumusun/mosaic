@@ -1,0 +1,11 @@
+# HP 54600B 100 MHz 2-channel digital oscilloscope (GPIB)
+[part]
+id = 'part:hp/hp-54600b'
+origin = 'hp'
+name = 'hp-54600b'
+summary = "HP 54600B 100 MHz 2-channel digital oscilloscope (GPIB)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 7

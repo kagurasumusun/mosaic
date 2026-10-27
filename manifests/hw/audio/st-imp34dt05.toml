@@ -1,0 +1,11 @@
+# ST IMP34DT05 PDM MEMS microphone (65 dB SNR, top port)
+[part]
+id = 'part:st/st-imp34dt05'
+origin = 'st'
+name = 'st-imp34dt05'
+summary = "ST IMP34DT05 PDM MEMS microphone (65 dB SNR, top port)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

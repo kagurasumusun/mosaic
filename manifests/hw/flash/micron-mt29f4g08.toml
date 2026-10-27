@@ -1,0 +1,13 @@
+# Micron MT29F4G08AAA 4 Gbit SLC NAND (4096+128 B pages)
+[part]
+id = 'part:micron/micron-mt29f4g08'
+origin = 'micron'
+name = 'micron-mt29f4g08'
+summary = "Micron MT29F4G08AAA 4 Gbit SLC NAND (4096+128 B pages)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 4096
+oob-size = 128
+blocks = 131072

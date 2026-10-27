@@ -1,0 +1,11 @@
+# EIZO FlexScan T965 21" CRT monitor (analog VGA)
+[part]
+id = 'part:eizo/eizo-flexscan-t965'
+origin = 'eizo'
+name = 'eizo-flexscan-t965'
+summary = "EIZO FlexScan T965 21\" CRT monitor (analog VGA)"
+bindings = ["vga"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[vga]
+max-pixel-clock-khz = 350000

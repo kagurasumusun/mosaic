@@ -1,0 +1,11 @@
+# IBM Microdrive 340 MB 1-inch hard disk (CompactFlash Type II, PC Card ATA)
+[part]
+id = 'part:ibm/ibm-microdrive-340'
+origin = 'ibm'
+name = 'ibm-microdrive-340'
+summary = "IBM Microdrive 340 MB 1-inch hard disk (CompactFlash Type II, PC Card ATA)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'

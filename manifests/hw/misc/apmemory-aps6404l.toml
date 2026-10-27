@@ -1,0 +1,11 @@
+# AP Memory APS6404L-45SQ 64 Mbit pSRAM HyperRAM (x16, 84 MHz)
+[part]
+id = 'part:apmemory/apmemory-aps6404l'
+origin = 'apmemory'
+name = 'apmemory-aps6404l'
+summary = "AP Memory APS6404L-45SQ 64 Mbit pSRAM HyperRAM (x16, 84 MHz)"
+bindings = ["hyperbus"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[hyperbus]
+size-mb = 8

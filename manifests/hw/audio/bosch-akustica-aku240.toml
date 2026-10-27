@@ -1,0 +1,11 @@
+# Bosch Akustica AKU240 PDM MEMS microphone (CMOS/MEMS, top port)
+[part]
+id = 'part:bosch/bosch-akustica-aku240'
+origin = 'bosch'
+name = 'bosch-akustica-aku240'
+summary = "Bosch Akustica AKU240 PDM MEMS microphone (CMOS/MEMS, top port)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

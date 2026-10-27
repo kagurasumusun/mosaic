@@ -1,0 +1,11 @@
+# Tseng Labs ET4000AX ISA VGA adapter (high-res DOS modes)
+[part]
+id = 'part:tseng/tseng-et4000ax'
+origin = 'tseng'
+name = 'tseng-et4000ax'
+summary = "Tseng Labs ET4000AX ISA VGA adapter (high-res DOS modes)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 0

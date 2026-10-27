@@ -1,0 +1,11 @@
+# Knowles SPH0641LU4H-1 PDM MEMS microphone (Adafruit PDM mic)
+[part]
+id = 'part:knowles/knowles-sph0641'
+origin = 'knowles'
+name = 'knowles-sph0641'
+summary = "Knowles SPH0641LU4H-1 PDM MEMS microphone (Adafruit PDM mic)"
+bindings = ["pdm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pdm]
+channels = 1

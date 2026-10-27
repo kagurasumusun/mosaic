@@ -1,0 +1,11 @@
+# Samsung KLUDG4U1DB 64 GB UFS 2.0 embedded flash (2-lane, 4 KB pages)
+[part]
+id = 'part:samsung/samsung-kludg4u1db'
+origin = 'samsung'
+name = 'samsung-kludg4u1db'
+summary = "Samsung KLUDG4U1DB 64 GB UFS 2.0 embedded flash (2-lane, 4 KB pages)"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

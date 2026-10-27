@@ -1,0 +1,11 @@
+# Toshiba-Matsushita LTD150EM06 15" XGA laptop panel (1024x768, LVDS)
+[part]
+id = 'part:toshiba/toshiba-ltd150em'
+origin = 'toshiba'
+name = 'toshiba-ltd150em'
+summary = "Toshiba-Matsushita LTD150EM06 15\" XGA laptop panel (1024x768, LVDS)"
+bindings = ["lvds"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[lvds]
+lanes = 4

@@ -1,0 +1,11 @@
+# Creative Sound Blaster 16 CT2230 ISA sound card (FM + 16-bit CODEC)
+[part]
+id = 'part:creative/creative-sound-blaster-16'
+origin = 'creative'
+name = 'creative-sound-blaster-16'
+summary = "Creative Sound Blaster 16 CT2230 ISA sound card (FM + 16-bit CODEC)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 3

@@ -1,0 +1,11 @@
+# Noctua NF-A12x25 PWM 120 mm 4-pin fan (2000 RPM, 25 mm depth)
+[part]
+id = 'part:noctua/noctua-nf-a12x25'
+origin = 'noctua'
+name = 'noctua-nf-a12x25'
+summary = "Noctua NF-A12x25 PWM 120 mm 4-pin fan (2000 RPM, 25 mm depth)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

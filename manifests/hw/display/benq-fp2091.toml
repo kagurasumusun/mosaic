@@ -1,0 +1,11 @@
+# BenQ FP2091 20.1" DVI LCD monitor (1600x1200)
+[part]
+id = 'part:benq/benq-fp2091'
+origin = 'benq'
+name = 'benq-fp2091'
+summary = "BenQ FP2091 20.1\" DVI LCD monitor (1600x1200)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

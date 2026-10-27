@@ -1,0 +1,11 @@
+# TowerPro SG90 9 g micro analog RC servo (PWM 50 Hz)
+[part]
+id = 'part:towerpro/towerpro-sg90'
+origin = 'towerpro'
+name = 'towerpro-sg90'
+summary = "TowerPro SG90 9 g micro analog RC servo (PWM 50 Hz)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

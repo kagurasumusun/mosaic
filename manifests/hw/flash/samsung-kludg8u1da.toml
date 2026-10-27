@@ -1,0 +1,11 @@
+# Samsung KLUDG8U1DA 128 GB UFS 2.1 embedded flash
+[part]
+id = 'part:samsung/samsung-kludg8u1da'
+origin = 'samsung'
+name = 'samsung-kludg8u1da'
+summary = "Samsung KLUDG8U1DA 128 GB UFS 2.1 embedded flash"
+bindings = ["ufs"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[ufs]
+lu-count = 1

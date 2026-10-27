@@ -1,0 +1,11 @@
+# Fluke 45 dual-display 5-digit digital multimeter (GPIB option)
+[part]
+id = 'part:fluke/fluke-45'
+origin = 'fluke'
+name = 'fluke-45'
+summary = "Fluke 45 dual-display 5-digit digital multimeter (GPIB option)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 6

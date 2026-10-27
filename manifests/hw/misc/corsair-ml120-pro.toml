@@ -1,0 +1,11 @@
+# Corsair ML120 Pro 120 mm magnetic-levitation 4-pin PWM fan (2000 RPM)
+[part]
+id = 'part:corsair/corsair-ml120-pro'
+origin = 'corsair'
+name = 'corsair-ml120-pro'
+summary = "Corsair ML120 Pro 120 mm magnetic-levitation 4-pin PWM fan (2000 RPM)"
+bindings = ["pwm"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pwm]
+channels = 1

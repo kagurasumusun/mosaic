@@ -1,0 +1,11 @@
+# Keithley 2000 6.5-digit integrating digital multimeter (GPIB)
+[part]
+id = 'part:keithley/keithley-2000'
+origin = 'keithley'
+name = 'keithley-2000'
+summary = "Keithley 2000 6.5-digit integrating digital multimeter (GPIB)"
+bindings = ["gpib"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[gpib]
+address = 16

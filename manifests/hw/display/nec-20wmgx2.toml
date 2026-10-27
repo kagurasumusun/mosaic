@@ -1,0 +1,11 @@
+# NEC 20WMGX2 20.1" widescreen DVI LCD monitor (1680x1050)
+[part]
+id = 'part:nec/nec-20wmgx2'
+origin = 'nec'
+name = 'nec-20wmgx2'
+summary = "NEC 20WMGX2 20.1\" widescreen DVI LCD monitor (1680x1050)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

@@ -1,0 +1,11 @@
+# Dell UltraSharp 2001FP 20.1" DVI-D LCD monitor (1600x1200 UXGA)
+[part]
+id = 'part:dell/dell-ultrasharp-2001fp'
+origin = 'dell'
+name = 'dell-ultrasharp-2001fp'
+summary = "Dell UltraSharp 2001FP 20.1\" DVI-D LCD monitor (1600x1200 UXGA)"
+bindings = ["dvi"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[dvi]
+lanes = 1

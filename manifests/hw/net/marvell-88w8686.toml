@@ -1,0 +1,11 @@
+# Marvell 88W8686 SDIO Wi-Fi module (802.11g, Libertas)
+[part]
+id = 'part:marvell/marvell-88w8686'
+origin = 'marvell'
+name = 'marvell-88w8686'
+summary = "Marvell 88W8686 SDIO Wi-Fi module (802.11g, Libertas)"
+bindings = ["sdio"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[sdio]
+functions = 1

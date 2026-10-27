@@ -1,0 +1,13 @@
+# Toshiba TC58BVG0S3HTA00 4 Gbit SLC NAND (4096+224 B pages)
+[part]
+id = 'part:toshiba/toshiba-tc58bvg0s3'
+origin = 'toshiba'
+name = 'toshiba-tc58bvg0s3'
+summary = "Toshiba TC58BVG0S3HTA00 4 Gbit SLC NAND (4096+224 B pages)"
+bindings = ["nand"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[nand]
+page-size = 4096
+oob-size = 224
+blocks = 131072

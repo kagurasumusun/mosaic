@@ -1,0 +1,11 @@
+# Gravis UltraSound ACE ISA sound card (GF1, 256 KB RAM)
+[part]
+id = 'part:gravis/gravis-ultrasound-ace'
+origin = 'gravis'
+name = 'gravis-ultrasound-ace'
+summary = "Gravis UltraSound ACE ISA sound card (GF1, 256 KB RAM)"
+bindings = ["isa"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[isa]
+dma-channels = 2

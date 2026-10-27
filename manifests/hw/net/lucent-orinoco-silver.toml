@@ -1,0 +1,11 @@
+# Lucent ORiNOCO Silver 802.11b PC Card (Hermes MAC, 64-bit WEP)
+[part]
+id = 'part:lucent/lucent-orinoco-silver'
+origin = 'lucent'
+name = 'lucent-orinoco-silver'
+summary = "Lucent ORiNOCO Silver 802.11b PC Card (Hermes MAC, 64-bit WEP)"
+bindings = ["pcmcia"]
+provenance = { doc = 'vendor datasheet', confidence = 'medium' }
+
+[pcmcia]
+slot = '16bit'
