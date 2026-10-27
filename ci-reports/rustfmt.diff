@@ -1441,36 +1441,10 @@ index 68c3470..3434f1a 100644
 +    ) -> Result<Vec<u8>, MicrowireError>;
  }
 diff --git a/contract/src/onewire.rs b/contract/src/onewire.rs
-index 4f697a2..d262714 100644
+index 56fbd70..022fb43 100644
 --- a/contract/src/onewire.rs
 +++ b/contract/src/onewire.rs
-@@ -7,8 +7,12 @@ use crate::model::Ctx;
- pub struct OneWireRom(pub u64);
- 
- impl OneWireRom {
--    pub fn family(self) -> u8 { (self.0 & 0xFF) as u8 }
--    pub fn crc_ok(self) -> bool { onewire_crc8(self.0) == 0 }
-+    pub fn family(self) -> u8 {
-+        (self.0 & 0xFF) as u8
-+    }
-+    pub fn crc_ok(self) -> bool {
-+        onewire_crc8(self.0) == 0
-+    }
- }
- 
- /// CRC8 of the 56-bit (family+serial) portion, polynomial 0x81 (reflected).
-@@ -17,7 +21,9 @@ pub fn onewire_crc8(mut bits: u64) -> u8 {
-     for i in 0..56 {
-         let mix = (crc ^ ((bits >> i) as u8 & 1)) & 1;
-         crc >>= 1;
--        if mix != 0 { crc ^= 0x8C; }
-+        if mix != 0 {
-+            crc ^= 0x8C;
-+        }
-     }
-     crc
- }
-@@ -48,7 +54,9 @@ pub trait OneWireInitiator {
+@@ -84,7 +84,9 @@ pub trait OneWireInitiator {
      fn read_byte(&mut self, ctx: &mut dyn Ctx) -> Result<u8, OneWireError> {
          let mut v = 0u8;
          for i in 0..8 {
@@ -1805,6 +1779,30 @@ index e2d38d2..a2dae3f 100644
 +    fn write(&mut self, ctx: &mut dyn Ctx, ap: SwdAp, addr: u8, value: u32)
 +        -> Result<(), SwdError>;
  }
+diff --git a/hw/src/adc/ads1015.rs b/hw/src/adc/ads1015.rs
+index 60b68bb..9adc08d 100644
+--- a/hw/src/adc/ads1015.rs
++++ b/hw/src/adc/ads1015.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ads1015: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/adc/ads1115.rs b/hw/src/adc/ads1115.rs
+index 4159016..87b6f3d 100644
+--- a/hw/src/adc/ads1115.rs
++++ b/hw/src/adc/ads1115.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ads1115: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
 diff --git a/hw/src/adc/mod.rs b/hw/src/adc/mod.rs
 index 33f436f..26abc45 100644
 --- a/hw/src/adc/mod.rs
@@ -1822,6 +1820,18 @@ index 33f436f..26abc45 100644
  pub mod max1118;
  pub mod max1119;
  pub mod max1160;
+diff --git a/hw/src/adc/tla2024.rs b/hw/src/adc/tla2024.rs
+index 22957aa..daf1547 100644
+--- a/hw/src/adc/tla2024.rs
++++ b/hw/src/adc/tla2024.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// tla2024: 2 16-bit registers, pointer mask 0x01, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(2, 0x01)
+-        .at(0x48)
++    PointerSensor::new(2, 0x01).at(0x48)
+ }
 diff --git a/hw/src/audio/ac97.rs b/hw/src/audio/ac97.rs
 index 72ee9f3..fc823fb 100644
 --- a/hw/src/audio/ac97.rs
@@ -5008,8 +5018,22 @@ index a76f7b5..ae679ee 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/eeprom/microwire_93cxx.rs b/hw/src/eeprom/microwire_93cxx.rs
+index bfc879f..9c198cd 100644
+--- a/hw/src/eeprom/microwire_93cxx.rs
++++ b/hw/src/eeprom/microwire_93cxx.rs
+@@ -155,7 +155,8 @@ mod tests {
+         let mut part = MicrowireEeprom::new(64, 6);
+         let mut ctx = TestCtx::default();
+         part.execute(&mut ctx, MicrowireOp::Ewen, 0, &[]).unwrap();
+-        part.execute(&mut ctx, MicrowireOp::Wral, 0, &[0x0F]).unwrap();
++        part.execute(&mut ctx, MicrowireOp::Wral, 0, &[0x0F])
++            .unwrap();
+         assert!(part.data().iter().all(|&b| b == 0x0F));
+         part.execute(&mut ctx, MicrowireOp::Ewen, 0, &[]).unwrap();
+         part.execute(&mut ctx, MicrowireOp::Eral, 0, &[]).unwrap();
 diff --git a/hw/src/eeprom/mod.rs b/hw/src/eeprom/mod.rs
-index dcf4179..ec0550b 100644
+index 1253f0a..4948536 100644
 --- a/hw/src/eeprom/mod.rs
 +++ b/hw/src/eeprom/mod.rs
 @@ -1,4 +1,3 @@
@@ -5025,6 +5049,186 @@ index dcf4179..ec0550b 100644
  pub mod fm24c04;
  pub mod fm24c16;
  pub mod fm24c256;
+@@ -100,9 +100,6 @@ pub mod mb85rc64;
+ pub mod pca8581;
+ pub mod pcf8570;
+ 
+-pub mod i2c_24cxx;
+-pub mod spi_25cxx;
+-pub mod microwire_93cxx;
+ pub mod at24c00;
+ pub mod at24c01;
+ pub mod at24c02;
+@@ -122,3 +119,6 @@ pub mod at93c56;
+ pub mod at93c66;
+ pub mod at93c76;
+ pub mod at93c86;
++pub mod i2c_24cxx;
++pub mod microwire_93cxx;
++pub mod spi_25cxx;
+diff --git a/hw/src/eeprom/spi_25cxx.rs b/hw/src/eeprom/spi_25cxx.rs
+index 43e9278..7fcad6b 100644
+--- a/hw/src/eeprom/spi_25cxx.rs
++++ b/hw/src/eeprom/spi_25cxx.rs
+@@ -30,7 +30,10 @@ const PAGE: usize = 16;
+ enum State {
+     Idle,
+     /// Collecting address bytes; `data` selects the follow-up phase.
+-    Address { seen: u8, write: bool },
++    Address {
++        seen: u8,
++        write: bool,
++    },
+     ReadData,
+     WriteData,
+     ReadStatus,
+@@ -113,12 +116,18 @@ impl SpiTarget for SpiEeprom {
+                     cmd::WRSR => self.state = State::WriteStatus,
+                     cmd::READ => {
+                         self.addr = 0;
+-                        self.state = State::Address { seen: 0, write: false };
++                        self.state = State::Address {
++                            seen: 0,
++                            write: false,
++                        };
+                     }
+                     cmd::WRITE => {
+                         self.addr = 0;
+                         self.write_active = true;
+-                        self.state = State::Address { seen: 0, write: true };
++                        self.state = State::Address {
++                            seen: 0,
++                            write: true,
++                        };
+                     }
+                     _ => {} // undefined opcode: ignored
+                 }
+@@ -135,7 +144,11 @@ impl SpiTarget for SpiEeprom {
+                 seen += 1;
+                 if seen >= self.addr_bytes {
+                     self.addr %= self.size;
+-                    self.state = if write { State::WriteData } else { State::ReadData };
++                    self.state = if write {
++                        State::WriteData
++                    } else {
++                        State::ReadData
++                    };
+                 } else {
+                     self.state = State::Address { seen, write };
+                 }
+@@ -169,7 +182,10 @@ mod tests {
+         part.selected(&mut ctx, true);
+         let mut out = Vec::new();
+         for &b in bytes {
+-            out.push(part.exchange_byte(&mut ctx, SpiMode::new(false, false), b).unwrap());
++            out.push(
++                part.exchange_byte(&mut ctx, SpiMode::new(false, false), b)
++                    .unwrap(),
++            );
+         }
+         part.selected(&mut ctx, false);
+         out
+diff --git a/hw/src/flash/spi_nor.rs b/hw/src/flash/spi_nor.rs
+index 6684f19..d42a4f9 100644
+--- a/hw/src/flash/spi_nor.rs
++++ b/hw/src/flash/spi_nor.rs
+@@ -76,12 +76,17 @@ enum State {
+     WriteStatus,
+     ReadId,
+     /// Collecting the 3 address bytes; the follow-up phase rides along.
+-    Address { seen: u8, next: Next },
++    Address {
++        seen: u8,
++        next: Next,
++    },
+     FastDummy,
+     ReadData,
+     ProgramData,
+     /// The `AB` release sequence's dummy bytes before the signature byte.
+-    ReleaseDummy { seen: u8 },
++    ReleaseDummy {
++        seen: u8,
++    },
+ }
+ 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+@@ -189,30 +194,46 @@ impl SpiTarget for SpiNorFlash {
+                     }
+                     cmd::READ => {
+                         self.addr = 0;
+-                        self.state = State::Address { seen: 0, next: Next::Read };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::Read,
++                        };
+                     }
+                     cmd::FAST_READ => {
+                         self.addr = 0;
+-                        self.state = State::Address { seen: 0, next: Next::FastRead };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::FastRead,
++                        };
+                     }
+                     cmd::PAGE_PROGRAM => {
+                         self.addr = 0;
+                         self.program_active = true;
+-                        self.state = State::Address { seen: 0, next: Next::Program };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::Program,
++                        };
+                     }
+                     cmd::SECTOR_ERASE => {
+                         self.addr = 0;
+-                        self.state = State::Address { seen: 0, next: Next::Erase(EraseKind::Sector4K) };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::Erase(EraseKind::Sector4K),
++                        };
+                     }
+                     cmd::BLOCK_ERASE_32K => {
+                         self.addr = 0;
+-                        self.state =
+-                            State::Address { seen: 0, next: Next::Erase(EraseKind::Block32K) };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::Erase(EraseKind::Block32K),
++                        };
+                     }
+                     cmd::BLOCK_ERASE_64K => {
+                         self.addr = 0;
+-                        self.state =
+-                            State::Address { seen: 0, next: Next::Erase(EraseKind::Block64K) };
++                        self.state = State::Address {
++                            seen: 0,
++                            next: Next::Erase(EraseKind::Block64K),
++                        };
+                     }
+                     cmd::CHIP_ERASE | cmd::CHIP_ERASE_ALT => {
+                         if self.wren {
+@@ -309,7 +330,10 @@ mod tests {
+         part.selected(&mut ctx, true);
+         let mut out = Vec::new();
+         for &b in bytes {
+-            out.push(part.exchange_byte(&mut ctx, SpiMode::new(false, false), b).unwrap());
++            out.push(
++                part.exchange_byte(&mut ctx, SpiMode::new(false, false), b)
++                    .unwrap(),
++            );
+         }
+         part.selected(&mut ctx, false);
+         out
+@@ -370,7 +394,8 @@ mod tests {
+         part.selected(&mut ctx, true);
+         part.exchange_byte(&mut ctx, SpiMode::new(false, false), 0x05)
+             .unwrap();
+-        let status = part.exchange_byte(&mut ctx, SpiMode::new(false, false), 0x00)
++        let status = part
++            .exchange_byte(&mut ctx, SpiMode::new(false, false), 0x00)
+             .unwrap();
+         part.selected(&mut ctx, false);
+         assert_eq!(status & STATUS_WEL, STATUS_WEL);
 diff --git a/hw/src/gpio/am335x_gpio.rs b/hw/src/gpio/am335x_gpio.rs
 index 34495c4..cd0e448 100644
 --- a/hw/src/gpio/am335x_gpio.rs
@@ -7950,6 +8154,78 @@ index 766b671..0b916ad 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/misc/ina219.rs b/hw/src/misc/ina219.rs
+index f0a0835..4c2a1aa 100644
+--- a/hw/src/misc/ina219.rs
++++ b/hw/src/misc/ina219.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina219: 6 16-bit registers, pointer mask 0x07, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(6, 0x07)
+-        .at(0x40)
++    PointerSensor::new(6, 0x07).at(0x40)
+ }
+diff --git a/hw/src/misc/ina226.rs b/hw/src/misc/ina226.rs
+index 1d7baab..f06ceda 100644
+--- a/hw/src/misc/ina226.rs
++++ b/hw/src/misc/ina226.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina226: 6 16-bit registers, pointer mask 0x07, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(6, 0x07)
+-        .at(0x40)
++    PointerSensor::new(6, 0x07).at(0x40)
+ }
+diff --git a/hw/src/misc/ina230.rs b/hw/src/misc/ina230.rs
+index 000c32f..83746ce 100644
+--- a/hw/src/misc/ina230.rs
++++ b/hw/src/misc/ina230.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina230: 6 16-bit registers, pointer mask 0x07, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(6, 0x07)
+-        .at(0x40)
++    PointerSensor::new(6, 0x07).at(0x40)
+ }
+diff --git a/hw/src/misc/ina231.rs b/hw/src/misc/ina231.rs
+index dfe889e..91da0c0 100644
+--- a/hw/src/misc/ina231.rs
++++ b/hw/src/misc/ina231.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina231: 6 16-bit registers, pointer mask 0x07, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(6, 0x07)
+-        .at(0x40)
++    PointerSensor::new(6, 0x07).at(0x40)
+ }
+diff --git a/hw/src/misc/ina260.rs b/hw/src/misc/ina260.rs
+index 04c17a4..fe885b5 100644
+--- a/hw/src/misc/ina260.rs
++++ b/hw/src/misc/ina260.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina260: 6 16-bit registers, pointer mask 0x07, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(6, 0x07)
+-        .at(0x40)
++    PointerSensor::new(6, 0x07).at(0x40)
+ }
+diff --git a/hw/src/misc/ina3221.rs b/hw/src/misc/ina3221.rs
+index b3b09fc..59aa34b 100644
+--- a/hw/src/misc/ina3221.rs
++++ b/hw/src/misc/ina3221.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ina3221: 9 16-bit registers, pointer mask 0x0f, strap 0x40.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(9, 0x0f)
+-        .at(0x40)
++    PointerSensor::new(9, 0x0f).at(0x40)
+ }
 diff --git a/hw/src/misc/ish.rs b/hw/src/misc/ish.rs
 index 3ff5b12..e4a3684 100644
 --- a/hw/src/misc/ish.rs
@@ -10133,6 +10409,35 @@ index 9372822..31afd7c 100644
  
  /// Motorola MC146818A RTC / PC CMOS: register model.
  fn spawn_rtc_mc146818(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+diff --git a/hw/src/rtc/ds1307_core.rs b/hw/src/rtc/ds1307_core.rs
+index 4603264..64446cb 100644
+--- a/hw/src/rtc/ds1307_core.rs
++++ b/hw/src/rtc/ds1307_core.rs
+@@ -241,7 +241,8 @@ mod tests {
+     fn write_sets_the_pointer_and_ram_round_trips() {
+         let mut part = Ds1307Core::new();
+         let mut ctx = TestCtx::default();
+-        part.target_write(&mut ctx, &AT, &[0x08, 0xDE, 0xAD]).unwrap();
++        part.target_write(&mut ctx, &AT, &[0x08, 0xDE, 0xAD])
++            .unwrap();
+         let mut buf = [0u8; 2];
+         part.target_write(&mut ctx, &AT, &[0x08]).unwrap();
+         part.target_read(&mut ctx, &AT, &mut buf).unwrap();
+@@ -275,8 +276,12 @@ mod tests {
+     fn clock_halt_freezes_the_tick() {
+         let mut part = Ds1307Core::new();
+         let mut ctx = TestCtx::default();
+-        part.target_write(&mut ctx, &AT, &[reg::SECONDS as u8, to_bcd(30) | CLOCK_HALT])
+-            .unwrap();
++        part.target_write(
++            &mut ctx,
++            &AT,
++            &[reg::SECONDS as u8, to_bcd(30) | CLOCK_HALT],
++        )
++        .unwrap();
+         assert!(!part.running());
+         part.tick_second();
+         assert_eq!(part.regs()[reg::SECONDS], to_bcd(30) | CLOCK_HALT);
 diff --git a/hw/src/rtc/lpc11xx_rtc.rs b/hw/src/rtc/lpc11xx_rtc.rs
 index b2a1287..2ba478b 100644
 --- a/hw/src/rtc/lpc11xx_rtc.rs
@@ -11048,8 +11353,154 @@ index 5faca6f..1a9c31b 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/sensor/adt7410.rs b/hw/src/sensor/adt7410.rs
+index 54d3beb..e46c2f2 100644
+--- a/hw/src/sensor/adt7410.rs
++++ b/hw/src/sensor/adt7410.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// adt7410: 7 16-bit registers, pointer mask 0x07, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(7, 0x07)
+-        .at(0x48)
++    PointerSensor::new(7, 0x07).at(0x48)
+ }
+diff --git a/hw/src/sensor/adt7420.rs b/hw/src/sensor/adt7420.rs
+index 0ff5c07..5c5b55f 100644
+--- a/hw/src/sensor/adt7420.rs
++++ b/hw/src/sensor/adt7420.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// adt7420: 7 16-bit registers, pointer mask 0x07, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(7, 0x07)
+-        .at(0x48)
++    PointerSensor::new(7, 0x07).at(0x48)
+ }
+diff --git a/hw/src/sensor/adt75.rs b/hw/src/sensor/adt75.rs
+index 1a89831..77bdd1c 100644
+--- a/hw/src/sensor/adt75.rs
++++ b/hw/src/sensor/adt75.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// adt75: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/ds1775.rs b/hw/src/sensor/ds1775.rs
+index 2764b46..f5ebeaf 100644
+--- a/hw/src/sensor/ds1775.rs
++++ b/hw/src/sensor/ds1775.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ds1775: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/ds1780.rs b/hw/src/sensor/ds1780.rs
+index 421d4ac..263228e 100644
+--- a/hw/src/sensor/ds1780.rs
++++ b/hw/src/sensor/ds1780.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// ds1780: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/i2c_pointer.rs b/hw/src/sensor/i2c_pointer.rs
+index e8d7588..17d47e6 100644
+--- a/hw/src/sensor/i2c_pointer.rs
++++ b/hw/src/sensor/i2c_pointer.rs
+@@ -139,7 +139,8 @@ mod tests {
+         let mut part = PointerSensor::new(2, 0x01);
+         let mut ctx = TestCtx::default();
+         // Start at the last register; the burst wraps into register 0's MSB.
+-        part.target_write(&mut ctx, &AT, &[0x01, 0x11, 0x22, 0x33]).unwrap();
++        part.target_write(&mut ctx, &AT, &[0x01, 0x11, 0x22, 0x33])
++            .unwrap();
+         assert_eq!(part.register(1), 0x1122);
+         // The byte stream continued into register 0's MSB lane (0x3300).
+         assert_eq!(part.register(0), 0x3300);
+diff --git a/hw/src/sensor/lm75.rs b/hw/src/sensor/lm75.rs
+index 7bc2e9f..93bc216 100644
+--- a/hw/src/sensor/lm75.rs
++++ b/hw/src/sensor/lm75.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// lm75: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/lm75b.rs b/hw/src/sensor/lm75b.rs
+index fa9793a..a417c98 100644
+--- a/hw/src/sensor/lm75b.rs
++++ b/hw/src/sensor/lm75b.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// lm75b: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/lm75c.rs b/hw/src/sensor/lm75c.rs
+index 67cb4fd..4ec9061 100644
+--- a/hw/src/sensor/lm75c.rs
++++ b/hw/src/sensor/lm75c.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// lm75c: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/max30205.rs b/hw/src/sensor/max30205.rs
+index abf7624..69e65eb 100644
+--- a/hw/src/sensor/max30205.rs
++++ b/hw/src/sensor/max30205.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// max30205: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/mcp9803.rs b/hw/src/sensor/mcp9803.rs
+index babce68..5df43ef 100644
+--- a/hw/src/sensor/mcp9803.rs
++++ b/hw/src/sensor/mcp9803.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// mcp9803: 4 16-bit registers, pointer mask 0x03, strap 0x18.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x18)
++    PointerSensor::new(4, 0x03).at(0x18)
+ }
+diff --git a/hw/src/sensor/mcp9804.rs b/hw/src/sensor/mcp9804.rs
+index 5749df5..f3076c0 100644
+--- a/hw/src/sensor/mcp9804.rs
++++ b/hw/src/sensor/mcp9804.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// mcp9804: 9 16-bit registers, pointer mask 0x0f, strap 0x18.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(9, 0x0f)
+-        .at(0x18)
++    PointerSensor::new(9, 0x0f).at(0x18)
+ }
 diff --git a/hw/src/sensor/mod.rs b/hw/src/sensor/mod.rs
-index 9db3411..29a7161 100644
+index d8336c7..e31f124 100644
 --- a/hw/src/sensor/mod.rs
 +++ b/hw/src/sensor/mod.rs
 @@ -5,7 +5,6 @@
@@ -11068,6 +11519,78 @@ index 9db3411..29a7161 100644
  pub mod ccs811;
  pub mod ccs811_aq;
  pub mod ds1775;
+diff --git a/hw/src/sensor/stlm75.rs b/hw/src/sensor/stlm75.rs
+index 81571f8..13e5ec1 100644
+--- a/hw/src/sensor/stlm75.rs
++++ b/hw/src/sensor/stlm75.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// stlm75: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/stts424.rs b/hw/src/sensor/stts424.rs
+index 9f60a18..dde057a 100644
+--- a/hw/src/sensor/stts424.rs
++++ b/hw/src/sensor/stts424.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// stts424: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/stts751.rs b/hw/src/sensor/stts751.rs
+index 20ab8ae..83e01ab 100644
+--- a/hw/src/sensor/stts751.rs
++++ b/hw/src/sensor/stts751.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// stts751: 5 16-bit registers, pointer mask 0x07, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(5, 0x07)
+-        .at(0x48)
++    PointerSensor::new(5, 0x07).at(0x48)
+ }
+diff --git a/hw/src/sensor/tmp102.rs b/hw/src/sensor/tmp102.rs
+index a01c690..2adecd1 100644
+--- a/hw/src/sensor/tmp102.rs
++++ b/hw/src/sensor/tmp102.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// tmp102: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/tmp112.rs b/hw/src/sensor/tmp112.rs
+index c6b126c..ab952b0 100644
+--- a/hw/src/sensor/tmp112.rs
++++ b/hw/src/sensor/tmp112.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// tmp112: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
+diff --git a/hw/src/sensor/tmp275.rs b/hw/src/sensor/tmp275.rs
+index 3c8aa62..00984e2 100644
+--- a/hw/src/sensor/tmp275.rs
++++ b/hw/src/sensor/tmp275.rs
+@@ -7,6 +7,5 @@ use crate::sensor::i2c_pointer::PointerSensor;
+ 
+ /// tmp275: 4 16-bit registers, pointer mask 0x03, strap 0x48.
+ pub fn new() -> PointerSensor {
+-    PointerSensor::new(4, 0x03)
+-        .at(0x48)
++    PointerSensor::new(4, 0x03).at(0x48)
+ }
 diff --git a/hw/src/ssi/am335x_spi.rs b/hw/src/ssi/am335x_spi.rs
 index e261692..15ae701 100644
 --- a/hw/src/ssi/am335x_spi.rs
@@ -11777,6 +12300,23 @@ index 3f24a33..2b3551b 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/testutil.rs b/hw/src/testutil.rs
+index 79b787b..0dd8737 100644
+--- a/hw/src/testutil.rs
++++ b/hw/src/testutil.rs
+@@ -20,11 +20,7 @@ impl Ctx for TestCtx {
+         Err(ContextError::ResourceExhausted)
+     }
+ 
+-    fn schedule_after(
+-        &mut self,
+-        _delay: VDelta,
+-        _token: u64,
+-    ) -> Result<EventId, ContextError> {
++    fn schedule_after(&mut self, _delay: VDelta, _token: u64) -> Result<EventId, ContextError> {
+         Err(ContextError::ResourceExhausted)
+     }
+ 
 diff --git a/hw/src/timer/am335x_timer.rs b/hw/src/timer/am335x_timer.rs
 index 826effb..ee9297f 100644
 --- a/hw/src/timer/am335x_timer.rs

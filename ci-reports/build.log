@@ -1,10 +1,9 @@
 [1m[32m   Compiling[0m mosaic-util v0.1.0 (/home/runner/work/mosaic/mosaic/util)
 [1m[32m   Compiling[0m quote v1.0.47
 [1m[32m   Compiling[0m prettyplease v0.2.37
-[1m[32m   Compiling[0m libc v0.2.191
 [1m[32m   Compiling[0m clang-sys v1.9.1
-[1m[32m   Compiling[0m minimal-lexical v0.2.1
 [1m[32m   Compiling[0m regex-syntax v0.8.11
+[1m[32m   Compiling[0m minimal-lexical v0.2.1
 [1m[32m   Compiling[0m mosaic-exec v0.1.0 (/home/runner/work/mosaic/mosaic/exec)
 [1m[32m   Compiling[0m mosaic-contract v0.1.0 (/home/runner/work/mosaic/mosaic/contract)
 [1m[32m   Compiling[0m cfg-if v1.0.5
@@ -12,9 +11,9 @@
 [1m[32m   Compiling[0m libloading v0.8.9
 [1m[32m   Compiling[0m syn v2.0.119
 [0m[1m[33mwarning[0m[0m[1m: variable does not need to be mutable[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mcontract/src/onewire.rs:19:21[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcontract/src/onewire.rs:28:21[0m
 [0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m19[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn onewire_crc8(mut bits: u64) -> u8 {[0m
+[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn onewire_crc8(mut bits: u64) -> u8 {[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12m----[0m[0m[1m[33m^^^^[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12m|[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12mhelp: remove this `mut`[0m
@@ -22,26 +21,26 @@
 [0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_mut)]` on by default[0m
 
 [1m[33mwarning[0m[1m:[0m `mosaic-contract` (lib) generated 1 warning (run `cargo fix --lib -p mosaic-contract` to apply 1 suggestion)
+[1m[32m   Compiling[0m libc v0.2.191
 [1m[32m   Compiling[0m regex-automata v0.4.18
-[1m[32m   Compiling[0m bindgen v0.71.1
+[1m[32m   Compiling[0m find-msvc-tools v0.1.15
 [1m[32m   Compiling[0m either v1.19.0
 [1m[32m   Compiling[0m shlex v2.0.1
-[1m[32m   Compiling[0m find-msvc-tools v0.1.15
+[1m[32m   Compiling[0m bindgen v0.71.1
 [1m[32m   Compiling[0m itertools v0.13.0
 [1m[32m   Compiling[0m cc v1.9.0
-[1m[32m   Compiling[0m regex v1.13.1
 [1m[32m   Compiling[0m cexpr v0.6.0
-[1m[32m   Compiling[0m bitflags v2.13.2
+[1m[32m   Compiling[0m regex v1.13.1
 [1m[32m   Compiling[0m shlex v1.3.0
-[1m[32m   Compiling[0m log v0.4.34
+[1m[32m   Compiling[0m bitflags v2.13.2
 [1m[32m   Compiling[0m rustc-hash v2.1.3
+[1m[32m   Compiling[0m log v0.4.34
 [1m[32m   Compiling[0m cmake v0.1.58
-[1m[32m   Compiling[0m pkg-config v0.3.34
 [1m[32m   Compiling[0m heck v0.5.0
+[1m[32m   Compiling[0m pkg-config v0.3.34
 [1m[32m   Compiling[0m mosaic-runtime v0.1.0 (/home/runner/work/mosaic/mosaic/runtime)
 [1m[32m   Compiling[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/isa/arm)
 [1m[32m   Compiling[0m mosaic-bus v0.1.0 (/home/runner/work/mosaic/mosaic/bus)
-[1m[32m   Compiling[0m mosaic-isa-x86 v0.1.0 (/home/runner/work/mosaic/mosaic/isa/x86)
 [0m[1m[33mwarning[0m[0m[1m: unused import: `std::collections::BTreeMap`[0m
 [0m [0m[0m[1m[38;5;12m--> [0m[0mbus/src/canfd/core.rs:5:5[0m
 [0m  [0m[0m[1m[38;5;12m|[0m
@@ -62,6 +61,7 @@
 [0m[1m[38;5;12m4[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse mosaic_contract::parallel::{ParallelError, ParallelInitiator, ParallelMode, ParallelTarget};[0m
 [0m  [0m[0m[1m[38;5;12m|[0m[0m                                                                   [0m[0m[1m[33m^^^^^^^^^^^^[0m
 
+[1m[32m   Compiling[0m mosaic-isa-x86 v0.1.0 (/home/runner/work/mosaic/mosaic/isa/x86)
 [1m[32m   Compiling[0m mosaic-accel-armv7m v0.1.0 (/home/runner/work/mosaic/mosaic/accel/armv7m)
 [1m[32m   Compiling[0m mosaic-boot v0.1.0 (/home/runner/work/mosaic/mosaic/boot)
 [1m[33mwarning[0m[1m:[0m `mosaic-bus` (lib) generated 3 warnings (run `cargo fix --lib -p mosaic-bus` to apply 3 suggestions)
@@ -69,9 +69,9 @@
 [1m[32m   Compiling[0m mosaic-isa-aarch64 v0.1.0 (/home/runner/work/mosaic/mosaic/isa/aarch64)
 [1m[32m   Compiling[0m mosaic-xtask v0.1.0 (/home/runner/work/mosaic/mosaic/xtask)
 [1m[32m   Compiling[0m mosaic-accel-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/accel/conformance)
-[1m[33mwarning[0m[1m:[0m `mosaic-contract` (lib test) generated 1 warning (1 duplicate)
-[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
 [1m[33mwarning[0m[1m:[0m `mosaic-bus` (lib test) generated 3 warnings (3 duplicates)
+[1m[32m   Compiling[0m unicorn-engine-sys v2.1.5
+[1m[33mwarning[0m[1m:[0m `mosaic-contract` (lib test) generated 1 warning (1 duplicate)
 [1m[32m   Compiling[0m mosaic-describe v0.1.0 (/home/runner/work/mosaic/mosaic/describe)
 [1m[32m   Compiling[0m unicorn-engine v2.1.5
 [1m[32m   Compiling[0m mosaic-accel-unicorn v0.1.0 (/home/runner/work/mosaic/mosaic/accel/unicorn)
@@ -2021,6 +2021,18 @@
 [0m[1m[38;5;12m13[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    irq: SignalId,[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^[0m
 
+[0m[1m[33mwarning[0m[0m[1m: constant `CONTROL` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/rtc/ds1307_core.rs:27:15[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m27[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub const CONTROL: usize = 0x07;[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[33m^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: constant `RAM_BASE` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/rtc/ds1307_core.rs:28:15[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub const RAM_BASE: usize = 0x08;[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[33m^^^^^^^^[0m
+
 [0m[1m[33mwarning[0m[0m[1m: field `irq` is never read[0m
 [0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/sd/am335x_mmchs.rs:13:5[0m
 [0m   [0m[0m[1m[38;5;12m|[0m
@@ -3024,6 +3036,6 @@
 [1m[32m   Compiling[0m mosaic-machine v0.1.0 (/home/runner/work/mosaic/mosaic/machine)
 [1m[32m   Compiling[0m mosaic v0.1.0 (/home/runner/work/mosaic/mosaic/mosaic)
 [1m[32m   Compiling[0m mosaic-tests-boot v0.1.0 (/home/runner/work/mosaic/mosaic/tests)
-[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib) generated 401 warnings (run `cargo fix --lib -p mosaic-hw` to apply 3 suggestions)
-[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib test) generated 401 warnings (401 duplicates)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 50.54s
+[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib) generated 403 warnings (run `cargo fix --lib -p mosaic-hw` to apply 3 suggestions)
+[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib test) generated 403 warnings (403 duplicates)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 00s

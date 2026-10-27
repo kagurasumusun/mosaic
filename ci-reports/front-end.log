@@ -1,8 +1,8 @@
 [1m[32m   Compiling[0m memchr v2.8.3
 [0m[1m[33mwarning[0m[0m[1m: variable does not need to be mutable[0m
-[0m  [0m[0m[1m[38;5;12m--> [0m[0mcontract/src/onewire.rs:19:21[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcontract/src/onewire.rs:28:21[0m
 [0m   [0m[0m[1m[38;5;12m|[0m
-[0m[1m[38;5;12m19[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn onewire_crc8(mut bits: u64) -> u8 {[0m
+[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub fn onewire_crc8(mut bits: u64) -> u8 {[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12m----[0m[0m[1m[33m^^^^[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12m|[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;12mhelp: remove this `mut`[0m
@@ -1983,6 +1983,18 @@
 [0m[1m[38;5;12m13[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    irq: SignalId,[0m
 [0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^[0m
 
+[0m[1m[33mwarning[0m[0m[1m: constant `CONTROL` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/rtc/ds1307_core.rs:27:15[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m27[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub const CONTROL: usize = 0x07;[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[33m^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: constant `RAM_BASE` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/rtc/ds1307_core.rs:28:15[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m28[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub const RAM_BASE: usize = 0x08;[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m               [0m[0m[1m[33m^^^^^^^^[0m
+
 [0m[1m[33mwarning[0m[0m[1m: field `irq` is never read[0m
 [0m  [0m[0m[1m[38;5;12m--> [0m[0mhw/src/sd/am335x_mmchs.rs:13:5[0m
 [0m   [0m[0m[1m[38;5;12m|[0m
@@ -2985,6 +2997,6 @@
 
 [1m[32m   Compiling[0m mosaic-machine v0.1.0 (/home/runner/work/mosaic/mosaic/machine)
 [1m[32m   Compiling[0m mosaic v0.1.0 (/home/runner/work/mosaic/mosaic/mosaic)
-[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib) generated 401 warnings (run `cargo fix --lib -p mosaic-hw` to apply 3 suggestions)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 18.84s
+[1m[33mwarning[0m[1m:[0m `mosaic-hw` (lib) generated 403 warnings (run `cargo fix --lib -p mosaic-hw` to apply 3 suggestions)
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 28.28s
 [1m[32m     Running[0m `target/debug/mosaic -cdrom tests/assets/tinycore-16-core.iso -m 64M --instruction-limit 8000000 --report ci-reports/front-end.json -q`
