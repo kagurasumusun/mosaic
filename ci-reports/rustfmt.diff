@@ -119,6 +119,367 @@ index d615b9c..b470d39 100644
          }
          self.queue.push(frame.clone());
          Ok(())
+diff --git a/bus/src/displayport/core.rs b/bus/src/displayport/core.rs
+index 6390d97..5b9679d 100644
+--- a/bus/src/displayport/core.rs
++++ b/bus/src/displayport/core.rs
+@@ -1,25 +1,40 @@
+ //! `displayport` bus entity (ADR 0025 step 3): VESA DisplayPort.
+ 
+-use mosaic_contract::displayport::{DisplayPortError, DisplayPortSink, DisplayPortSource, DpVideoFrame};
++use mosaic_contract::displayport::{
++    DisplayPortError, DisplayPortSink, DisplayPortSource, DpVideoFrame,
++};
+ use mosaic_contract::model::Ctx;
+ 
+ pub struct DisplayPortBus {
+     sink: Option<Box<dyn DisplayPortSink>>,
+ }
+ 
+-impl Default for DisplayPortBus { fn default() -> Self { Self::new() } }
++impl Default for DisplayPortBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl DisplayPortBus {
+-    pub fn new() -> Self { Self { sink: None } }
+-    pub fn attach_sink(&mut self, s: Box<dyn DisplayPortSink>) { self.sink = Some(s); }
++    pub fn new() -> Self {
++        Self { sink: None }
++    }
++    pub fn attach_sink(&mut self, s: Box<dyn DisplayPortSink>) {
++        self.sink = Some(s);
++    }
+ }
+ 
+ impl DisplayPortSource for DisplayPortBus {
+-    fn push_video(&mut self, ctx: &mut dyn Ctx, frame: &DpVideoFrame)
+-        -> Result<(), DisplayPortError> {
++    fn push_video(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        frame: &DpVideoFrame,
++    ) -> Result<(), DisplayPortError> {
+         match self.sink.as_deref_mut() {
+             Some(s) => {
+-                if !s.hpd() { return Err(DisplayPortError::HpdDeasserted); }
++                if !s.hpd() {
++                    return Err(DisplayPortError::HpdDeasserted);
++                }
+                 s.on_video(ctx, frame)
+             }
+             None => Err(DisplayPortError::NoSink),
+@@ -35,8 +50,12 @@ impl DisplayPortSource for DisplayPortBus {
+             None => Err(DisplayPortError::NoSink),
+         }
+     }
+-    fn aux_write(&mut self, ctx: &mut dyn Ctx, address: u32, data: &[u8])
+-        -> Result<(), DisplayPortError> {
++    fn aux_write(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        address: u32,
++        data: &[u8],
++    ) -> Result<(), DisplayPortError> {
+         match self.sink.as_deref_mut() {
+             Some(s) => {
+                 let mut buf = data.to_vec();
+@@ -47,7 +66,10 @@ impl DisplayPortSource for DisplayPortBus {
+     }
+     fn read_dpcd(&mut self, ctx: &mut dyn Ctx, address: u32) -> Result<u32, DisplayPortError> {
+         let bytes = self.aux_read(ctx, address)?;
+-        let v = bytes.iter().take(4).fold(0u32, |acc, &b| (acc << 8) | b as u32);
++        let v = bytes
++            .iter()
++            .take(4)
++            .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+         Ok(v)
+     }
+ }
+@@ -60,23 +82,49 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Sink { hpd: bool, aux_log: Vec<u32> }
++    struct Sink {
++        hpd: bool,
++        aux_log: Vec<u32>,
++    }
+     impl DisplayPortSink for Sink {
+-        fn on_video(&mut self, _: &mut dyn Ctx, _: &DpVideoFrame) -> Result<(), DisplayPortError> { Ok(()) }
+-        fn hpd(&self) -> bool { self.hpd }
+-        fn aux_handle(&mut self, _: &mut dyn Ctx, write: bool, address: u32, _: &mut Vec<u8>)
+-            -> Result<(), DisplayPortError> {
+-            if !write { self.aux_log.push(address); }
++        fn on_video(&mut self, _: &mut dyn Ctx, _: &DpVideoFrame) -> Result<(), DisplayPortError> {
++            Ok(())
++        }
++        fn hpd(&self) -> bool {
++            self.hpd
++        }
++        fn aux_handle(
++            &mut self,
++            _: &mut dyn Ctx,
++            write: bool,
++            address: u32,
++            _: &mut Vec<u8>,
++        ) -> Result<(), DisplayPortError> {
++            if !write {
++                self.aux_log.push(address);
++            }
+             Ok(())
+         }
+     }
+@@ -84,7 +132,10 @@ mod tests {
+     #[test]
+     fn aux_read_routes_to_sink() {
+         let mut bus = DisplayPortBus::new();
+-        bus.attach_sink(Box::new(Sink { hpd: true, aux_log: vec![] }));
++        bus.attach_sink(Box::new(Sink {
++            hpd: true,
++            aux_log: vec![],
++        }));
+         let mut ctx = NoopCtx;
+         let _ = bus.aux_read(&mut ctx, 0x100);
+         // hpd true so reads succeed
+diff --git a/bus/src/espi/core.rs b/bus/src/espi/core.rs
+index f6169a9..0d4b62d 100644
+--- a/bus/src/espi/core.rs
++++ b/bus/src/espi/core.rs
+@@ -7,16 +7,28 @@ pub struct EspiBus {
+     targets: Vec<Box<dyn EspiTarget>>,
+ }
+ 
+-impl Default for EspiBus { fn default() -> Self { Self::new() } }
++impl Default for EspiBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl EspiBus {
+-    pub fn new() -> Self { Self { targets: Vec::new() } }
+-    pub fn attach(&mut self, t: Box<dyn EspiTarget>) { self.targets.push(t); }
++    pub fn new() -> Self {
++        Self {
++            targets: Vec::new(),
++        }
++    }
++    pub fn attach(&mut self, t: Box<dyn EspiTarget>) {
++        self.targets.push(t);
++    }
+ }
+ 
+ impl EspiMaster for EspiBus {
+     fn transfer(&mut self, ctx: &mut dyn Ctx, p: &EspiPacket) -> Result<Vec<u8>, EspiError> {
+-        if self.targets.is_empty() { return Err(EspiError::NoTarget); }
++        if self.targets.is_empty() {
++            return Err(EspiError::NoTarget);
++        }
+         let mut last = Vec::new();
+         for t in self.targets.iter_mut() {
+             last = t.on_transfer(ctx, p)?;
+@@ -33,17 +45,31 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Target { got: u32 }
++    struct Target {
++        got: u32,
++    }
+     impl EspiTarget for Target {
+         fn on_transfer(&mut self, _: &mut dyn Ctx, _p: &EspiPacket) -> Result<Vec<u8>, EspiError> {
+             self.got += 1;
+@@ -57,7 +83,12 @@ mod tests {
+         bus.attach(Box::new(Target { got: 0 }));
+         bus.attach(Box::new(Target { got: 0 }));
+         let mut ctx = NoopCtx;
+-        let p = EspiPacket { cycle: 0x01, tag: 0x02, length: 0, payload: vec![] };
++        let p = EspiPacket {
++            cycle: 0x01,
++            tag: 0x02,
++            length: 0,
++            payload: vec![],
++        };
+         assert!(bus.transfer(&mut ctx, &p).is_ok());
+     }
+ 
+diff --git a/bus/src/firewire/core.rs b/bus/src/firewire/core.rs
+index d19483e..cb99aaa 100644
+--- a/bus/src/firewire/core.rs
++++ b/bus/src/firewire/core.rs
+@@ -7,10 +7,16 @@ pub struct FireWireBus {
+     nodes: Vec<(u16, Box<dyn FireWireNode>)>,
+ }
+ 
+-impl Default for FireWireBus { fn default() -> Self { Self::new() } }
++impl Default for FireWireBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl FireWireBus {
+-    pub fn new() -> Self { Self { nodes: Vec::new() } }
++    pub fn new() -> Self {
++        Self { nodes: Vec::new() }
++    }
+     pub fn attach(&mut self, node_id: u16, n: Box<dyn FireWireNode>) {
+         self.nodes.push((node_id, n));
+     }
+@@ -35,19 +41,38 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Node { id: u16, data: Vec<u8> }
++    struct Node {
++        id: u16,
++        data: Vec<u8>,
++    }
+     impl FireWireNode for Node {
+-        fn on_packet(&mut self, _: &mut dyn Ctx, _p: &FireWirePacket) -> Result<Vec<u8>, FireWireError> {
++        fn on_packet(
++            &mut self,
++            _: &mut dyn Ctx,
++            _p: &FireWirePacket,
++        ) -> Result<Vec<u8>, FireWireError> {
+             Ok(self.data.clone())
+         }
+     }
+@@ -55,12 +80,28 @@ mod tests {
+     #[test]
+     fn packet_routes_to_destination() {
+         let mut bus = FireWireBus::new();
+-        bus.attach(0xFFC0, Box::new(Node { id: 0xFFC0, data: vec![0xDE, 0xAD] }));
+-        bus.attach(0xFFC1, Box::new(Node { id: 0xFFC1, data: vec![0xBE, 0xEF] }));
++        bus.attach(
++            0xFFC0,
++            Box::new(Node {
++                id: 0xFFC0,
++                data: vec![0xDE, 0xAD],
++            }),
++        );
++        bus.attach(
++            0xFFC1,
++            Box::new(Node {
++                id: 0xFFC1,
++                data: vec![0xBE, 0xEF],
++            }),
++        );
+         let mut ctx = NoopCtx;
+         let p = FireWirePacket {
+-            source_id: 0xFFC1, destination_id: 0xFFC0, tlabel: 1, tcode: 0,
+-            address: 0, data: vec![],
++            source_id: 0xFFC1,
++            destination_id: 0xFFC0,
++            tlabel: 1,
++            tcode: 0,
++            address: 0,
++            data: vec![],
+         };
+         assert_eq!(bus.send(&mut ctx, &p).unwrap(), vec![0xDE, 0xAD]);
+     }
+@@ -70,8 +111,12 @@ mod tests {
+         let mut bus = FireWireBus::new();
+         let mut ctx = NoopCtx;
+         let p = FireWirePacket {
+-            source_id: 0, destination_id: 0xFFFF, tlabel: 0, tcode: 0,
+-            address: 0, data: vec![],
++            source_id: 0,
++            destination_id: 0xFFFF,
++            tlabel: 0,
++            tcode: 0,
++            address: 0,
++            data: vec![],
+         };
+         assert_eq!(bus.send(&mut ctx, &p), Err(FireWireError::NoNode));
+     }
 diff --git a/bus/src/flexray/core.rs b/bus/src/flexray/core.rs
 index 3f1589b..5bc8245 100644
 --- a/bus/src/flexray/core.rs
@@ -189,6 +550,107 @@ index 3f1589b..5bc8245 100644
          self.owner(ch, slot)?.recv(ctx, ch, slot)
      }
  }
+diff --git a/bus/src/gameport/core.rs b/bus/src/gameport/core.rs
+index eb0cf8d..a31dddf 100644
+--- a/bus/src/gameport/core.rs
++++ b/bus/src/gameport/core.rs
+@@ -7,11 +7,19 @@ pub struct GamePortBus {
+     stick: Option<Box<dyn GamePortStick>>,
+ }
+ 
+-impl Default for GamePortBus { fn default() -> Self { Self::new() } }
++impl Default for GamePortBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl GamePortBus {
+-    pub fn new() -> Self { Self { stick: None } }
+-    pub fn attach(&mut self, s: Box<dyn GamePortStick>) { self.stick = Some(s); }
++    pub fn new() -> Self {
++        Self { stick: None }
++    }
++    pub fn attach(&mut self, s: Box<dyn GamePortStick>) {
++        self.stick = Some(s);
++    }
+ }
+ 
+ impl GamePortHost for GamePortBus {
+@@ -21,7 +29,12 @@ impl GamePortHost for GamePortBus {
+             None => Err(GamePortError::NoStick),
+         }
+     }
+-    fn trigger_dac(&mut self, ctx: &mut dyn Ctx, channel: u8, value: u8) -> Result<(), GamePortError> {
++    fn trigger_dac(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        channel: u8,
++        value: u8,
++    ) -> Result<(), GamePortError> {
+         match self.stick.as_deref_mut() {
+             Some(s) => s.on_dac(ctx, channel, value),
+             None => Err(GamePortError::NoStick),
+@@ -37,26 +50,49 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Stick { state: GamePortState }
++    struct Stick {
++        state: GamePortState,
++    }
+     impl GamePortStick for Stick {
+-        fn state(&self) -> GamePortState { self.state }
+-        fn on_dac(&mut self, _: &mut dyn Ctx, _: u8, _: u8) -> Result<(), GamePortError> { Ok(()) }
++        fn state(&self) -> GamePortState {
++            self.state
++        }
++        fn on_dac(&mut self, _: &mut dyn Ctx, _: u8, _: u8) -> Result<(), GamePortError> {
++            Ok(())
++        }
+     }
+ 
+     #[test]
+     fn read_state_returns_attached_stick_state() {
+         let mut bus = GamePortBus::new();
+-        let state = GamePortState { axis_x1: 0x1000, axis_y1: 0x2000, button1: true, ..Default::default() };
++        let state = GamePortState {
++            axis_x1: 0x1000,
++            axis_y1: 0x2000,
++            button1: true,
++            ..Default::default()
++        };
+         bus.attach(Box::new(Stick { state }));
+         let mut ctx = NoopCtx;
+         let s = bus.read_state(&mut ctx).unwrap();
 diff --git a/bus/src/hda/core.rs b/bus/src/hda/core.rs
 index 76c67d2..8bd55f7 100644
 --- a/bus/src/hda/core.rs
@@ -243,6 +705,160 @@ index 76c67d2..8bd55f7 100644
 +            .get_mut(&codec)
 +            .ok_or(HdaError::NoCodec)?
 +            .stream(ctx, data)
+     }
+ }
+diff --git a/bus/src/hdmi/core.rs b/bus/src/hdmi/core.rs
+index 311155a..40da63e 100644
+--- a/bus/src/hdmi/core.rs
++++ b/bus/src/hdmi/core.rs
+@@ -7,18 +7,28 @@ pub struct HdmiBus {
+     sink: Option<Box<dyn HdmiSink>>,
+ }
+ 
+-impl Default for HdmiBus { fn default() -> Self { Self::new() } }
++impl Default for HdmiBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl HdmiBus {
+-    pub fn new() -> Self { Self { sink: None } }
+-    pub fn attach_sink(&mut self, s: Box<dyn HdmiSink>) { self.sink = Some(s); }
++    pub fn new() -> Self {
++        Self { sink: None }
++    }
++    pub fn attach_sink(&mut self, s: Box<dyn HdmiSink>) {
++        self.sink = Some(s);
++    }
+ }
+ 
+ impl HdmiSource for HdmiBus {
+     fn push_video(&mut self, ctx: &mut dyn Ctx, frame: &VideoFrame) -> Result<(), HdmiError> {
+         match self.sink.as_deref_mut() {
+             Some(s) => {
+-                if !s.hpd() { return Err(HdmiError::HpdDeasserted); }
++                if !s.hpd() {
++                    return Err(HdmiError::HpdDeasserted);
++                }
+                 s.on_video(ctx, frame)
+             }
+             None => Err(HdmiError::NoSink),
+@@ -27,7 +37,9 @@ impl HdmiSource for HdmiBus {
+     fn push_audio(&mut self, ctx: &mut dyn Ctx, sample: &AudioSample) -> Result<(), HdmiError> {
+         match self.sink.as_deref_mut() {
+             Some(s) => {
+-                if !s.hpd() { return Err(HdmiError::HpdDeasserted); }
++                if !s.hpd() {
++                    return Err(HdmiError::HpdDeasserted);
++                }
+                 s.on_audio(ctx, sample)
+             }
+             None => Err(HdmiError::NoSink),
+@@ -61,31 +73,72 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Sink { hpd: bool, edid: Vec<u8>, frames: u32 }
++    struct Sink {
++        hpd: bool,
++        edid: Vec<u8>,
++        frames: u32,
++    }
+     impl HdmiSink for Sink {
+-        fn on_video(&mut self, _ctx: &mut dyn Ctx, _f: &VideoFrame) -> Result<(), HdmiError> { self.frames += 1; Ok(()) }
+-        fn on_audio(&mut self, _ctx: &mut dyn Ctx, _s: &AudioSample) -> Result<(), HdmiError> { Ok(()) }
+-        fn edid(&self) -> &[u8] { &self.edid }
+-        fn hpd(&self) -> bool { self.hpd }
+-        fn cec_receive(&mut self, _: &mut dyn Ctx, _: u8, _: u8, _: &[u8]) -> Result<(), HdmiError> { Ok(()) }
++        fn on_video(&mut self, _ctx: &mut dyn Ctx, _f: &VideoFrame) -> Result<(), HdmiError> {
++            self.frames += 1;
++            Ok(())
++        }
++        fn on_audio(&mut self, _ctx: &mut dyn Ctx, _s: &AudioSample) -> Result<(), HdmiError> {
++            Ok(())
++        }
++        fn edid(&self) -> &[u8] {
++            &self.edid
++        }
++        fn hpd(&self) -> bool {
++            self.hpd
++        }
++        fn cec_receive(
++            &mut self,
++            _: &mut dyn Ctx,
++            _: u8,
++            _: u8,
++            _: &[u8],
++        ) -> Result<(), HdmiError> {
++            Ok(())
++        }
+     }
+ 
+     #[test]
+     fn video_reaches_sink_when_hpd_asserted() {
+         let mut bus = HdmiBus::new();
+-        bus.attach_sink(Box::new(Sink { hpd: true, edid: vec![0x80], frames: 0 }));
++        bus.attach_sink(Box::new(Sink {
++            hpd: true,
++            edid: vec![0x80],
++            frames: 0,
++        }));
+         let mut ctx = NoopCtx;
+-        let frame = VideoFrame { width: 640, height: 480, pixels: vec![0; 32] };
++        let frame = VideoFrame {
++            width: 640,
++            height: 480,
++            pixels: vec![0; 32],
++        };
+         assert!(bus.push_video(&mut ctx, &frame).is_ok());
+     }
+ 
+@@ -100,9 +153,16 @@ mod tests {
+     #[test]
+     fn hpd_low_blocks_video() {
+         let mut bus = HdmiBus::new();
+-        bus.attach_sink(Box::new(Sink { hpd: false, edid: vec![], frames: 0 }));
++        bus.attach_sink(Box::new(Sink {
++            hpd: false,
++            edid: vec![],
++            frames: 0,
++        }));
+         let mut ctx = NoopCtx;
+         let frame = VideoFrame::default();
+-        assert_eq!(bus.push_video(&mut ctx, &frame), Err(HdmiError::HpdDeasserted));
++        assert_eq!(
++            bus.push_video(&mut ctx, &frame),
++            Err(HdmiError::HpdDeasserted)
++        );
      }
  }
 diff --git a/bus/src/i2s/core.rs b/bus/src/i2s/core.rs
@@ -500,6 +1116,324 @@ index 8927762..789f78f 100644
 +            .execute(ctx, op, addr, data)
      }
  }
+diff --git a/bus/src/midi/core.rs b/bus/src/midi/core.rs
+index a5f73bd..6f4535c 100644
+--- a/bus/src/midi/core.rs
++++ b/bus/src/midi/core.rs
+@@ -7,16 +7,26 @@ pub struct MidiBus {
+     inputs: Vec<Box<dyn MidiInput>>,
+ }
+ 
+-impl Default for MidiBus { fn default() -> Self { Self::new() } }
++impl Default for MidiBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl MidiBus {
+-    pub fn new() -> Self { Self { inputs: Vec::new() } }
+-    pub fn attach(&mut self, i: Box<dyn MidiInput>) { self.inputs.push(i); }
++    pub fn new() -> Self {
++        Self { inputs: Vec::new() }
++    }
++    pub fn attach(&mut self, i: Box<dyn MidiInput>) {
++        self.inputs.push(i);
++    }
+ }
+ 
+ impl MidiOutput for MidiBus {
+     fn send(&mut self, ctx: &mut dyn Ctx, m: &MidiMessage) -> Result<(), MidiError> {
+-        if self.inputs.is_empty() { return Err(MidiError::NoReceiver); }
++        if self.inputs.is_empty() {
++            return Err(MidiError::NoReceiver);
++        }
+         for i in self.inputs.iter_mut() {
+             i.on_message(ctx, m)?;
+         }
+@@ -32,18 +42,32 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+     #[derive(Default)]
+-    struct In { msgs: u32 }
++    struct In {
++        msgs: u32,
++    }
+     impl MidiInput for In {
+         fn on_message(&mut self, _: &mut dyn Ctx, _m: &MidiMessage) -> Result<(), MidiError> {
+             self.msgs += 1;
+@@ -57,7 +81,11 @@ mod tests {
+         bus.attach(Box::new(In::default()));
+         bus.attach(Box::new(In::default()));
+         let mut ctx = NoopCtx;
+-        let m = MidiMessage { status: 0x90, data1: 60, data2: 100 };
++        let m = MidiMessage {
++            status: 0x90,
++            data1: 60,
++            data2: 100,
++        };
+         assert!(bus.send(&mut ctx, &m).is_ok());
+     }
+ 
+@@ -65,7 +93,11 @@ mod tests {
+     fn no_inputs_yields_error() {
+         let mut bus = MidiBus::new();
+         let mut ctx = NoopCtx;
+-        let m = MidiMessage { status: 0x80, data1: 60, data2: 0 };
++        let m = MidiMessage {
++            status: 0x80,
++            data1: 60,
++            data2: 0,
++        };
+         assert_eq!(bus.send(&mut ctx, &m), Err(MidiError::NoReceiver));
+     }
+ }
+diff --git a/bus/src/mipi_csi/core.rs b/bus/src/mipi_csi/core.rs
+index 5140a01..d4d9175 100644
+--- a/bus/src/mipi_csi/core.rs
++++ b/bus/src/mipi_csi/core.rs
+@@ -8,12 +8,25 @@ pub struct CsiBus {
+     source: Option<Box<dyn CsiSource>>,
+ }
+ 
+-impl Default for CsiBus { fn default() -> Self { Self::new() } }
++impl Default for CsiBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl CsiBus {
+-    pub fn new() -> Self { Self { receivers: Vec::new(), source: None } }
+-    pub fn attach_receiver(&mut self, r: Box<dyn CsiReceiver>) { self.receivers.push(r); }
+-    pub fn attach_source(&mut self, s: Box<dyn CsiSource>) { self.source = Some(s); }
++    pub fn new() -> Self {
++        Self {
++            receivers: Vec::new(),
++            source: None,
++        }
++    }
++    pub fn attach_receiver(&mut self, r: Box<dyn CsiReceiver>) {
++        self.receivers.push(r);
++    }
++    pub fn attach_source(&mut self, s: Box<dyn CsiSource>) {
++        self.source = Some(s);
++    }
+     pub fn pump(&mut self, ctx: &mut dyn Ctx) -> Result<(), CsiError> {
+         let packets = match self.source.as_deref_mut() {
+             Some(s) => s.emit(ctx)?,
+@@ -39,26 +52,46 @@ mod tests {
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Source { count: u32 }
++    struct Source {
++        count: u32,
++    }
+     impl CsiSource for Source {
+         fn emit(&mut self, _: &mut dyn Ctx) -> Result<Vec<CsiPacket>, CsiError> {
+             self.count += 1;
+-            Ok(vec![CsiPacket { vc: 0, dt: 0x2A, payload: vec![0; 8] }])
++            Ok(vec![CsiPacket {
++                vc: 0,
++                dt: 0x2A,
++                payload: vec![0; 8],
++            }])
+         }
+     }
+ 
+     #[derive(Default)]
+-    struct Receiver { got: u32 }
++    struct Receiver {
++        got: u32,
++    }
+     impl CsiReceiver for Receiver {
+         fn on_packet(&mut self, _: &mut dyn Ctx, _p: &CsiPacket) -> Result<(), CsiError> {
+             self.got += 1;
+diff --git a/bus/src/mipi_dsi/core.rs b/bus/src/mipi_dsi/core.rs
+index c845f2d..d218a97 100644
+--- a/bus/src/mipi_dsi/core.rs
++++ b/bus/src/mipi_dsi/core.rs
+@@ -1,6 +1,6 @@
+ //! `mipi_dsi` bus entity (ADR 0025 step 3): MIPI DSI.
+ 
+-use mosaic_contract::mipi_dsi::{DsiError, DsiHost, DsiPeripheral, DsiPacket};
++use mosaic_contract::mipi_dsi::{DsiError, DsiHost, DsiPacket, DsiPeripheral};
+ use mosaic_contract::model::Ctx;
+ 
+ pub struct DsiBus {
+@@ -9,53 +9,85 @@ pub struct DsiBus {
+ }
+ 
+ impl Default for DsiBus {
+-    fn default() -> Self { Self::new(mosaic_contract::mipi_dsi::DsiMode::Command) }
++    fn default() -> Self {
++        Self::new(mosaic_contract::mipi_dsi::DsiMode::Command)
++    }
+ }
+ 
+ impl DsiBus {
+     pub fn new(mode: mosaic_contract::mipi_dsi::DsiMode) -> Self {
+-        Self { peripherals: Vec::new(), mode }
++        Self {
++            peripherals: Vec::new(),
++            mode,
++        }
++    }
++    pub fn attach(&mut self, p: Box<dyn DsiPeripheral>) {
++        self.peripherals.push(p);
+     }
+-    pub fn attach(&mut self, p: Box<dyn DsiPeripheral>) { self.peripherals.push(p); }
+ }
+ 
+ impl DsiHost for DsiBus {
+     fn send_packet(&mut self, ctx: &mut dyn Ctx, p: &DsiPacket) -> Result<(), DsiError> {
+-        if self.peripherals.is_empty() { return Err(DsiError::NoPeripheral); }
++        if self.peripherals.is_empty() {
++            return Err(DsiError::NoPeripheral);
++        }
+         for per in self.peripherals.iter_mut() {
+             per.on_packet(ctx, p)?;
+         }
+         Ok(())
+     }
+     fn read_response(&mut self, ctx: &mut dyn Ctx) -> Result<Vec<u8>, DsiError> {
+-        if self.peripherals.is_empty() { return Err(DsiError::NoPeripheral); }
++        if self.peripherals.is_empty() {
++            return Err(DsiError::NoPeripheral);
++        }
+         self.peripherals[0].read_request(ctx)
+     }
+-    fn mode(&self) -> mosaic_contract::mipi_dsi::DsiMode { self.mode }
++    fn mode(&self) -> mosaic_contract::mipi_dsi::DsiMode {
++        self.mode
++    }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use mosaic_contract::mipi_dsi::{DsiMode, DsiPeripheral, DsiPacket};
++    use mosaic_contract::mipi_dsi::{DsiMode, DsiPacket, DsiPeripheral};
+     use mosaic_contract::model::Ctx;
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Periph { received: u32 }
++    struct Periph {
++        received: u32,
++    }
+     impl DsiPeripheral for Periph {
+-        fn on_packet(&mut self, _: &mut dyn Ctx, _p: &DsiPacket) -> Result<(), DsiError> { self.received += 1; Ok(()) }
+-        fn read_request(&mut self, _: &mut dyn Ctx) -> Result<Vec<u8>, DsiError> { Ok(vec![0u8]) }
++        fn on_packet(&mut self, _: &mut dyn Ctx, _p: &DsiPacket) -> Result<(), DsiError> {
++            self.received += 1;
++            Ok(())
++        }
++        fn read_request(&mut self, _: &mut dyn Ctx) -> Result<Vec<u8>, DsiError> {
++            Ok(vec![0u8])
++        }
+     }
+ 
+     #[test]
+@@ -64,7 +96,11 @@ mod tests {
+         bus.attach(Box::new(Periph { received: 0 }));
+         bus.attach(Box::new(Periph { received: 0 }));
+         let mut ctx = NoopCtx;
+-        let p = DsiPacket { vc: 0, data_type: 0x39, payload: vec![] };
++        let p = DsiPacket {
++            vc: 0,
++            data_type: 0x39,
++            payload: vec![],
++        };
+         assert!(bus.send_packet(&mut ctx, &p).is_ok());
+     }
+ 
 diff --git a/bus/src/onewire/core.rs b/bus/src/onewire/core.rs
 index 635b0fb..7f29979 100644
 --- a/bus/src/onewire/core.rs
@@ -899,6 +1833,120 @@ index ac15892..6e1055c 100644
          let mut buf = data.to_vec();
          self.tgt(addr)?.command(ctx, cmd, true, &mut buf)
      }
+diff --git a/bus/src/ps2/core.rs b/bus/src/ps2/core.rs
+index 50909ff..804c830 100644
+--- a/bus/src/ps2/core.rs
++++ b/bus/src/ps2/core.rs
+@@ -10,15 +10,28 @@ pub struct Ps2Bus {
+     rx_queue: VecDeque<u8>,
+ }
+ 
+-impl Default for Ps2Bus { fn default() -> Self { Self::new() } }
++impl Default for Ps2Bus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl Ps2Bus {
+-    pub fn new() -> Self { Self { device: None, rx_queue: VecDeque::new() } }
+-    pub fn attach(&mut self, d: Box<dyn Ps2Device>) { self.device = Some(d); }
++    pub fn new() -> Self {
++        Self {
++            device: None,
++            rx_queue: VecDeque::new(),
++        }
++    }
++    pub fn attach(&mut self, d: Box<dyn Ps2Device>) {
++        self.device = Some(d);
++    }
+     pub fn pump(&mut self, ctx: &mut dyn Ctx) {
+         if let Some(d) = self.device.as_deref_mut() {
+             while let Some(b) = d.poll(ctx) {
+-                if self.rx_queue.len() >= 32 { self.rx_queue.pop_front(); }
++                if self.rx_queue.len() >= 32 {
++                    self.rx_queue.pop_front();
++                }
+                 self.rx_queue.push_back(b);
+             }
+         }
+@@ -40,34 +53,54 @@ impl Ps2Host for Ps2Bus {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use mosaic_contract::ps2::Ps2Device;
+     use mosaic_contract::model::Ctx;
++    use mosaic_contract::ps2::Ps2Device;
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+-    struct Keyboard { tx: std::collections::VecDeque<u8>, rx: Vec<u8> }
++    struct Keyboard {
++        tx: std::collections::VecDeque<u8>,
++        rx: Vec<u8>,
++    }
+     impl Ps2Device for Keyboard {
+         fn on_recv(&mut self, _: &mut dyn Ctx, byte: u8) -> Result<(), Ps2Error> {
+             self.rx.push(byte);
+             Ok(())
+         }
+-        fn poll(&mut self, _: &mut dyn Ctx) -> Option<u8> { self.tx.pop_front() }
++        fn poll(&mut self, _: &mut dyn Ctx) -> Option<u8> {
++            self.tx.pop_front()
++        }
+     }
+ 
+     #[test]
+     fn host_recv_pulls_from_device_queue_after_pump() {
+         let mut bus = Ps2Bus::new();
+-        let mut kb = Keyboard { tx: std::collections::VecDeque::new(), rx: vec![] };
++        let mut kb = Keyboard {
++            tx: std::collections::VecDeque::new(),
++            rx: vec![],
++        };
+         kb.tx.push_back(0x1C); // make code for 'A'
+         kb.tx.push_back(0x1C); // break code prefix
+         bus.attach(Box::new(kb));
+@@ -81,7 +114,10 @@ mod tests {
+     #[test]
+     fn host_send_reaches_device() {
+         let mut bus = Ps2Bus::new();
+-        bus.attach(Box::new(Keyboard { tx: std::collections::VecDeque::new(), rx: vec![] }));
++        bus.attach(Box::new(Keyboard {
++            tx: std::collections::VecDeque::new(),
++            rx: vec![],
++        }));
+         let mut ctx = NoopCtx;
+         assert!(bus.send(&mut ctx, 0xFF).is_ok()); // reset
+     }
 diff --git a/bus/src/qspi/core.rs b/bus/src/qspi/core.rs
 index 655b1a7..b36b3b7 100644
 --- a/bus/src/qspi/core.rs
@@ -1105,6 +2153,95 @@ index 67cde4c..41a17d9 100644
      fn tgt(&mut self, lun: u8) -> Result<&mut Box<dyn ScsiTarget>, ScsiError> {
          self.targets.get_mut(&lun).ok_or(ScsiError::NoTarget)
      }
+diff --git a/bus/src/slimbus/core.rs b/bus/src/slimbus/core.rs
+index 4f907a1..6061ff1 100644
+--- a/bus/src/slimbus/core.rs
++++ b/bus/src/slimbus/core.rs
+@@ -7,11 +7,21 @@ pub struct SlimbusBus {
+     devices: Vec<Box<dyn SlimbusDevice>>,
+ }
+ 
+-impl Default for SlimbusBus { fn default() -> Self { Self::new() } }
++impl Default for SlimbusBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl SlimbusBus {
+-    pub fn new() -> Self { Self { devices: Vec::new() } }
+-    pub fn attach(&mut self, d: Box<dyn SlimbusDevice>) { self.devices.push(d); }
++    pub fn new() -> Self {
++        Self {
++            devices: Vec::new(),
++        }
++    }
++    pub fn attach(&mut self, d: Box<dyn SlimbusDevice>) {
++        self.devices.push(d);
++    }
+ }
+ 
+ impl SlimbusManager for SlimbusBus {
+@@ -30,23 +40,37 @@ impl SlimbusManager for SlimbusBus {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use mosaic_contract::slimbus::{SlimbusDevice, SlimbusMessage};
+     use mosaic_contract::model::Ctx;
++    use mosaic_contract::slimbus::{SlimbusDevice, SlimbusMessage};
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+     #[derive(Default)]
+-    struct Dev { msgs: u32 }
++    struct Dev {
++        msgs: u32,
++    }
+     impl SlimbusDevice for Dev {
+         fn on_message(&mut self, _: &mut dyn Ctx, _m: &SlimbusMessage) -> Result<(), SlimbusError> {
+             self.msgs += 1;
+@@ -60,7 +84,12 @@ mod tests {
+         bus.attach(Box::new(Dev::default()));
+         bus.attach(Box::new(Dev::default()));
+         let mut ctx = NoopCtx;
+-        let m = SlimbusMessage { destination: 0xFF, source: 0x00, code: 0x10, value: 0 };
++        let m = SlimbusMessage {
++            destination: 0xFF,
++            source: 0x00,
++            code: 0x10,
++            value: 0,
++        };
+         assert!(bus.send_message(&mut ctx, &m).is_ok());
+         assert!(bus.schedule_channels(&mut ctx, 0x10).is_ok());
+     }
 diff --git a/bus/src/smbus/core.rs b/bus/src/smbus/core.rs
 index a518d0a..4a61789 100644
 --- a/bus/src/smbus/core.rs
@@ -1176,6 +2313,218 @@ index a518d0a..4a61789 100644
 +            | ((resp.get(1).copied().unwrap_or(0) as u16) << 8))
      }
  }
+diff --git a/bus/src/soundwire/core.rs b/bus/src/soundwire/core.rs
+index 3781987..544376f 100644
+--- a/bus/src/soundwire/core.rs
++++ b/bus/src/soundwire/core.rs
+@@ -1,29 +1,49 @@
+ //! `soundwire` bus entity (ADR 0025 step 3): MIPI SoundWire.
+ 
+ use mosaic_contract::model::Ctx;
+-use mosaic_contract::soundwire::{SoundWireError, SoundWireFrame, SoundWireMaster, SoundWirePeripheral};
++use mosaic_contract::soundwire::{
++    SoundWireError, SoundWireFrame, SoundWireMaster, SoundWirePeripheral,
++};
+ 
+ pub struct SoundWireBus {
+     peripherals: Vec<Box<dyn SoundWirePeripheral>>,
+ }
+ 
+-impl Default for SoundWireBus { fn default() -> Self { Self::new() } }
++impl Default for SoundWireBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl SoundWireBus {
+-    pub fn new() -> Self { Self { peripherals: Vec::new() } }
+-    pub fn attach(&mut self, p: Box<dyn SoundWirePeripheral>) { self.peripherals.push(p); }
++    pub fn new() -> Self {
++        Self {
++            peripherals: Vec::new(),
++        }
++    }
++    pub fn attach(&mut self, p: Box<dyn SoundWirePeripheral>) {
++        self.peripherals.push(p);
++    }
+ }
+ 
+ impl SoundWireMaster for SoundWireBus {
+-    fn transmit(&mut self, ctx: &mut dyn Ctx, frame: &SoundWireFrame) -> Result<(), SoundWireError> {
+-        if self.peripherals.is_empty() { return Err(SoundWireError::NoPeripheral); }
++    fn transmit(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        frame: &SoundWireFrame,
++    ) -> Result<(), SoundWireError> {
++        if self.peripherals.is_empty() {
++            return Err(SoundWireError::NoPeripheral);
++        }
+         for p in self.peripherals.iter_mut() {
+             p.on_frame(ctx, frame)?;
+         }
+         Ok(())
+     }
+     fn receive(&mut self, ctx: &mut dyn Ctx) -> Result<SoundWireFrame, SoundWireError> {
+-        if self.peripherals.is_empty() { return Err(SoundWireError::NoPeripheral); }
++        if self.peripherals.is_empty() {
++            return Err(SoundWireError::NoPeripheral);
++        }
+         let mut frame = SoundWireFrame::default();
+         for p in self.peripherals.iter_mut() {
+             p.reply(ctx, &mut frame)?;
+@@ -35,29 +55,47 @@ impl SoundWireMaster for SoundWireBus {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use mosaic_contract::soundwire::{SoundWireFrame, SoundWirePeripheral};
+     use mosaic_contract::model::Ctx;
++    use mosaic_contract::soundwire::{SoundWireFrame, SoundWirePeripheral};
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+     #[derive(Default)]
+-    struct Periph { frames: u32 }
++    struct Periph {
++        frames: u32,
++    }
+     impl SoundWirePeripheral for Periph {
+         fn on_frame(&mut self, _: &mut dyn Ctx, _: &SoundWireFrame) -> Result<(), SoundWireError> {
+             self.frames += 1;
+             Ok(())
+         }
+-        fn reply(&mut self, _: &mut dyn Ctx, _f: &mut SoundWireFrame) -> Result<(), SoundWireError> {
++        fn reply(
++            &mut self,
++            _: &mut dyn Ctx,
++            _f: &mut SoundWireFrame,
++        ) -> Result<(), SoundWireError> {
+             Ok(())
+         }
+     }
+@@ -76,6 +114,9 @@ mod tests {
+         let mut bus = SoundWireBus::new();
+         let mut ctx = NoopCtx;
+         let frame = SoundWireFrame::default();
+-        assert_eq!(bus.transmit(&mut ctx, &frame), Err(SoundWireError::NoPeripheral));
++        assert_eq!(
++            bus.transmit(&mut ctx, &frame),
++            Err(SoundWireError::NoPeripheral)
++        );
+     }
+ }
+diff --git a/bus/src/spdif/core.rs b/bus/src/spdif/core.rs
+index 85ecda1..9e215a7 100644
+--- a/bus/src/spdif/core.rs
++++ b/bus/src/spdif/core.rs
+@@ -7,16 +7,28 @@ pub struct SpdifBus {
+     receivers: Vec<Box<dyn SpdifReceiver>>,
+ }
+ 
+-impl Default for SpdifBus { fn default() -> Self { Self::new() } }
++impl Default for SpdifBus {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+ 
+ impl SpdifBus {
+-    pub fn new() -> Self { Self { receivers: Vec::new() } }
+-    pub fn attach(&mut self, r: Box<dyn SpdifReceiver>) { self.receivers.push(r); }
++    pub fn new() -> Self {
++        Self {
++            receivers: Vec::new(),
++        }
++    }
++    pub fn attach(&mut self, r: Box<dyn SpdifReceiver>) {
++        self.receivers.push(r);
++    }
+ }
+ 
+ impl SpdifTransmitter for SpdifBus {
+     fn transmit(&mut self, ctx: &mut dyn Ctx, frames: &[SpdifFrame]) -> Result<(), SpdifError> {
+-        if self.receivers.is_empty() { return Err(SpdifError::NoReceiver); }
++        if self.receivers.is_empty() {
++            return Err(SpdifError::NoReceiver);
++        }
+         for r in self.receivers.iter_mut() {
+             r.on_frames(ctx, frames)?;
+         }
+@@ -27,23 +39,37 @@ impl SpdifTransmitter for SpdifBus {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use mosaic_contract::spdif::{SpdifFrame, SpdifReceiver};
+     use mosaic_contract::model::Ctx;
++    use mosaic_contract::spdif::{SpdifFrame, SpdifReceiver};
+ 
+     struct NoopCtx;
+     impl Ctx for NoopCtx {
+-        fn now(&self) -> mosaic_exec::VTime { mosaic_exec::VTime::ZERO }
+-        fn schedule(&mut self, _: mosaic_exec::VTime, _: u64)
+-            -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
++        fn now(&self) -> mosaic_exec::VTime {
++            mosaic_exec::VTime::ZERO
++        }
++        fn schedule(
++            &mut self,
++            _: mosaic_exec::VTime,
++            _: u64,
++        ) -> Result<mosaic_exec::EventId, mosaic_contract::model::ContextError> {
+             Err(mosaic_contract::model::ContextError::ResourceExhausted)
+         }
+-        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool { false }
+-        fn set_signal(&mut self, _: mosaic_exec::SignalId, _: bool)
+-            -> Result<(), mosaic_contract::model::ContextError> { Ok(()) }
++        fn cancel(&mut self, _: mosaic_exec::EventId) -> bool {
++            false
++        }
++        fn set_signal(
++            &mut self,
++            _: mosaic_exec::SignalId,
++            _: bool,
++        ) -> Result<(), mosaic_contract::model::ContextError> {
++            Ok(())
++        }
+     }
+ 
+     #[derive(Default)]
+-    struct Rx { frames: u32 }
++    struct Rx {
++        frames: u32,
++    }
+     impl SpdifReceiver for Rx {
+         fn on_frames(&mut self, _: &mut dyn Ctx, _: &[SpdifFrame]) -> Result<(), SpdifError> {
+             self.frames += 1;
 diff --git a/bus/src/swd/core.rs b/bus/src/swd/core.rs
 index 25260a4..20307f0 100644
 --- a/bus/src/swd/core.rs
@@ -1269,6 +2618,64 @@ index 99ed87e..976c780 100644
  
  #[derive(Clone, Debug, Eq, PartialEq)]
  pub struct CanFdFrame {
+diff --git a/contract/src/displayport.rs b/contract/src/displayport.rs
+index decc997..25d8c5f 100644
+--- a/contract/src/displayport.rs
++++ b/contract/src/displayport.rs
+@@ -20,17 +20,30 @@ pub struct DpVideoFrame {
+ }
+ 
+ pub trait DisplayPortSource {
+-    fn push_video(&mut self, ctx: &mut dyn Ctx, frame: &DpVideoFrame)
+-        -> Result<(), DisplayPortError>;
++    fn push_video(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        frame: &DpVideoFrame,
++    ) -> Result<(), DisplayPortError>;
+     fn aux_read(&mut self, ctx: &mut dyn Ctx, address: u32) -> Result<Vec<u8>, DisplayPortError>;
+-    fn aux_write(&mut self, ctx: &mut dyn Ctx, address: u32, data: &[u8])
+-        -> Result<(), DisplayPortError>;
++    fn aux_write(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        address: u32,
++        data: &[u8],
++    ) -> Result<(), DisplayPortError>;
+     fn read_dpcd(&mut self, ctx: &mut dyn Ctx, address: u32) -> Result<u32, DisplayPortError>;
+ }
+ 
+ pub trait DisplayPortSink {
+-    fn on_video(&mut self, ctx: &mut dyn Ctx, frame: &DpVideoFrame) -> Result<(), DisplayPortError>;
+-    fn hpd(&self) -> bool;
+-    fn aux_handle(&mut self, ctx: &mut dyn Ctx, write: bool, address: u32, data: &mut Vec<u8>)
++    fn on_video(&mut self, ctx: &mut dyn Ctx, frame: &DpVideoFrame)
+         -> Result<(), DisplayPortError>;
++    fn hpd(&self) -> bool;
++    fn aux_handle(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        write: bool,
++        address: u32,
++        data: &mut Vec<u8>,
++    ) -> Result<(), DisplayPortError>;
+ }
+diff --git a/contract/src/firewire.rs b/contract/src/firewire.rs
+index a3d0092..3454b47 100644
+--- a/contract/src/firewire.rs
++++ b/contract/src/firewire.rs
+@@ -35,6 +35,9 @@ pub trait FireWireInitiator {
+ }
+ 
+ pub trait FireWireNode {
+-    fn on_packet(&mut self, ctx: &mut dyn Ctx, p: &FireWirePacket)
+-        -> Result<Vec<u8>, FireWireError>;
++    fn on_packet(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        p: &FireWirePacket,
++    ) -> Result<Vec<u8>, FireWireError>;
+ }
 diff --git a/contract/src/flexray.rs b/contract/src/flexray.rs
 index 7c6e6e7..9cde8db 100644
 --- a/contract/src/flexray.rs
@@ -1320,6 +2727,69 @@ index 7c6e6e7..9cde8db 100644
 +        ch: FrChannel,
 +        slot: u16,
 +    ) -> Result<Vec<u8>, FlexRayError>;
+ }
+diff --git a/contract/src/gameport.rs b/contract/src/gameport.rs
+index 69e2a3c..6534f52 100644
+--- a/contract/src/gameport.rs
++++ b/contract/src/gameport.rs
+@@ -24,7 +24,12 @@ pub struct GamePortState {
+ 
+ pub trait GamePortHost {
+     fn read_state(&mut self, ctx: &mut dyn Ctx) -> Result<GamePortState, GamePortError>;
+-    fn trigger_dac(&mut self, ctx: &mut dyn Ctx, channel: u8, value: u8) -> Result<(), GamePortError>;
++    fn trigger_dac(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        channel: u8,
++        value: u8,
++    ) -> Result<(), GamePortError>;
+ }
+ 
+ pub trait GamePortStick {
+diff --git a/contract/src/hdmi.rs b/contract/src/hdmi.rs
+index 9b3190a..6521067 100644
+--- a/contract/src/hdmi.rs
++++ b/contract/src/hdmi.rs
+@@ -14,7 +14,9 @@ pub enum HdmiError {
+ 
+ /// 8-channel IEC 60958 audio sample.
+ #[derive(Clone, Copy, Debug, Default)]
+-pub struct AudioSample { pub channels: [u32; 8] }
++pub struct AudioSample {
++    pub channels: [u32; 8],
++}
+ 
+ /// A vertical-refresh frame handed to the sink.
+ #[derive(Clone, Debug, Default)]
+@@ -29,8 +31,13 @@ pub trait HdmiSource {
+     fn push_video(&mut self, ctx: &mut dyn Ctx, frame: &VideoFrame) -> Result<(), HdmiError>;
+     fn push_audio(&mut self, ctx: &mut dyn Ctx, sample: &AudioSample) -> Result<(), HdmiError>;
+     fn read_edid(&mut self, ctx: &mut dyn Ctx) -> Result<Vec<u8>, HdmiError>;
+-    fn cec_send(&mut self, ctx: &mut dyn Ctx, initiator: u8, destination: u8, payload: &[u8])
+-        -> Result<(), HdmiError>;
++    fn cec_send(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        initiator: u8,
++        destination: u8,
++        payload: &[u8],
++    ) -> Result<(), HdmiError>;
+ }
+ 
+ pub trait HdmiSink {
+@@ -38,6 +45,11 @@ pub trait HdmiSink {
+     fn on_audio(&mut self, ctx: &mut dyn Ctx, sample: &AudioSample) -> Result<(), HdmiError>;
+     fn edid(&self) -> &[u8];
+     fn hpd(&self) -> bool;
+-    fn cec_receive(&mut self, ctx: &mut dyn Ctx, initiator: u8, destination: u8,
+-                   payload: &[u8]) -> Result<(), HdmiError>;
++    fn cec_receive(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        initiator: u8,
++        destination: u8,
++        payload: &[u8],
++    ) -> Result<(), HdmiError>;
  }
 diff --git a/contract/src/i2s.rs b/contract/src/i2s.rs
 index 0035574..1e4d8bb 100644
@@ -1440,6 +2910,23 @@ index 68c3470..3434f1a 100644
 +        data: &[u8],
 +    ) -> Result<Vec<u8>, MicrowireError>;
  }
+diff --git a/contract/src/mipi_dsi.rs b/contract/src/mipi_dsi.rs
+index d1e9c6f..00cc6b1 100644
+--- a/contract/src/mipi_dsi.rs
++++ b/contract/src/mipi_dsi.rs
+@@ -12,7 +12,11 @@ pub enum DsiError {
+ }
+ 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+-pub enum DsiMode { Video, Command, Burst }
++pub enum DsiMode {
++    Video,
++    Command,
++    Burst,
++}
+ 
+ #[derive(Clone, Debug, Default)]
+ pub struct DsiPacket {
 diff --git a/contract/src/onewire.rs b/contract/src/onewire.rs
 index 56fbd70..022fb43 100644
 --- a/contract/src/onewire.rs
@@ -1752,6 +3239,31 @@ index 2970037..ac420ae 100644
          }
      }
      crc
+diff --git a/contract/src/soundwire.rs b/contract/src/soundwire.rs
+index b27b2df..2642876 100644
+--- a/contract/src/soundwire.rs
++++ b/contract/src/soundwire.rs
+@@ -24,11 +24,17 @@ pub struct SoundWireFrame {
+ }
+ 
+ pub trait SoundWireMaster {
+-    fn transmit(&mut self, ctx: &mut dyn Ctx, frame: &SoundWireFrame) -> Result<(), SoundWireError>;
++    fn transmit(&mut self, ctx: &mut dyn Ctx, frame: &SoundWireFrame)
++        -> Result<(), SoundWireError>;
+     fn receive(&mut self, ctx: &mut dyn Ctx) -> Result<SoundWireFrame, SoundWireError>;
+ }
+ 
+ pub trait SoundWirePeripheral {
+-    fn on_frame(&mut self, ctx: &mut dyn Ctx, frame: &SoundWireFrame) -> Result<(), SoundWireError>;
+-    fn reply(&mut self, ctx: &mut dyn Ctx, frame: &mut SoundWireFrame) -> Result<(), SoundWireError>;
++    fn on_frame(&mut self, ctx: &mut dyn Ctx, frame: &SoundWireFrame)
++        -> Result<(), SoundWireError>;
++    fn reply(
++        &mut self,
++        ctx: &mut dyn Ctx,
++        frame: &mut SoundWireFrame,
++    ) -> Result<(), SoundWireError>;
+ }
 diff --git a/contract/src/swd.rs b/contract/src/swd.rs
 index e2d38d2..a2dae3f 100644
 --- a/contract/src/swd.rs
@@ -2312,7 +3824,7 @@ index f10a5fe..e0a16da 100644
          let n = size.bytes() as usize;
          for i in 0..n {
 diff --git a/hw/src/audio/mod.rs b/hw/src/audio/mod.rs
-index cec4c19..a270803 100644
+index 23ccfae..29bb925 100644
 --- a/hw/src/audio/mod.rs
 +++ b/hw/src/audio/mod.rs
 @@ -1,4 +1,3 @@
@@ -2320,14 +3832,115 @@ index cec4c19..a270803 100644
  pub mod ac97;
  pub mod ad1980;
  pub mod adau1361;
-@@ -16,6 +15,7 @@ pub mod alc5670;
+@@ -8,6 +7,11 @@ pub mod adau1761;
+ pub mod adau1781;
+ pub mod adau1962;
+ pub mod adau1977;
++pub mod ak4114;
++pub mod ak4117;
++pub mod ak4384;
++pub mod ak4430;
++pub mod akai_s3000xl;
+ pub mod alc1220;
+ pub mod alc5616;
+ pub mod alc5640;
+@@ -16,62 +20,49 @@ pub mod alc5670;
  pub mod alc5677;
  pub mod alc889;
  pub mod alc892;
++pub mod alesis_nanopiano;
++pub mod behringer_umc202hd_midi;
 +pub mod catalog;
  pub mod cs42448;
  pub mod cs4270;
  pub mod cs4271;
+ pub mod cs4281;
+ pub mod cs42l51;
+ pub mod cs42l52;
+-pub mod es1370;
+-pub mod es1371;
+-pub mod hda;
+-pub mod live;
+-pub mod max9856;
+-pub mod max9867;
+-pub mod nau8810;
+-pub mod nau8822;
+-pub mod nau8824;
+-pub mod nau88l25;
+-pub mod opl3;
+-pub mod pl041;
+-pub mod rt5616;
+-pub mod sb128;
+-pub mod sb16;
+-pub mod sbawe32;
+-pub mod ssm2603;
+-pub mod ssm4598;
+-pub mod tlv320aic23b;
+-pub mod tlv320aic3104;
+-pub mod tlv320aic3204;
+-pub mod tlv320aic3254;
+-pub mod ak4114;
+-pub mod ak4117;
+-pub mod ak4384;
+-pub mod ak4430;
+-pub mod akai_s3000xl;
+-pub mod alesis_nanopiano;
+-pub mod behringer_umc202hd_midi;
+ pub mod cs8406;
+ pub mod cs8416;
+ pub mod cs8422;
+ pub mod dir9001;
+ pub mod dix4192;
+ pub mod emu_proteus_fx;
++pub mod es1370;
++pub mod es1371;
+ pub mod es9023;
+ pub mod es9028;
+ pub mod focusrite_scarlett_2i2_midi;
++pub mod hda;
+ pub mod korg_05rw;
+ pub mod korg_m1;
++pub mod live;
+ pub mod m_audio_midisport_2x2;
+ pub mod max98373;
+ pub mod max98390;
++pub mod max9856;
++pub mod max9867;
++pub mod nau8810;
++pub mod nau8822;
++pub mod nau8824;
++pub mod nau88l25;
++pub mod opl3;
+ pub mod pcm9211;
++pub mod pl041;
+ pub mod roland_mt32;
+ pub mod roland_sc55;
+ pub mod roland_sc88;
+ pub mod roland_sc8820;
+ pub mod rt1308;
+ pub mod rt1316;
++pub mod rt5616;
+ pub mod rt5682;
+ pub mod rt5682s;
+ pub mod rt700;
+@@ -79,8 +70,17 @@ pub mod rt711;
+ pub mod rt711_sdca;
+ pub mod rt715;
+ pub mod rt715_sdca;
++pub mod sb128;
++pub mod sb16;
++pub mod sbawe32;
++pub mod ssm2603;
++pub mod ssm4598;
+ pub mod tasha_wcd9335;
+ pub mod tavil_wcd9341;
++pub mod tlv320aic23b;
++pub mod tlv320aic3104;
++pub mod tlv320aic3204;
++pub mod tlv320aic3254;
+ pub mod wcd9335;
+ pub mod wcd9340;
+ pub mod wcd9360;
 diff --git a/hw/src/audio/opl3.rs b/hw/src/audio/opl3.rs
 index 122e881..7b2665d 100644
 --- a/hw/src/audio/opl3.rs
@@ -4284,6 +5897,110 @@ index 3e4449f..2b9aea7 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/display/mod.rs b/hw/src/display/mod.rs
+index 69fe747..63ffa05 100644
+--- a/hw/src/display/mod.rs
++++ b/hw/src/display/mod.rs
+@@ -2,40 +2,12 @@
+ pub mod catalog;
+ pub mod vga;
+ 
+-pub mod ast_gfx;
+-pub mod dpi;
+-pub mod dsi;
+-pub mod gd5446;
+-pub mod hx8357;
+-pub mod i915;
+-pub mod ili9163;
+-pub mod ili9325;
+-pub mod ili9341;
+-pub mod ili9342;
+-pub mod ili9481;
+-pub mod ili9486;
+-pub mod ili9488;
+-pub mod ls013b7dh03;
+-pub mod ls027b7dh01;
+-pub mod ltdc;
+-pub mod s3c_fb;
+-pub mod sh1106;
+-pub mod ssd1306;
+-pub mod ssd1309;
+-pub mod ssd1322;
+-pub mod ssd1327;
+-pub mod ssd1331;
+-pub mod ssd1351;
+-pub mod st7735;
+-pub mod st7789;
+-pub mod st7796;
+-pub mod stdvga;
+-pub mod vbe;
+ pub mod acer_conceptd_cp7;
+ pub mod acer_predator_xb271hu;
+ pub mod acer_vg270;
+ pub mod adafruit_5in_800x480;
+ pub mod aoc_agon_ag273qx;
++pub mod ast_gfx;
+ pub mod asus_pa278cv;
+ pub mod asus_pa329cv;
+ pub mod asus_pg279qm;
+@@ -51,10 +23,22 @@ pub mod dell_s2722qc;
+ pub mod dell_u2720q;
+ pub mod dell_u2723qe;
+ pub mod dell_u3219c;
++pub mod dpi;
++pub mod dsi;
++pub mod gd5446;
+ pub mod gigabyte_m27q;
+ pub mod hp_omen_27i;
+ pub mod hp_z27;
+ pub mod hp_z32;
++pub mod hx8357;
++pub mod i915;
++pub mod ili9163;
++pub mod ili9325;
++pub mod ili9341;
++pub mod ili9342;
++pub mod ili9481;
++pub mod ili9486;
++pub mod ili9488;
+ pub mod innolux_p079zca;
+ pub mod innolux_p097pfg;
+ pub mod jdi_lt070me05000;
+@@ -65,18 +49,34 @@ pub mod lg_32un880;
+ pub mod lg_acx424akm;
+ pub mod lg_cx_oled;
+ pub mod lg_lh500db1;
++pub mod ls013b7dh03;
++pub mod ls027b7dh01;
++pub mod ltdc;
+ pub mod msi_creator_ps321urv;
+ pub mod msi_optix_mpg27cq;
+ pub mod rpi_5in_dsi;
+ pub mod rpi_7in_touchscreen;
++pub mod s3c_fb;
+ pub mod samsung_ams495qa;
+ pub mod samsung_odyssey_g7;
+ pub mod samsung_s65ua;
+ pub mod samsung_s6e3fa5;
+ pub mod samsung_viewfinity_s9;
++pub mod sh1106;
+ pub mod sharp_ls055r1sx04;
++pub mod ssd1306;
++pub mod ssd1309;
++pub mod ssd1322;
++pub mod ssd1327;
++pub mod ssd1331;
++pub mod ssd1351;
++pub mod st7735;
++pub mod st7789;
++pub mod st7796;
++pub mod stdvga;
+ pub mod truly_td4322;
+ pub mod truly_tda8460a;
++pub mod vbe;
+ pub mod viewsonic_vp2785;
+ pub mod viewsonic_vp3268;
+ pub mod waveshare_5in_dsi;
 diff --git a/hw/src/display/s3c_fb.rs b/hw/src/display/s3c_fb.rs
 index c33d4ae..bfa7cb5 100644
 --- a/hw/src/display/s3c_fb.rs
@@ -7008,6 +8725,110 @@ index 41c61b7..ade579d 100644
  
  /// The 8042 keyboard controller: `irq` output. The keyboard and mouse
  /// devices attach through the board's wiring (bus membership rule).
+diff --git a/hw/src/input/gameport_stick_core.rs b/hw/src/input/gameport_stick_core.rs
+index 552ac8b..6edfa78 100644
+--- a/hw/src/input/gameport_stick_core.rs
++++ b/hw/src/input/gameport_stick_core.rs
+@@ -94,12 +94,7 @@ impl GamePortStick for GamePortStickCore {
+         self.state
+     }
+ 
+-    fn on_dac(
+-        &mut self,
+-        _ctx: &mut dyn Ctx,
+-        channel: u8,
+-        value: u8,
+-    ) -> Result<(), GamePortError> {
++    fn on_dac(&mut self, _ctx: &mut dyn Ctx, channel: u8, value: u8) -> Result<(), GamePortError> {
+         let idx = channel as usize % 4;
+         self.dac[idx] = value;
+         Ok(())
+diff --git a/hw/src/input/mod.rs b/hw/src/input/mod.rs
+index f8fd97c..40f6e18 100644
+--- a/hw/src/input/mod.rs
++++ b/hw/src/input/mod.rs
+@@ -11,39 +11,25 @@ pub mod adp5585;
+ pub mod adp5587;
+ pub mod adp5588;
+ pub mod adp5589;
++pub mod alps_glidepoint;
++pub mod ch_products_f16_combatstick;
++pub mod ch_products_flightstick;
++pub mod chicony_ps2;
++pub mod compaq_ps2_keyboard;
++pub mod dell_ps2_keyboard;
+ pub mod ektf2136;
+ pub mod ektf3632;
+ pub mod ekth6a12nay;
+ pub mod ft5316;
+ pub mod ft5x06;
+ pub mod ft6206;
++pub mod gameport_stick_core;
++pub mod gravis_gamepad_pro;
+ pub mod gt1151;
+ pub mod gt7996f;
+ pub mod gt911;
+ pub mod gt9271;
+ pub mod gt9886;
+-pub mod max7359;
+-pub mod max7360;
+-pub mod ps2_mouse;
+-pub mod ps2_touchpad;
+-pub mod s3203;
+-pub mod s3706;
+-pub mod s3908;
+-pub mod stmpe610;
+-pub mod stmpe811;
+-pub mod tca8418;
+-pub mod tm1412;
+-pub mod tsc2004;
+-pub mod tsc2007;
+-pub mod tsc2013;
+-pub mod tsc2046;
+-pub mod alps_glidepoint;
+-pub mod ch_products_f16_combatstick;
+-pub mod ch_products_flightstick;
+-pub mod chicony_ps2;
+-pub mod compaq_ps2_keyboard;
+-pub mod dell_ps2_keyboard;
+-pub mod gravis_gamepad_pro;
+ pub mod guillemot_falcon;
+ pub mod hp_ps2_keyboard;
+ pub mod ibm_model_m;
+@@ -59,16 +45,30 @@ pub mod logitech_thunderpad_digital;
+ pub mod logitech_wheel_mouse;
+ pub mod logitech_wingman_extreme;
+ pub mod logitech_wingman_warrior;
++pub mod max7359;
++pub mod max7360;
+ pub mod microsoft_basic_mouse;
+ pub mod microsoft_intellimouse;
+ pub mod microsoft_natural_4000;
+ pub mod ms_sidewinder_3dpro;
+ pub mod ms_sidewinder_ffb;
+ pub mod ms_sidewinder_precision;
++pub mod ps2_keyboard_core;
++pub mod ps2_mouse;
++pub mod ps2_mouse_core;
++pub mod ps2_touchpad;
++pub mod s3203;
++pub mod s3706;
++pub mod s3908;
+ pub mod saitek_x36;
++pub mod stmpe610;
++pub mod stmpe811;
+ pub mod sun_type6_ps2;
+ pub mod synaptics_ps2_touchpad;
++pub mod tca8418;
+ pub mod thrustmaster_f22;
+-pub mod ps2_keyboard_core;
+-pub mod ps2_mouse_core;
+-pub mod gameport_stick_core;
++pub mod tm1412;
++pub mod tsc2004;
++pub mod tsc2007;
++pub mod tsc2013;
++pub mod tsc2046;
 diff --git a/hw/src/input/ps2_mouse.rs b/hw/src/input/ps2_mouse.rs
 index 7d39d55..47c8fa3 100644
 --- a/hw/src/input/ps2_mouse.rs
@@ -8314,6 +10135,106 @@ index 64b0779..cebb685 100644
          let off = (addr & 0xFF) as usize;
          let n = size.bytes() as usize;
          for i in 0..n {
+diff --git a/hw/src/misc/mod.rs b/hw/src/misc/mod.rs
+index 37a1cbd..b4be47b 100644
+--- a/hw/src/misc/mod.rs
++++ b/hw/src/misc/mod.rs
+@@ -24,7 +24,9 @@ pub mod adt7463;
+ pub mod adt7468;
+ pub mod adt7470;
+ pub mod adt7490;
++pub mod apple_ipod_1g;
+ pub mod arm_smc_mailbox;
++pub mod aspeed_ast2600_espi;
+ pub mod ast_lpc;
+ pub mod atecc108a;
+ pub mod atecc508a;
+@@ -66,13 +68,22 @@ pub mod ds2450;
+ pub mod ds28e17;
+ pub mod ds28ea00;
+ pub mod ds28ec20;
++pub mod dv_camcorder_dvplus;
++pub mod dv_camcorder_xl1;
++pub mod ene_kb3926;
++pub mod focusrite_saffire_pro40;
+ pub mod ina219;
+ pub mod ina226;
+ pub mod ina230;
+ pub mod ina231;
+ pub mod ina260;
+ pub mod ina3221;
++pub mod intel_spt_lpss_spi;
+ pub mod ish;
++pub mod ite_it8528;
++pub mod ite_it8528e;
++pub mod ite_it8728f;
++pub mod lacie_porsche_fw800;
+ pub mod lm25066;
+ pub mod lm5064;
+ pub mod lm5066;
+@@ -114,8 +125,13 @@ pub mod max6655;
+ pub mod max6657;
+ pub mod max6697;
+ pub mod max7359_key;
++pub mod mec1428;
++pub mod mec1633;
++pub mod motu_828_mki;
+ pub mod ncpn_tn;
+ pub mod npcm_lpc;
++pub mod nuvoton_npcd376;
++pub mod nuvoton_npcd390;
+ pub mod p2sb;
+ pub mod pc_testdev;
+ pub mod pca9540b;
+@@ -133,16 +149,22 @@ pub mod pn544;
+ pub mod pn547;
+ pub mod pn553;
+ pub mod pn7150;
++pub mod presonus_firestudio;
+ pub mod rcc_f4;
+ pub mod rcc_h7;
+ pub mod rp2040_clocks;
+ pub mod sa56004;
++pub mod sbp2_disk_120gb;
++pub mod sbp2_disk_250gb;
++pub mod sbp2_dvd_rw;
+ pub mod sc16is740;
+ pub mod sc16is750;
+ pub mod sc16is752;
+ pub mod sc16is760;
+ pub mod sc16is762;
+ pub mod se97b;
++pub mod smsc_mec1308;
++pub mod smsc_sch5627;
+ pub mod st25dv;
+ pub mod st33htpm;
+ pub mod tca9543a;
+@@ -163,25 +185,3 @@ pub mod tps53679;
+ pub mod tps53681;
+ pub mod tps536c7;
+ pub mod xr20m1172;
+-pub mod apple_ipod_1g;
+-pub mod aspeed_ast2600_espi;
+-pub mod dv_camcorder_dvplus;
+-pub mod dv_camcorder_xl1;
+-pub mod ene_kb3926;
+-pub mod focusrite_saffire_pro40;
+-pub mod intel_spt_lpss_spi;
+-pub mod ite_it8528;
+-pub mod ite_it8528e;
+-pub mod ite_it8728f;
+-pub mod lacie_porsche_fw800;
+-pub mod mec1428;
+-pub mod mec1633;
+-pub mod motu_828_mki;
+-pub mod nuvoton_npcd376;
+-pub mod nuvoton_npcd390;
+-pub mod presonus_firestudio;
+-pub mod sbp2_disk_120gb;
+-pub mod sbp2_disk_250gb;
+-pub mod sbp2_dvd_rw;
+-pub mod smsc_mec1308;
+-pub mod smsc_sch5627;
 diff --git a/hw/src/misc/npcm_lpc.rs b/hw/src/misc/npcm_lpc.rs
 index e0962b3..11d9eda 100644
 --- a/hw/src/misc/npcm_lpc.rs
@@ -11500,7 +13421,7 @@ index 5749df5..f3076c0 100644
 +    PointerSensor::new(9, 0x0f).at(0x18)
  }
 diff --git a/hw/src/sensor/mod.rs b/hw/src/sensor/mod.rs
-index d8336c7..e31f124 100644
+index 15942f2..00931c5 100644
 --- a/hw/src/sensor/mod.rs
 +++ b/hw/src/sensor/mod.rs
 @@ -5,7 +5,6 @@
@@ -11519,6 +13440,30 @@ index d8336c7..e31f124 100644
  pub mod ccs811;
  pub mod ccs811_aq;
  pub mod ds1775;
+@@ -167,14 +167,13 @@ pub mod veml6075;
+ pub mod veml6204;
+ pub mod veml7700;
+ 
+-pub mod i2c_pointer;
+-pub mod onewire_ds18b20;
+ pub mod ar0144;
+ pub mod ar0234;
+ pub mod ar0521;
+ pub mod ar1335;
+ pub mod gc2053;
+ pub mod gc4653;
++pub mod i2c_pointer;
+ pub mod imx219;
+ pub mod imx296;
+ pub mod imx327;
+@@ -184,6 +183,7 @@ pub mod imx477m;
+ pub mod imx519;
+ pub mod mt9m001;
+ pub mod mt9v022;
++pub mod onewire_ds18b20;
+ pub mod ov08d10;
+ pub mod ov5640;
+ pub mod ov5647;
 diff --git a/hw/src/sensor/stlm75.rs b/hw/src/sensor/stlm75.rs
 index 81571f8..13e5ec1 100644
 --- a/hw/src/sensor/stlm75.rs
@@ -15099,10 +17044,38 @@ index 46d230c..f00098f 100644
          let n = size.bytes() as usize;
          for i in 0..n {
 diff --git a/xtask/src/catalog.rs b/xtask/src/catalog.rs
-index 895150e..e038f75 100644
+index 3000d21..7e876d3 100644
 --- a/xtask/src/catalog.rs
 +++ b/xtask/src/catalog.rs
-@@ -593,7 +593,10 @@ pub(super) fn validate_leaf_catalog_manifest(
+@@ -460,7 +460,26 @@ pub(super) fn validate_leaf_catalog_manifest(
+                 }
+                 if !matches!(
+                     binding.as_str(),
+-                    "i2c" | "spi" | "onewire" | "smbus" | "pmbus" | "microwire" | "uart" | "can" | "ps2" | "spdif" | "espi" | "midi" | "gameport" | "hdmi" | "displayport" | "mipi_dsi" | "mipi_csi" | "soundwire" | "slimbus" | "firewire"
++                    "i2c"
++                        | "spi"
++                        | "onewire"
++                        | "smbus"
++                        | "pmbus"
++                        | "microwire"
++                        | "uart"
++                        | "can"
++                        | "ps2"
++                        | "spdif"
++                        | "espi"
++                        | "midi"
++                        | "gameport"
++                        | "hdmi"
++                        | "displayport"
++                        | "mipi_dsi"
++                        | "mipi_csi"
++                        | "soundwire"
++                        | "slimbus"
++                        | "firewire"
+                 ) {
+                     return Err(format!("part.bindings: unsupported binding {binding:?}"));
+                 }
+@@ -620,7 +639,10 @@ pub(super) fn validate_leaf_catalog_manifest(
  
              // Microwire binding: instruction bits + address bits.
              if let Some(microwire) = root.get("microwire") {
@@ -15114,7 +17087,7 @@ index 895150e..e038f75 100644
                      return Err(
                          "microwire: section exists but part does not declare a microwire binding"
                              .into(),
-@@ -602,14 +605,20 @@ pub(super) fn validate_leaf_catalog_manifest(
+@@ -629,14 +651,20 @@ pub(super) fn validate_leaf_catalog_manifest(
                  let microwire = microwire
                      .as_table()
                      .ok_or_else(|| "microwire: expected a table".to_owned())?;
@@ -15137,7 +17110,7 @@ index 895150e..e038f75 100644
                  && !root.contains_key("microwire")
              {
                  return Err("part.bindings: microwire binding has no [microwire] section".into());
-@@ -669,8 +678,7 @@ pub(super) fn validate_leaf_catalog_manifest(
+@@ -696,8 +724,7 @@ pub(super) fn validate_leaf_catalog_manifest(
                      }
                  }
              }
@@ -15147,6 +17120,52 @@ index 895150e..e038f75 100644
              {
                  return Err("part.bindings: can binding has no [can] section".into());
              }
+@@ -712,9 +739,9 @@ pub(super) fn validate_leaf_catalog_manifest(
+                     .ok_or_else(|| "ps2: expected a table".to_owned())?;
+                 reject_unknown(ps2, &["kind", "device-id"], "ps2")?;
+                 if let Some(kind) = ps2.get("kind") {
+-                    let kind_str = kind.as_str().ok_or_else(|| {
+-                        "ps2.kind: expected a string (keyboard|mouse)".to_owned()
+-                    })?;
++                    let kind_str = kind
++                        .as_str()
++                        .ok_or_else(|| "ps2.kind: expected a string (keyboard|mouse)".to_owned())?;
+                     if !matches!(kind_str, "keyboard" | "mouse") {
+                         return Err(format!("ps2.kind: unsupported {kind_str:?}"));
+                     }
+@@ -723,8 +750,7 @@ pub(super) fn validate_leaf_catalog_manifest(
+                     non_negative_integer(id, "ps2.device-id")?;
+                 }
+             }
+-            if bindings.iter().any(|binding| binding.as_str() == "ps2")
+-                && !root.contains_key("ps2")
++            if bindings.iter().any(|binding| binding.as_str() == "ps2") && !root.contains_key("ps2")
+             {
+                 return Err("part.bindings: ps2 binding has no [ps2] section".into());
+             }
+@@ -802,7 +828,10 @@ pub(super) fn validate_leaf_catalog_manifest(
+                 return Err("part.bindings: midi binding has no [midi] section".into());
+             }
+             if let Some(gp) = root.get("gameport") {
+-                if !bindings.iter().any(|binding| binding.as_str() == "gameport") {
++                if !bindings
++                    .iter()
++                    .any(|binding| binding.as_str() == "gameport")
++                {
+                     return Err(
+                         "gameport: section exists but part does not declare a gameport binding"
+                             .into(),
+@@ -819,7 +848,9 @@ pub(super) fn validate_leaf_catalog_manifest(
+                     non_negative_integer(btns, "gameport.buttons")?;
+                 }
+             }
+-            if bindings.iter().any(|binding| binding.as_str() == "gameport")
++            if bindings
++                .iter()
++                .any(|binding| binding.as_str() == "gameport")
+                 && !root.contains_key("gameport")
+             {
+                 return Err("part.bindings: gameport binding has no [gameport] section".into());
 diff --git a/xtask/src/lib.rs b/xtask/src/lib.rs
 index 0015ce4..1dfe563 100644
 --- a/xtask/src/lib.rs

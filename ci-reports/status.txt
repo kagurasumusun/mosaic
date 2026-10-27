@@ -1,7 +1,7 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40511918731
-commit: 06927ab0751d893a7dd5155cb4ee656f95c12128
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40578454062
+commit: 6401d8057926d1cf075be1d7916f932eaebcfe40
 ref: refs/heads/master
-started: 2026-10-27T13:26:10Z
+started: 2026-10-27T20:34:32Z
 formatting: fail (code=0, see rustfmt.diff)
 xtask: ok
 clippy: fail (code=101)
@@ -12,4 +12,4 @@ runtime-machine: ok
 runtime-snapshot: ok
 front-end: ok
 doctor: ok
-finished: 2026-10-27T13:35:08Z
+finished: 2026-10-27T20:43:44Z
