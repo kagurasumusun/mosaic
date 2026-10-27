@@ -1,8 +1,13 @@
 //! HP 33120A 15 MHz function/arbitrary waveform generator (GPIB)
 //!
-//! Catalog part `part:hp/hp-33120a` — see
-//! manifests/hw/misc/hp-33120a.toml.
+//! Catalog part — manifests/hw/misc/hp-33120a.toml.
+//! Thin configuration over the shared GPIB instrument core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::misc::gpib_instrument_core::GpibInstrumentCore;
+
+/// hp-33120a: primary address 10
+pub fn new() -> GpibInstrumentCore {
+    GpibInstrumentCore::new()
+        .at(10)
+        .with_idn("HEWLETT-PACKARD,33120A,0,4.0-4.0\n")
+}

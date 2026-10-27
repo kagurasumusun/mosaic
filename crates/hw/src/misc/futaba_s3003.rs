@@ -1,8 +1,11 @@
 //! Futaba S3003 standard analog RC servo (PWM 50 Hz, 3.2 kg-cm)
 //!
-//! Catalog part `part:futaba/futaba-s3003` — see
-//! manifests/hw/misc/futaba-s3003.toml.
+//! Catalog part — manifests/hw/misc/futaba-s3003.toml.
+//! Thin configuration over the shared PWM device core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::misc::pwm_device_core::PwmDeviceCore;
+
+/// futaba-s3003: single PWM channel consumer
+pub fn new() -> PwmDeviceCore {
+    PwmDeviceCore::new()
+}

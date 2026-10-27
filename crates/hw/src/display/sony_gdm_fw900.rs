@@ -1,8 +1,11 @@
 //! Sony GDM-FW900 24" widescreen CRT monitor (analog VGA)
 //!
-//! Catalog part `part:sony/sony-gdm-fw900` — see
-//! manifests/hw/display/sony-gdm-fw900.toml.
+//! Catalog part — manifests/hw/display/sony-gdm-fw900.toml.
+//! Thin configuration over the shared VGA monitor core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::display::vga_monitor_core::VgaMonitorCore;
+
+/// sony-gdm-fw900: 380 MHz video bandwidth
+pub fn new() -> VgaMonitorCore {
+    VgaMonitorCore::new().with_max_pixel_clock_khz(380000)
+}

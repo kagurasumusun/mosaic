@@ -1,8 +1,13 @@
 //! Keithley 2000 6.5-digit integrating digital multimeter (GPIB)
 //!
-//! Catalog part `part:keithley/keithley-2000` — see
-//! manifests/hw/misc/keithley-2000.toml.
+//! Catalog part — manifests/hw/misc/keithley-2000.toml.
+//! Thin configuration over the shared GPIB instrument core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::misc::gpib_instrument_core::GpibInstrumentCore;
+
+/// keithley-2000: primary address 16
+pub fn new() -> GpibInstrumentCore {
+    GpibInstrumentCore::new()
+        .at(16)
+        .with_idn("KEITHLEY INSTRUMENTS INC.,MODEL 2000,0,A30/A30\n")
+}

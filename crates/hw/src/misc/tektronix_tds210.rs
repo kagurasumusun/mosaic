@@ -1,8 +1,13 @@
 //! Tektronix TDS 210 two-channel 60 MHz digital oscilloscope (GPIB option)
 //!
-//! Catalog part `part:tektronix/tektronix-tds210` — see
-//! manifests/hw/misc/tektronix-tds210.toml.
+//! Catalog part — manifests/hw/misc/tektronix-tds210.toml.
+//! Thin configuration over the shared GPIB instrument core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::misc::gpib_instrument_core::GpibInstrumentCore;
+
+/// tektronix-tds210: primary address 1
+pub fn new() -> GpibInstrumentCore {
+    GpibInstrumentCore::new()
+        .at(1)
+        .with_idn("TEKTRONIX,TDS 210,0,CF:91.1CT FV:v1.11\n")
+}

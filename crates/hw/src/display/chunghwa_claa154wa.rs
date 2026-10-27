@@ -1,8 +1,13 @@
 //! Chunghwa CLAA154WA05 15.4" WXGA laptop panel (1280x800, LVDS)
 //!
-//! Catalog part `part:chunghwa/chunghwa-claa154wa` — see
-//! manifests/hw/display/chunghwa-claa154wa.toml.
+//! Catalog part — manifests/hw/display/chunghwa-claa154wa.toml.
+//! Thin configuration over the shared LVDS panel core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::display::lvds_panel_core::LvdsPanelCore;
+
+/// chunghwa-claa154wa: native 1280x800, 4 data lanes
+pub fn new() -> LvdsPanelCore {
+    LvdsPanelCore::new()
+        .with_resolution(1280, 800)
+        .with_lanes(4)
+}

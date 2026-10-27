@@ -1,8 +1,13 @@
 //! Samsung LTN154X3-L02 15.4" WXGA laptop panel (1280x800, LVDS)
 //!
-//! Catalog part `part:samsung/samsung-ltn154x3` — see
-//! manifests/hw/display/samsung-ltn154x3.toml.
+//! Catalog part — manifests/hw/display/samsung-ltn154x3.toml.
+//! Thin configuration over the shared LVDS panel core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::display::lvds_panel_core::LvdsPanelCore;
+
+/// samsung-ltn154x3: native 1280x800, 4 data lanes
+pub fn new() -> LvdsPanelCore {
+    LvdsPanelCore::new()
+        .with_resolution(1280, 800)
+        .with_lanes(4)
+}

@@ -10,6 +10,7 @@ pub mod corsair_ml120_pro;
 pub mod delta_pfm1212de;
 pub mod fluke_45;
 pub mod futaba_s3003;
+pub mod gpib_instrument_core;
 pub mod hitec_hs_311;
 pub mod hp_33120a;
 pub mod hp_33220a;
@@ -25,6 +26,7 @@ pub mod nmb_1608fk;
 pub mod noctua_nf_a12x25;
 pub mod nzxt_fz120;
 pub mod primecell_id;
+pub mod pwm_device_core;
 pub mod rcc_f1;
 
 pub mod ade7753;

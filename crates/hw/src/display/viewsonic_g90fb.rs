@@ -1,8 +1,11 @@
 //! ViewSonic G90fb 19" CRT monitor (analog VGA)
 //!
-//! Catalog part `part:viewsonic/viewsonic-g90fb` — see
-//! manifests/hw/display/viewsonic-g90fb.toml.
+//! Catalog part — manifests/hw/display/viewsonic-g90fb.toml.
+//! Thin configuration over the shared VGA monitor core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::display::vga_monitor_core::VgaMonitorCore;
+
+/// viewsonic-g90fb: 260 MHz video bandwidth
+pub fn new() -> VgaMonitorCore {
+    VgaMonitorCore::new().with_max_pixel_clock_khz(260000)
+}

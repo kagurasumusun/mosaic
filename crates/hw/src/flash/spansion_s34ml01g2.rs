@@ -1,8 +1,11 @@
 //! Spansion S34ML01G2 1 Gbit SLC NAND (2048+64 B pages)
 //!
-//! Catalog part `part:spansion/spansion-s34ml01g2` — see
-//! manifests/hw/flash/spansion-s34ml01g2.toml.
+//! Catalog part — manifests/hw/flash/spansion-s34ml01g2.toml.
+//! Thin configuration over the shared raw-NAND flash core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::flash::nand_flash_core::NandFlashCore;
+
+/// spansion-s34ml01g2: 2048+64 B pages, 65536 blocks
+pub fn new() -> NandFlashCore {
+    NandFlashCore::with_geometry(2048, 64, 65536, 64, 0x01, 0xF1)
+}

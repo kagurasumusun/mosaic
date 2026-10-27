@@ -1,8 +1,11 @@
 //! TowerPro MG996R metal-gear analog RC servo (PWM 50 Hz, 11 kg-cm)
 //!
-//! Catalog part `part:towerpro/towerpro-mg996r` — see
-//! manifests/hw/misc/towerpro-mg996r.toml.
+//! Catalog part — manifests/hw/misc/towerpro-mg996r.toml.
+//! Thin configuration over the shared PWM device core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::misc::pwm_device_core::PwmDeviceCore;
+
+/// towerpro-mg996r: single PWM channel consumer
+pub fn new() -> PwmDeviceCore {
+    PwmDeviceCore::new()
+}

@@ -1,8 +1,11 @@
 //! Sony SDM-HS95P 19" DVI LCD monitor (1280x1024)
 //!
-//! Catalog part `part:sony/sony-sdm-hs95p` — see
-//! manifests/hw/display/sony-sdm-hs95p.toml.
+//! Catalog part — manifests/hw/display/sony-sdm-hs95p.toml.
+//! Thin configuration over the shared DVI monitor core (ADR 0029).
 
-/// Marker type for catalog discovery.
-#[allow(dead_code)]
-pub struct Placeholder;
+use crate::display::dvi_monitor_core::DviMonitorCore;
+
+/// sony-sdm-hs95p: TMDS single-link
+pub fn new() -> DviMonitorCore {
+    DviMonitorCore::new().with_lanes(1)
+}

@@ -50,6 +50,7 @@ pub mod n25q064;
 pub mod n25q128;
 pub mod n25q256;
 pub mod n25q512;
+pub mod nand_flash_core;
 pub mod s25fl016;
 pub mod s25fl032;
 pub mod s25fl064;
