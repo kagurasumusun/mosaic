@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:intel/hpet'
+summary = 'IA-PC High Precision Event Timer (HPET): counter + 3 comparators'
+spec = ['IA-PC HPET Specification 1.0']
+variants = []
+
+[tags]
+function = ['timer']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', count = 3 }
+
+[params]

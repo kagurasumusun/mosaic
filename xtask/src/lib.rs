@@ -114,9 +114,9 @@ fn walk_dirs(path: &Path, directories: &mut Vec<PathBuf>) -> CheckResult<()> {
 /// The QEMU `hw/` function-axis vocabulary (ADR 0024 §3.2). A device manifest
 /// lives in exactly one of these, and its code mirrors the same directory.
 pub const HW_FUNCTION_DIRS: &[&str] = &[
-    "adc", "audio", "block", "can", "char", "display", "dma", "gpio", "i2c", "ide", "input",
-    "intc", "mailbox", "misc", "net", "nvram", "pci", "rtc", "sd", "sensor", "ssi", "timer", "usb",
-    "virtio",
+    "adc", "audio", "block", "can", "char", "display", "dma", "flash", "gpio", "i2c", "i3c", "ide",
+    "input", "intc", "mailbox", "misc", "net", "nvram", "pci", "rtc", "sd", "sensor", "ssi",
+    "timer", "usb", "virtio",
 ];
 
 /// Top-level directories whose contents must be kebab-case.

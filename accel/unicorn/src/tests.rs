@@ -4,7 +4,6 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-use super::*;
 use mosaic_isa_arm::Register;
 
 /// IA-32 fixture: 64 KiB of RAM at physical 0 plus a port recorder.

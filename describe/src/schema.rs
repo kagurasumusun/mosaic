@@ -177,7 +177,16 @@ impl SocManifest {
                         ),
                     )
                 })?;
-                validate_local_name("block.clk.source", source)?;
+                // A clock source is either an abstract clock net name (a
+                // local name) or a `<block>.<port>` reference into another
+                // block's output ports (ADR 0025): one dot, two segments.
+                let segments: Vec<&str> = source.split('.').collect();
+                if segments.len() == 2 {
+                    validate_local_name("block.clk.source.block", segments[0])?;
+                    validate_local_name("block.clk.source.port", segments[1])?;
+                } else {
+                    validate_local_name("block.clk.source", source)?;
+                }
             }
             let mut irq_pins = BTreeSet::new();
             for irq in &block.irq {

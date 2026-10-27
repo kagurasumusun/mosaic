@@ -1,0 +1,19 @@
+[identity]
+id = 'ip:ns/ns16550a'
+summary = 'NS16550A UART: FIFOs, modem lines, full register set (PC COM ports)'
+spec = ['PC16550D Datasheet']
+variants = ['16450 (FIFO-less)', '16550A', 'PC COM port']
+
+[tags]
+function = ['uart']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x8 }
+irq = { role = 'source', pins = ['irq'] }
+stream = { contract = 'stream/byte', role = 'endpoint', optional = true }
+
+[params]
+# The divisor and line settings live in registers, not wiring; the model
+# carries no manifest parameters.

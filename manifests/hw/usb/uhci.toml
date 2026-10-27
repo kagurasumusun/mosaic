@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:intel/uhci'
+summary = 'Intel UHCI USB 1.1 host controller (frame list, TD walk, PCI function)'
+spec = ['Intel UHCI 1.1', 'Intel 82371SB PIIX3']
+variants = []
+
+[tags]
+function = ['usb-host']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+io = { role = 'target', size = 0x20 }
+irq = { role = 'source', pins = ['irq'] }
+usb = { contract = 'usb/bus', role = 'initiator' }
+
+[params]

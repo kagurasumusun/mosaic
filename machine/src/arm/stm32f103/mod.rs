@@ -85,21 +85,11 @@ pub struct Stm32F103Report {
 }
 
 /// Read the Cortex-M reset entry (initial SP, reset-handler PC) out of the
-/// image's own vector table. This is the machine's whole `-kernel` protocol.
+/// image's own vector table. The reset sequence belongs to the boot crate
+/// (`mosaic_boot::proto::cortex_m`, QEMU's `armv7m_load_kernel` role,
+/// ADR 0025); this machine's `-kernel` protocol is exactly it.
 pub fn vector_entry(image: &[u8]) -> Result<(u64, u64), String> {
-    let word = |offset: usize| -> Result<u32, String> {
-        image
-            .get(offset..offset + 4)
-            .and_then(|bytes| bytes.try_into().ok())
-            .map(u32::from_le_bytes)
-            .ok_or_else(|| "-kernel: image is shorter than a Cortex-M vector table".to_string())
-    };
-    let sp = word(0)?;
-    let pc = word(4)? & !1;
-    if sp == 0 || pc == 0 {
-        return Err("-kernel: vector table entry is null".into());
-    }
-    Ok((u64::from(sp), u64::from(pc)))
+    mosaic_boot::proto::cortex_m::vector_entry(image).map_err(|detail| format!("-kernel: {detail}"))
 }
 
 /// Run the machine on the Unicorn backend (`-M stm32f103 -accel unicorn`).

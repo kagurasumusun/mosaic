@@ -1260,12 +1260,13 @@ kind = 'ram'
             r#"
 [board]
 id = 'board:test/fixture'
+soc = 'soc:test/fixture'
 summary = 'parser fixture'
 [[part]]
 name = 'env0'
 use = 'part:test/device'
-bind = 'stream'
-conn = { bus = 'soc.not-a-device' }
+bind = 'i2c'
+conn = { bus = 'soc.not-a-device', addr = 0x48 }
 "#,
         )
         .unwrap();

@@ -4,9 +4,12 @@
 //!
 //! The tree is one domain per directory, mirroring QEMU's own top level:
 //! `util`, `exec`, `contract`, `runtime`, `isa/<arch>` (QEMU `target/`),
-//! `accel/<engine>`, `hw` (device models, one function directory per kind),
-//! `block`, `describe`, `assemble`, `machine` (SoC/board models per arch,
-//! QEMU `hw/<arch>`), the `mosaic` front-end, `tests`, `xtask`.
+//! `accel/<engine>`, `bus` (the interconnect foundation: one fabric per
+//! connection method, ADR 0025), `hw` (device models, one function
+//! directory per kind), `boot` (the boot and image-reading foundation:
+//! loaders, formats, per-arch boot protocols), `describe`, `assemble`,
+//! `machine` (SoC/board models per arch, QEMU `hw/<arch>`), the `mosaic`
+//! front-end, `tests`, `xtask`.
 //! Dependencies only point downward; `hw` never sees `machine`, and nothing
 //! below `machine` sees an engine's concrete types except `accel` itself.
 
@@ -40,24 +43,31 @@ const FORBIDDEN: &[&str] = &[
 pub fn level_of(kind: &str) -> Option<u64> {
     Some(match kind {
         "util" => 0,
-        "exec" | "contract" | "isa" | "block" => {
-            // exec=1, contract=2, isa=2, block=2
-            match kind {
-                "exec" => 1,
-                _ => 2,
-            }
-        }
-        "runtime" | "accel" | "hw" => 3,
-        "describe" => 4,
-        "assemble" => 5,
-        "machine" => 6,
-        "front" | "tests" => 7,
-        "tooling" => 8,
+        "exec" => 1,
+        // contract=2, isa=2, boot=2 (decode-only: bytes in, typed
+        // structure out; boot never sees a sim-side type).
+        "contract" | "isa" | "boot" => 2,
+        // The interconnect fabrics (3) speak the contract vocabulary only.
+        "bus" => 3,
+        "runtime" | "accel" => 4,
+        "describe" => 5,
+        // The composition interface (6): hw's factories implement against
+        // it, exactly as QEMU's `hw/` includes `qdev` (ADR 0025).
+        "assemble" => 6,
+        // The device models (7): contract + bus + runtime + assemble below.
+        "hw" => 7,
+        "machine" => 8,
+        "front" | "tests" => 9,
+        "tooling" => 10,
         _ => return None,
     })
 }
 
 /// Path is authoritative: metadata cannot turn a device into a machine.
+///
+/// `isa` and `accel` are family roots: a crate lives at `isa/<arch>` /
+/// `accel/<engine>`, so a bare `isa`/`accel` path is not a crate and never
+/// validates.
 pub fn validate_layer(path: &str, layer: &Layer) -> bool {
     let prefix = match layer.domain.as_str() {
         "util" => "util",
@@ -67,7 +77,8 @@ pub fn validate_layer(path: &str, layer: &Layer) -> bool {
         "isa" => "isa",
         "accel" => "accel",
         "hw" => "hw",
-        "block" => "block",
+        "bus" => "bus",
+        "boot" => "boot",
         "describe" => "describe",
         "assemble" => "assemble",
         "machine" => "machine",
@@ -76,6 +87,10 @@ pub fn validate_layer(path: &str, layer: &Layer) -> bool {
         "tooling" => "xtask",
         _ => return false,
     };
+    if matches!(layer.kind.as_str(), "isa" | "accel") && path == prefix {
+        // The family roots are directories of crates, not crates.
+        return false;
+    }
     layer.kind == layer.domain
         && layer.level == level_of(&layer.kind).unwrap_or(u64::MAX)
         && (path == prefix || path.starts_with(&format!("{prefix}/")))
@@ -87,6 +102,38 @@ pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
     // The boot tests drive the front-end library at their own level.
     if from.kind == "tests" && to.kind == "front" {
         return true;
+    }
+    // Device models never see engine types (ADR 0024 §3.4): the engine
+    // vocabulary crosses hw → machine through contracts only.
+    if from.kind == "hw" && matches!(to.kind.as_str(), "accel" | "isa") {
+        return false;
+    }
+    // The interconnect foundation stays below every device: fabrics never
+    // see models, machines, composition or runtime state (ADR 0025).
+    if from.kind == "bus"
+        && matches!(
+            to.kind.as_str(),
+            "hw" | "machine" | "assemble" | "runtime" | "describe" | "accel"
+        )
+    {
+        return false;
+    }
+    // The boot foundation is decode-only: bytes in, typed structure out,
+    // never a runtime, device or machine type.
+    if from.kind == "boot"
+        && matches!(
+            to.kind.as_str(),
+            "hw" | "machine"
+                | "assemble"
+                | "runtime"
+                | "accel"
+                | "isa"
+                | "bus"
+                | "contract"
+                | "exec"
+        )
+    {
+        return false;
     }
     // CPU models speak the engine contract: QEMU's target/ includes cpu.h.
     // (isa and contract share level 2; this is the one sanctioned edge.)

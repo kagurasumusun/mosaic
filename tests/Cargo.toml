@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "tests"
 kind = "tests"
-level = 7
+level = 9
 
 [lints]
 workspace = true
@@ -19,7 +19,7 @@ path = "src/lib.rs"
 
 [dependencies]
 mosaic = { path = "../mosaic" }
-mosaic-block = { path = "../block" }
+mosaic-boot = { path = "../boot" }
 
 [dependencies.toml]
 version = "0.8"

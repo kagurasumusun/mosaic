@@ -182,7 +182,7 @@ name = "mosaic"
 version = "0.1.0"
 dependencies = [
  "mosaic-accel-unicorn",
- "mosaic-block",
+ "mosaic-boot",
  "mosaic-machine",
 ]
 
@@ -222,6 +222,7 @@ name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [
  "mosaic-accel-unicorn",
+ "mosaic-bus",
  "mosaic-contract",
  "mosaic-describe",
  "mosaic-exec",
@@ -231,8 +232,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "mosaic-block"
+name = "mosaic-boot"
 version = "0.1.0"
+dependencies = [
+ "mosaic-util",
+]
+
+[[package]]
+name = "mosaic-bus"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract",
+ "mosaic-exec",
+ "mosaic-util",
+]
 
 [[package]]
 name = "mosaic-contract"
@@ -256,8 +269,11 @@ dependencies = [
 name = "mosaic-hw"
 version = "0.1.0"
 dependencies = [
+ "mosaic-assemble",
+ "mosaic-bus",
  "mosaic-contract",
  "mosaic-exec",
+ "mosaic-runtime",
  "mosaic-util",
 ]
 
@@ -298,7 +314,8 @@ dependencies = [
  "mosaic-accel-armv7m",
  "mosaic-accel-unicorn",
  "mosaic-assemble",
- "mosaic-block",
+ "mosaic-boot",
+ "mosaic-bus",
  "mosaic-contract",
  "mosaic-describe",
  "mosaic-exec",
@@ -322,7 +339,7 @@ name = "mosaic-tests-boot"
 version = "0.1.0"
 dependencies = [
  "mosaic",
- "mosaic-block",
+ "mosaic-boot",
  "toml",
 ]
 

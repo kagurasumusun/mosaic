@@ -12,7 +12,7 @@ verified = 'spec-tested'
 [ports]
 mmio = { role = 'target', size = 0x28 }
 irq = { role = 'source', pins = ['rcc'] }
-gates = { contract = 'model/signal', role = 'source', count = 39 }
+gates = { contract = 'model/signal', role = 'source', count = 42, names = ['gate-ahb-dma1', 'gate-ahb-dma2', 'gate-ahb-sram', 'gate-ahb-flitf', 'gate-ahb-crc', 'gate-apb1-tim2', 'gate-apb1-tim3', 'gate-apb1-tim4', 'gate-apb1-tim5', 'gate-apb1-tim6', 'gate-apb1-tim7', 'gate-apb1-tim12', 'gate-apb1-tim13', 'gate-apb1-tim14', 'gate-apb1-wwdg', 'gate-apb1-spi2', 'gate-apb1-spi3', 'gate-apb1-usart2', 'gate-apb1-usart3', 'gate-apb1-uart4', 'gate-apb1-uart5', 'gate-apb1-i2c1', 'gate-apb1-i2c2', 'gate-apb1-usb', 'gate-apb1-can1', 'gate-apb1-bkp', 'gate-apb1-pwr', 'gate-apb1-dac', 'gate-apb2-afio', 'gate-apb2-iopa', 'gate-apb2-iopb', 'gate-apb2-iopc', 'gate-apb2-iopd', 'gate-apb2-iope', 'gate-apb2-iopf', 'gate-apb2-iopg', 'gate-apb2-adc1', 'gate-apb2-adc2', 'gate-apb2-tim1', 'gate-apb2-spi1', 'gate-apb2-tim8', 'gate-apb2-usart1'] }
 
 [params]
 hse_hz = { type = 'u32', default = 8000000 }

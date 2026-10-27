@@ -8,14 +8,14 @@ publish = false
 [package.metadata.layer]
 domain = "front"
 kind = "front"
-level = 7
+level = 9
 
 [lints]
 workspace = true
 
 [dependencies]
 mosaic-machine = { path = "../machine" }
-mosaic-block = { path = "../block" }
+mosaic-boot = { path = "../boot" }
 mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
 
 [features]

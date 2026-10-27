@@ -50,11 +50,10 @@ pub struct DirectKernel {
     pub cmdline: String,
 }
 
-/// The i386 Linux boot protocol this machine's `-kernel` runs: `bzImage`
-/// parsing and the `boot_params` a loader must build. QEMU's
-/// `hw/i386/x86.c::x86_load_linux` role.
-pub mod linux_boot;
-
+/// The i386 Linux boot protocol this machine's `-kernel` runs (bzImage
+/// parsing, the `boot_params` a loader must build) lives in the boot crate:
+/// `mosaic_boot::proto::x86_linux`, QEMU's `hw/i386/x86.c::x86_load_linux`
+/// role (ADR 0025). The machine owns placement and registers only.
 /// The machine: BIOS software-interrupt firmware interim, PIC/PIT/RTC port
 /// space, VGA text console, El Torito and boot-sector boot, and the run loop.
 /// QEMU's `hw/i386/pc_piix.c` + `hw/i386/pc.c` role.

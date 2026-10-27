@@ -1,43 +1,38 @@
 //! STM32F103 composition from `manifests/machine/arm/stm32f103/soc.toml`.
 //!
-//! The graph names the blocks and the USART1 → NVIC route. RCC gate outputs
-//! are the RCC model's published signal IDs (ADR 0008); the host UART pair and
-//! the PA5 probe are not part of the SoC declaration.
+//! The board owns *exactly* what a board owns (ADR 0025): the declaration
+//! (parts, regions, the RCC clock-gate wires `rcc.gate-apb2-iopa` →
+//! `gpioa.clock`, the USART1 → NVIC 37 and RCC CIR → NVIC 5 wires), the host
+//! console endpoint for `soc.usart1`, and the PA5 pin probe this board's
+//! diagnostics read. Every device model — its parameters, its clock binding,
+//! its IRQ wiring — comes from the device catalog
+//! (`mosaic_hw::catalog::device_registry()`), exactly as QEMU boards build
+//! `TYPE_INFO`-registered devices without re-describing them. Adding a
+//! sibling board (another STM32, a PL011 board, ...) copies *none* of this
+//! file's wiring knowledge.
 
 use std::sync::{Arc, Mutex};
 
-use mosaic_assemble::{materialize, DeviceRegistry, InstantiateCtx, MaterializeError};
+use mosaic_assemble::{materialize, HostAttachments};
+use mosaic_bus::uart::pair::{UartEndpoint, UartPair};
 use mosaic_contract::model::{ContextError, Ctx};
 use mosaic_contract::signal::SignalSink;
 use mosaic_describe::MachineGraph;
 use mosaic_exec::{EventId, NodeId, SignalId, VTime};
-use mosaic_hw::char::pair::{UartEndpoint, UartPair};
-use mosaic_hw::char::usart_f1::{StUsartF1, StUsartF1Params};
-use mosaic_hw::gpio::gpio_f1::{pin_signal, GpioF1, GpioF1Params};
-use mosaic_hw::intc::scs::{Scs, ScsParams};
-use mosaic_hw::misc::rcc_f1::{RccF1, RccF1Params, GATE_APB2_IOPA, GATE_APB2_USART1};
+use mosaic_hw::catalog::device_registry;
 use mosaic_runtime::{FlatView, Machine};
 
 use super::manifest::stm32f103_soc;
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub const FLASH_BASE: u64 = 0x0800_0000;
-#[cfg_attr(not(test), allow(dead_code))]
-pub const FLASH_SIZE: u64 = 0x0002_0000;
 pub const SRAM_BASE: u64 = 0x2000_0000;
 pub const SRAM_SIZE: u64 = 0x0000_5000;
 pub const GPIOA_BASE: u64 = 0x4001_0800;
 pub const USART1_BASE: u64 = 0x4001_3800;
 pub const RCC_BASE: u64 = 0x4002_1000;
-#[cfg_attr(not(test), allow(dead_code))]
-pub const SCS_BASE: u64 = 0xE000_E000;
 /// PA5, the observed GPIO output. CRL nibble 5 is bits 20..23, not nibble 4.
 pub const PROBE_PIN: u32 = 5;
 
-/// The declared machine plus the host ends the SoC graph does not own.
-///
-/// `view`, `console` and `flash` are consumed by the feature-gated engine
-/// harness. They stay on the struct so that harness does not rebuild the map.
+/// The declared machine plus the host ends the board attached.
 #[allow(dead_code)]
 pub struct Stm32Board {
     pub view: FlatView,
@@ -48,6 +43,8 @@ pub struct Stm32Board {
     pub flash: NodeId,
 }
 
+/// The PA5 probe: a board-unique diagnostic (which pin carries the LED is
+/// this board's own knowledge, not the SoC's).
 struct PinProbe {
     levels: Arc<Mutex<Vec<bool>>>,
 }
@@ -63,86 +60,24 @@ fn graph() -> Result<MachineGraph, String> {
     MachineGraph::build(&soc, None).map_err(|error| error.to_string())
 }
 
-/// Build the F103 machine from the catalog declaration.
+/// Build the F103 machine from the catalog: the declaration is the wiring.
 pub fn build_stm32f103() -> Result<Stm32Board, String> {
     let graph = graph()?;
+    // The board's one host-side fact: `soc.usart1` is the console. The peer
+    // end stays here; the model takes the guest end through its factory's
+    // host attachment.
     let pair = UartPair::new(128);
     let (uart_peer, console) = pair.endpoints();
-    let uart_peer = Mutex::new(Some(uart_peer));
+    let mut hosts = HostAttachments::new();
+    hosts.attach_uart("soc.usart1", uart_peer);
 
-    let mut registry = DeviceRegistry::new();
-    registry
-        .register(
-            "ip:st/gpio-f1",
-            |ctx: &InstantiateCtx, machine: &mut Machine| {
-                let rcc = ctx.node("soc.rcc")?;
-                let mut gpio = GpioF1::new(GpioF1Params);
-                gpio.bind_clock(rcc, GATE_APB2_IOPA);
-                machine.register_device(ctx.node, Box::new(gpio))?;
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    registry
-        .register(
-            "ip:st/usart-f1",
-            move |ctx: &InstantiateCtx, machine: &mut Machine| {
-                let peer = uart_peer
-                    .lock()
-                    .map_err(|_| MaterializeError::Bind {
-                        node: ctx.graph_id.to_owned(),
-                        detail: "uart peer lock poisoned".into(),
-                    })?
-                    .take()
-                    .ok_or_else(|| MaterializeError::Bind {
-                        node: ctx.graph_id.to_owned(),
-                        detail: "USART stream endpoint already taken".into(),
-                    })?;
-                let rcc = ctx.node("soc.rcc")?;
-                let mut usart = StUsartF1::new(
-                    StUsartF1Params::new(ctx.output("combined")?),
-                    Some(Box::new(peer)),
-                );
-                usart.bind_clock(rcc, GATE_APB2_USART1);
-                machine.register_device(ctx.node, Box::new(usart))?;
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    registry
-        .register(
-            "ip:st/rcc-f1",
-            |ctx: &InstantiateCtx, machine: &mut Machine| {
-                machine.register_device(
-                    ctx.node,
-                    Box::new(RccF1::new(RccF1Params::new(SignalId(1)))),
-                )?;
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    registry
-        .register(
-            "ip:arm/scs",
-            |ctx: &InstantiateCtx, machine: &mut Machine| {
-                let mut scs = Scs::new(ScsParams::default());
-                for wire in ctx.incoming {
-                    let Some(index) = wire.index() else {
-                        continue;
-                    };
-                    scs.bind_irq(index, wire.source, wire.signal)
-                        .map_err(|detail| MaterializeError::Bind {
-                            node: ctx.graph_id.to_owned(),
-                            detail,
-                        })?;
-                }
-                machine.register_device(ctx.node, Box::new(scs))?;
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
+    // The whole device population comes from the catalog (QEMU's
+    // MODULE_INIT aggregate): zero board-side factory closures.
+    let registry = device_registry();
+    let mut assembled =
+        materialize(&graph, &registry, &hosts, 32).map_err(|error| error.to_string())?;
 
-    let mut assembled = materialize(&graph, &registry, 32).map_err(|error| error.to_string())?;
+    // The board's own diagnostics: the PA5 probe on this board's LED pin.
     let gpioa = assembled
         .nodes
         .get("soc.gpioa")
@@ -161,28 +96,12 @@ pub fn build_stm32f103() -> Result<Stm32Board, String> {
         .map_err(|error| format!("pin sink register: {error:?}"))?;
     assembled
         .machine
-        .connect(gpioa, pin_signal(PROBE_PIN), probe)
+        .connect(
+            gpioa,
+            mosaic_hw::gpio::gpio_f1::pin_signal(PROBE_PIN),
+            probe,
+        )
         .map_err(|error| format!("pin wiring: {error:?}"))?;
-    // RCC gate IDs are the model’s published outputs, not graph edges.
-    // connect() needs both devices registered, so it cannot run inside a factory.
-    let rcc = assembled
-        .nodes
-        .get("soc.rcc")
-        .copied()
-        .ok_or("soc.rcc was not allocated")?;
-    let usart = assembled
-        .nodes
-        .get("soc.usart1")
-        .copied()
-        .ok_or("soc.usart1 was not allocated")?;
-    assembled
-        .machine
-        .connect(rcc, GATE_APB2_IOPA, gpioa)
-        .map_err(|error| format!("gpioa gate wiring: {error:?}"))?;
-    assembled
-        .machine
-        .connect(rcc, GATE_APB2_USART1, usart)
-        .map_err(|error| format!("usart1 gate wiring: {error:?}"))?;
     assembled
         .machine
         .verify()
@@ -256,8 +175,8 @@ mod tests {
             .iter()
             .find(|region| region.name == "flash")
             .expect("flash region");
-        assert_eq!(flash.base, FLASH_BASE);
-        assert_eq!(flash.size, FLASH_SIZE);
+        assert_eq!(flash.base, 0x0800_0000);
+        assert_eq!(flash.size, 0x0002_0000);
         let sram = graph
             .regions
             .iter()
@@ -265,6 +184,15 @@ mod tests {
             .expect("sram region");
         assert_eq!(sram.base, SRAM_BASE);
         assert_eq!(sram.size, SRAM_SIZE);
+        // The clock-gate wires are declared edges, not board code.
+        assert!(graph.edges.iter().any(|edge| {
+            edge.kind == "clock"
+                && edge.from_node == "soc.rcc"
+                && edge.from_port == "gate-apb2-iopa"
+                && edge.to_node == "soc.gpioa"
+                && edge.to_port == "clock"
+        }));
+        // The IRQ wires: USART1 combined into NVIC 37, RCC CIR into NVIC 5.
         assert!(graph.edges.iter().any(|edge| {
             edge.kind == "irq"
                 && edge.from_node == "soc.usart1"
@@ -272,12 +200,13 @@ mod tests {
                 && edge.to_node == "soc.scs"
                 && edge.to_port == "inputs:37"
         }));
-        let flash = graph
-            .regions
-            .iter()
-            .filter(|region| region.target_node == "memory.flash")
-            .count();
-        assert_eq!(flash, 2);
+        assert!(graph.edges.iter().any(|edge| {
+            edge.kind == "irq"
+                && edge.from_node == "soc.rcc"
+                && edge.from_port == "rcc"
+                && edge.to_node == "soc.scs"
+                && edge.to_port == "inputs:5"
+        }));
     }
 
     /// Engine-free replay of the firmware's MMIO sequence against the declared
@@ -311,14 +240,15 @@ mod tests {
         wr(&mut machine, USART1_BASE + 0x0C, 0x2008);
         assert_eq!(rd(&mut machine, USART1_BASE + 0x0C), 0);
 
+        // The RCC gates are declared wires now: the register write reaches
+        // GPIOA and USART1 through the graph's clock edges.
         wr(&mut machine, RCC_BASE + 0x18, 0x4004);
         drain(&mut machine);
         assert_eq!(rd(&mut machine, RCC_BASE + 0x18), 0x4004);
         assert_eq!(rd(&mut machine, GPIOA_BASE + 0x04), 0x4444_4444);
         assert_eq!(rd(&mut machine, USART1_BASE), 0x00C0);
 
-        // Nibble 5 (bits 20..23) = 0x3: PA5 general-purpose output. The older
-        // literal 0x4443_4444 configured pin 4 and then probed pin 5.
+        // Nibble 5 (bits 20..23) = 0x3: PA5 general-purpose output.
         wr(&mut machine, GPIOA_BASE, 0x4434_4444);
         wr(&mut machine, GPIOA_BASE + 0x10, 1 << PROBE_PIN);
         drain(&mut machine);
@@ -327,17 +257,16 @@ mod tests {
         assert_eq!(*pin_levels.lock().unwrap(), vec![false, true]);
 
         wr(&mut machine, USART1_BASE + 0x0C, 0x2008);
-        wr(&mut machine, SCS_BASE + 0x104, 1 << 5);
+        wr(&mut machine, 0xE000E104, 1 << 5);
         wr(&mut machine, USART1_BASE + 0x0C, 0x2008 | 0x0080);
         drain(&mut machine);
-        assert_eq!(rd(&mut machine, SCS_BASE + 0x204), 1 << 5);
-        // ICSR: ISRPENDING (bit 22) and VECTPENDING = 37 + 16 = 53. The SCS
-        // model’s own test is the authority; 0x4000_D000 was a bad expectation.
-        assert_eq!(rd(&mut machine, SCS_BASE + 0xD04), 0x0043_5000);
+        assert_eq!(rd(&mut machine, 0xE000E204), 1 << 5);
+        // ICSR: ISRPENDING (bit 22) and VECTPENDING = 37 + 16 = 53.
+        assert_eq!(rd(&mut machine, 0xE000ED04), 0x0043_5000);
 
         wr(&mut machine, USART1_BASE + 0x0C, 0x2008);
         drain(&mut machine);
-        assert_eq!(rd(&mut machine, SCS_BASE + 0x204), 0);
+        assert_eq!(rd(&mut machine, 0xE000E204), 0);
         assert_eq!(*pin_levels.lock().unwrap(), vec![false, true]);
     }
 }

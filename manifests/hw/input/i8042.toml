@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:intel/i8042'
+summary = 'Intel 8042 PS/2 keyboard/mouse controller (A20 gate, reset line)'
+spec = ['IBM PS/2 Hardware Technical Reference']
+variants = ['PC/AT keyboard controller']
+
+[tags]
+function = ['input']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+io = { role = 'target', size = 0x8 }
+irq = { role = 'source', pins = ['irq'] }
+
+[params]

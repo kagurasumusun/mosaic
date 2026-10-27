@@ -6,6 +6,15 @@
 > **QEMU 型(領域 → 機能/アーキ)**へ置換した。§1・§5・§6・§8・§9・§15・§25 を
 > 改訂済み。契約/実装の分離、振る舞いと配線の分離、IR 一本化、ctx、決定論、
 > スナップショットといった設計原則は不変。
+>
+> **v0.3 の改訂(ADR 0025)**: 再利用の基盤を 2 本立てにした。接続方式の
+> 基盤は `bus/` 1 クレート (gpio/i2c/i3c/spi/can/uart/usb/net/pci/sd の
+> ファブリック集約)、boot とイメージ読み込みの基盤は `boot/` 1 クレート
+> (loader: ELF/uImage/PE/SREC/multiboot、format: ISO9660+El Torito/MBR/
+> GPT/FAT/cpio、proto: x86・arm32・arm64・riscv Linux/Cortex-M/multiboot/
+> FDT)。個別モデルは `hw/src/<fn>/catalog.rs` が自己登録するカタログ経由
+> で全機械に再利用され、ボードは宣言 (manifest) + ホスト固有物のみを持つ。
+> `block` は `boot/format` に吸収され削除。
 
 > **凡例** 【確認済】今回の調査で一次情報を確認した事実 ／ 【既知】筆者の既存知識(今回は再確認していない) ／ 【要検証】設計上の仮定で、実装前に小さな実験で確かめること。プロジェクト名は未定のため `<proj>` と表記する。
 

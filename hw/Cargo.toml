@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "hw"
 kind = "hw"
-level = 3
+level = 7
 
 [lints]
 workspace = true
@@ -17,3 +17,6 @@ workspace = true
 mosaic-exec = { path = "../exec" }
 mosaic-contract = { path = "../contract" }
 mosaic-util = { path = "../util" }
+mosaic-bus = { path = "../bus" }
+mosaic-runtime = { path = "../runtime" }
+mosaic-assemble = { path = "../assemble" }

@@ -74,6 +74,8 @@ impl From<MachineError> for MaterializeError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IncomingWire {
     pub port: String,
+    /// The producing node's output port name (`gate-apb2-iopa`, `combined`).
+    pub source_port: String,
     pub source: NodeId,
     pub signal: SignalId,
 }
@@ -95,6 +97,23 @@ pub struct InstantiateCtx<'a> {
     pub nodes: &'a BTreeMap<String, NodeId>,
     pub outputs: &'a BTreeMap<String, SignalId>,
     pub incoming: &'a [IncomingWire],
+    /// The node's manifest parameters (graph node `parameters` map).
+    pub parameters: &'a BTreeMap<String, mosaic_describe::ConfigValue>,
+    /// The machine harness's host-side endpoints, by node name.
+    pub hosts: &'a HostAttachments,
+}
+
+impl std::fmt::Debug for HostAttachments {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostAttachments")
+            .field("uart", &self.uart.len())
+            .field("i2c", &self.i2c.len())
+            .field("spi", &self.spi.len())
+            .field("usb", &self.usb.len())
+            .field("net", &self.net.len())
+            .field("sd", &self.sd.len())
+            .finish()
+    }
 }
 
 impl InstantiateCtx<'_> {
@@ -116,6 +135,58 @@ impl InstantiateCtx<'_> {
                 node: id.to_owned(),
             })
     }
+
+    /// A string manifest parameter of this node, when present.
+    pub fn parameter_str(&self, name: &str) -> Option<&str> {
+        self.parameters.get(name).and_then(|value| value.as_str())
+    }
+
+    /// An integer manifest parameter of this node, when present.
+    pub fn parameter_int(&self, name: &str) -> Option<i64> {
+        self.parameters
+            .get(name)
+            .and_then(|value| value.as_integer())
+    }
+
+    /// The host UART endpoint attached to this node, if the harness provided
+    /// one (ADR 0025: host I/O is the machine's, models only ask).
+    pub fn host_uart(&self) -> Option<&mosaic_bus::uart::pair::UartEndpoint> {
+        self.hosts.uart(self.graph_id)
+    }
+
+    /// The host I2C fabric attached to this node (its targets are the
+    /// board's wiring).
+    pub fn host_i2c(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::i2c::core::I2cBus>>> {
+        self.hosts.i2c(self.graph_id)
+    }
+
+    /// The host SPI fabric attached to this node.
+    pub fn host_spi(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::spi::core::SpiBus>>> {
+        self.hosts.spi(self.graph_id)
+    }
+
+    /// The host USB fabric attached to this node.
+    pub fn host_usb(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::usb::core::UsbBus>>> {
+        self.hosts.usb(self.graph_id)
+    }
+
+    /// The host Ethernet link attached to this node.
+    pub fn host_net(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::net::link::EthernetLink>>> {
+        self.hosts.net(self.graph_id)
+    }
+
+    /// The host SD/eMMC card attached to this node.
+    pub fn host_sd(&self) -> Option<std::sync::Arc<mosaic_bus::sd::SdCardHandle>> {
+        self.hosts.sd(self.graph_id)
+    }
 }
 
 /// Catalog-ID lookup supplied by the composition root. Assemble never imports
@@ -126,6 +197,14 @@ pub trait DeviceFactory: Send + Sync {
         ctx: &InstantiateCtx,
         machine: &mut Machine,
     ) -> Result<(), MaterializeError>;
+
+    /// The vendor SignalId one of this model's output ports drives (ADR
+    /// 0025): clock-gate tables such as the RCC's `gate-apb2-iopa` publish
+    /// model-internal signal numbers here, so a `clock` edge can resolve
+    /// without a board wiring it by hand. The default reports none.
+    fn output_signal(&self, _port: &str) -> Option<SignalId> {
+        None
+    }
 }
 
 impl<F> DeviceFactory for F
@@ -138,6 +217,112 @@ where
         machine: &mut Machine,
     ) -> Result<(), MaterializeError> {
         self(ctx, machine)
+    }
+}
+
+/// Host-side attachments the machine harness provides (ADR 0025): the UART
+/// console endpoint a host shows, keyed by the graph node that owns the
+/// guest-side UART. A factory asks through [`InstantiateCtx::host_uart`]; a
+/// model without a host attachment simply runs without one.
+#[derive(Default)]
+#[allow(clippy::missing_fields_in_debug)]
+pub struct HostAttachments {
+    uart: BTreeMap<String, mosaic_bus::uart::pair::UartEndpoint>,
+    i2c: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::i2c::core::I2cBus>>>,
+    spi: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::spi::core::SpiBus>>>,
+    usb: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::usb::core::UsbBus>>>,
+    net: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::net::link::EthernetLink>>>,
+    sd: BTreeMap<String, std::sync::Arc<mosaic_bus::sd::SdCardHandle>>,
+}
+
+impl HostAttachments {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Attach a host UART endpoint for the graph node named `node`
+    /// (`soc.usart1`): the peer end stays with the caller, which prints it.
+    pub fn attach_uart(&mut self, node: &str, endpoint: mosaic_bus::uart::pair::UartEndpoint) {
+        self.uart.insert(node.to_owned(), endpoint);
+    }
+
+    pub fn uart(&self, node: &str) -> Option<&mosaic_bus::uart::pair::UartEndpoint> {
+        self.uart.get(node)
+    }
+
+    /// Attach an I2C fabric (its targets are already composed — bus
+    /// membership is the board's wiring, ADR 0025) for an I2C controller.
+    pub fn attach_i2c(
+        &mut self,
+        node: &str,
+        bus: std::sync::Arc<std::sync::Mutex<mosaic_bus::i2c::core::I2cBus>>,
+    ) {
+        self.i2c.insert(node.to_owned(), bus);
+    }
+
+    pub fn i2c(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::i2c::core::I2cBus>>> {
+        self.i2c.get(node).cloned()
+    }
+
+    /// Attach an SPI fabric (with its targets composed) for an SPI controller.
+    pub fn attach_spi(
+        &mut self,
+        node: &str,
+        bus: std::sync::Arc<std::sync::Mutex<mosaic_bus::spi::core::SpiBus>>,
+    ) {
+        self.spi.insert(node.to_owned(), bus);
+    }
+
+    pub fn spi(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::spi::core::SpiBus>>> {
+        self.spi.get(node).cloned()
+    }
+
+    /// Attach a USB fabric (with its devices enumerated) for a host
+    /// controller.
+    pub fn attach_usb(
+        &mut self,
+        node: &str,
+        bus: std::sync::Arc<std::sync::Mutex<mosaic_bus::usb::core::UsbBus>>,
+    ) {
+        self.usb.insert(node.to_owned(), bus);
+    }
+
+    pub fn usb(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::usb::core::UsbBus>>> {
+        self.usb.get(node).cloned()
+    }
+
+    /// Attach an Ethernet link (with its ports composed) for a NIC.
+    pub fn attach_net(
+        &mut self,
+        node: &str,
+        link: std::sync::Arc<std::sync::Mutex<mosaic_bus::net::link::EthernetLink>>,
+    ) {
+        self.net.insert(node.to_owned(), link);
+    }
+
+    pub fn net(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<mosaic_bus::net::link::EthernetLink>>> {
+        self.net.get(node).cloned()
+    }
+
+    /// Attach an SD/eMMC card for an SD host controller.
+    pub fn attach_sd(&mut self, node: &str, card: std::sync::Arc<mosaic_bus::sd::SdCardHandle>) {
+        self.sd.insert(node.to_owned(), card);
+    }
+
+    pub fn sd(&self, node: &str) -> Option<std::sync::Arc<mosaic_bus::sd::SdCardHandle>> {
+        self.sd.get(node).cloned()
     }
 }
 
@@ -218,17 +403,26 @@ impl fmt::Debug for AssembledMachine {
 pub fn materialize(
     graph: &MachineGraph,
     registry: &DeviceRegistry,
+    hosts: &HostAttachments,
     queue_capacity: usize,
 ) -> Result<AssembledMachine, MaterializeError> {
     let nodes = allocate_nodes(graph)?;
     let assigned = assign_irq_outputs(graph)?;
-    let incoming = incoming_wires(graph, &nodes, &assigned)?;
+    let incoming = incoming_wires(graph, &nodes, &assigned, registry)?;
     let views = build_views(graph, &nodes)?;
     let view = default_view(graph, &views)?;
     let mut machine = Machine::new(view.clone(), queue_capacity);
     add_backings(graph, &nodes, &mut machine)?;
-    instantiate(graph, registry, &nodes, &assigned, &incoming, &mut machine)?;
-    let cpu_lines = connect_irq(graph, &nodes, &assigned, &mut machine)?;
+    instantiate(
+        graph,
+        registry,
+        &nodes,
+        &assigned,
+        &incoming,
+        hosts,
+        &mut machine,
+    )?;
+    let cpu_lines = connect_wires(graph, &nodes, &assigned, registry, &mut machine)?;
     attach_cpu_views(graph, &nodes, &views, &mut machine)?;
     machine.verify()?;
 
@@ -241,7 +435,7 @@ pub fn materialize(
     let deferred = graph
         .edges
         .iter()
-        .filter(|edge| !matches!(edge.kind.as_str(), "irq" | "address-space"))
+        .filter(|edge| !matches!(edge.kind.as_str(), "irq" | "clock" | "address-space"))
         .map(|edge| DeferredEdge {
             id: edge.id.clone(),
             kind: edge.kind.clone(),
@@ -321,27 +515,74 @@ fn incoming_wires(
     graph: &MachineGraph,
     nodes: &BTreeMap<String, NodeId>,
     assigned: &BTreeMap<String, BTreeMap<String, SignalId>>,
+    registry: &DeviceRegistry,
 ) -> Result<BTreeMap<String, Vec<IncomingWire>>, MaterializeError> {
     let mut incoming: BTreeMap<String, Vec<IncomingWire>> = BTreeMap::new();
-    for edge in graph.edges.iter().filter(|edge| edge.kind == "irq") {
-        let source = *nodes
-            .get(&edge.from_node)
-            .ok_or_else(|| MaterializeError::MissingNode {
-                node: edge.from_node.clone(),
-            })?;
-        let signal = assigned
-            .get(&edge.from_node)
-            .and_then(|ports| ports.get(&edge.from_port))
-            .copied()
-            .ok_or_else(|| MaterializeError::MissingOutput {
-                node: edge.from_node.clone(),
-                port: edge.from_port.clone(),
-            })?;
+    // `irq` edges resolve through the assigned per-node output space (1..N
+    // in port-name order); `clock` edges resolve through the source model's
+    // vendor-published output table (ADR 0025) — e.g. the RCC's gates.
+    for edge in graph
+        .edges
+        .iter()
+        .filter(|edge| matches!(edge.kind.as_str(), "irq" | "clock"))
+    {
+        // Abstract clock nets (`clock.uartclk`) have no device behind them:
+        // the wire reaches the sink as a wired input with the sink as its
+        // own source, signal 0 (the net's driver is not a node).
+        let source = match nodes.get(&edge.from_node) {
+            Some(source) => *source,
+            None if edge.kind == "clock" => {
+                *nodes
+                    .get(&edge.to_node)
+                    .ok_or_else(|| MaterializeError::MissingNode {
+                        node: edge.to_node.clone(),
+                    })?
+            }
+            None => {
+                return Err(MaterializeError::MissingNode {
+                    node: edge.from_node.clone(),
+                })
+            }
+        };
+        let signal = if edge.kind == "irq" {
+            assigned
+                .get(&edge.from_node)
+                .and_then(|ports| ports.get(&edge.from_port))
+                .copied()
+                .ok_or_else(|| MaterializeError::MissingOutput {
+                    node: edge.from_node.clone(),
+                    port: edge.from_port.clone(),
+                })?
+        } else if nodes.contains_key(&edge.from_node) {
+            let factory = registry
+                .factories
+                .get(
+                    graph
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == edge.from_node)
+                        .and_then(|node| node.catalog_id.as_deref())
+                        .unwrap_or_default(),
+                )
+                .ok_or_else(|| MaterializeError::MissingFactory {
+                    catalog_id: edge.from_node.clone(),
+                    node: edge.from_node.clone(),
+                })?;
+            factory.output_signal(&edge.from_port).ok_or_else(|| {
+                MaterializeError::MissingOutput {
+                    node: edge.from_node.clone(),
+                    port: edge.from_port.clone(),
+                }
+            })?
+        } else {
+            SignalId(0)
+        };
         incoming
             .entry(edge.to_node.clone())
             .or_default()
             .push(IncomingWire {
                 port: edge.to_port.clone(),
+                source_port: edge.from_port.clone(),
                 source,
                 signal,
             });
@@ -464,12 +705,14 @@ fn add_backings(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn instantiate(
     graph: &MachineGraph,
     registry: &DeviceRegistry,
     nodes: &BTreeMap<String, NodeId>,
     assigned: &BTreeMap<String, BTreeMap<String, SignalId>>,
     incoming: &BTreeMap<String, Vec<IncomingWire>>,
+    hosts: &HostAttachments,
     machine: &mut Machine,
 ) -> Result<(), MaterializeError> {
     let empty_outputs = BTreeMap::new();
@@ -500,16 +743,19 @@ fn instantiate(
             nodes,
             outputs: assigned.get(&node.id).unwrap_or(&empty_outputs),
             incoming: incoming.get(&node.id).unwrap_or(&empty_incoming),
+            parameters: &node.parameters,
+            hosts,
         };
         factory.instantiate(&ctx, machine)?;
     }
     Ok(())
 }
 
-fn connect_irq(
+fn connect_wires(
     graph: &MachineGraph,
     nodes: &BTreeMap<String, NodeId>,
     assigned: &BTreeMap<String, BTreeMap<String, SignalId>>,
+    registry: &DeviceRegistry,
     machine: &mut Machine,
 ) -> Result<Vec<CpuLine>, MaterializeError> {
     let kinds: BTreeMap<&str, GraphNodeKind> = graph
@@ -518,20 +764,52 @@ fn connect_irq(
         .map(|node| (node.id.as_str(), node.kind))
         .collect();
     let mut cpu_lines = Vec::new();
-    for edge in graph.edges.iter().filter(|edge| edge.kind == "irq") {
+    for edge in graph
+        .edges
+        .iter()
+        .filter(|edge| matches!(edge.kind.as_str(), "irq" | "clock"))
+    {
+        // Abstract clock nets have no device to connect from: the wire is
+        // delivered to the sink factory as an incoming wire only.
+        if edge.kind == "clock" && !nodes.contains_key(&edge.from_node) {
+            continue;
+        }
         let source = *nodes
             .get(&edge.from_node)
             .ok_or_else(|| MaterializeError::MissingNode {
                 node: edge.from_node.clone(),
             })?;
-        let signal = assigned
-            .get(&edge.from_node)
-            .and_then(|ports| ports.get(&edge.from_port))
-            .copied()
-            .ok_or_else(|| MaterializeError::MissingOutput {
-                node: edge.from_node.clone(),
-                port: edge.from_port.clone(),
-            })?;
+        let signal = if edge.kind == "irq" {
+            assigned
+                .get(&edge.from_node)
+                .and_then(|ports| ports.get(&edge.from_port))
+                .copied()
+                .ok_or_else(|| MaterializeError::MissingOutput {
+                    node: edge.from_node.clone(),
+                    port: edge.from_port.clone(),
+                })?
+        } else {
+            let factory = registry
+                .factories
+                .get(
+                    graph
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == edge.from_node)
+                        .and_then(|node| node.catalog_id.as_deref())
+                        .unwrap_or_default(),
+                )
+                .ok_or_else(|| MaterializeError::MissingFactory {
+                    catalog_id: edge.from_node.clone(),
+                    node: edge.from_node.clone(),
+                })?;
+            factory.output_signal(&edge.from_port).ok_or_else(|| {
+                MaterializeError::MissingOutput {
+                    node: edge.from_node.clone(),
+                    port: edge.from_port.clone(),
+                }
+            })?
+        };
         match kinds.get(edge.to_node.as_str()).copied() {
             Some(GraphNodeKind::Cpu) => cpu_lines.push(CpuLine {
                 cpu: edge.to_node.clone(),
@@ -817,7 +1095,13 @@ mod tests {
     #[test]
     fn declared_irq_reaches_the_sink_and_the_alias_shares_one_backing() {
         let bound = Arc::new(Mutex::new(None));
-        let mut assembled = materialize(&slice_graph(), &registry(Arc::clone(&bound)), 8).unwrap();
+        let mut assembled = materialize(
+            &slice_graph(),
+            &registry(Arc::clone(&bound)),
+            &HostAttachments::new(),
+            8,
+        )
+        .unwrap();
         assert_eq!(*bound.lock().unwrap(), Some(3));
         assert_eq!(assembled.nodes["memory.flash"], NodeId(0));
         assert_eq!(assembled.nodes["soc.uart"], NodeId(3));
@@ -850,14 +1134,16 @@ mod tests {
                 signal: rx,
             }]
         );
-        assert_eq!(assembled.deferred.len(), 1);
-        assert_eq!(assembled.deferred[0].kind, "clock");
+        // Clock edges are wired now (ADR 0025): the abstract net's wire
+        // reached the sink factory as an incoming wire, nothing deferred.
+        assert!(assembled.deferred.is_empty());
     }
 
     #[test]
     fn a_raised_output_is_delivered_to_the_declared_input() {
         let bound = Arc::new(Mutex::new(None));
-        let mut assembled = materialize(&slice_graph(), &registry(bound), 8).unwrap();
+        let mut assembled =
+            materialize(&slice_graph(), &registry(bound), &HostAttachments::new(), 8).unwrap();
         let attr = bus_attr(assembled.nodes["soc.core0"]);
         assembled
             .machine
@@ -881,7 +1167,7 @@ mod tests {
     #[test]
     fn a_missing_factory_is_not_replaced_with_a_stub() {
         let registry = DeviceRegistry::new();
-        let error = materialize(&slice_graph(), &registry, 4).unwrap_err();
+        let error = materialize(&slice_graph(), &registry, &HostAttachments::new(), 4).unwrap_err();
         assert!(matches!(error, MaterializeError::MissingFactory { .. }));
     }
 }

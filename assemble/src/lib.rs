@@ -17,7 +17,7 @@ pub use clockbind::instruction_period;
 pub use irq::{EngineIrqSink, IrqMailbox, IrqMailboxState};
 pub use materialize::{
     materialize, AssembledMachine, CpuLine, DeferredEdge, DeviceFactory, DeviceRegistry,
-    IncomingWire, InstantiateCtx, MaterializeError,
+    HostAttachments, IncomingWire, InstantiateCtx, MaterializeError,
 };
 
 mod driver;

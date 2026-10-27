@@ -117,10 +117,26 @@ fn parse_block(value: &toml::Value) -> Result<BlockInstance, String> {
                 .collect::<Result<Vec<_>, String>>()?
         }
     };
+    // Clock wires are declared now (ADR 0025): `clk = { clock =
+    // 'rcc.gate-apb2-iopa' }` wires the named block's gate output port to
+    // this block's clock input.
     let clk = match item.get("clk") {
         None => BTreeMap::new(),
-        Some(_) => {
-            return Err("block.clk is not used by the STM32F103 loader".into());
+        Some(value) => {
+            let table = value
+                .as_table()
+                .ok_or("block.clk: expected a table of input = source")?;
+            let mut map = BTreeMap::new();
+            for (input, source) in table {
+                let source = source.as_str().ok_or(
+                    "block.clk: clock source must be a string (a clock net or a block.port reference)",
+                )?;
+                map.insert(
+                    input.clone(),
+                    mosaic_describe::ConfigValue::String(source.to_owned()),
+                );
+            }
+            map
         }
     };
     Ok(BlockInstance {

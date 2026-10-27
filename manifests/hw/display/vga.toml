@@ -1,0 +1,18 @@
+[identity]
+id = 'ip:ibm/vga'
+summary = 'IBM VGA register model + VESA Bochs DISPI (VBE) linear framebuffer'
+spec = ['IBM VGA/XGA Technical Reference', 'VBE Bochs Extension']
+variants = ['VGA text mode 3', 'planar/chain4 graphics', 'VBE LFB']
+
+[tags]
+function = ['display']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+# Ports 3B0h..3DFh and the A0000h..BFFFFh apertures are machine wiring:
+# the model owns the register file, VRAM and VBE state, never an address.
+mmio = { role = 'target', size = 0x1000 }
+vbe = { role = 'target', size = 0x2 }
+
+[params]

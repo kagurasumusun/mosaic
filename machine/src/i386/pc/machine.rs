@@ -37,10 +37,10 @@ use mosaic_exec::{AccessSize, Attr, BusFault, EventId, RegId, SignalId, VDelta, 
 
 pub use super::DirectKernel;
 
-use super::linux_boot::SETUP_BASE;
-use mosaic_block::iso9660::{el_torito_image, ElToritoImage};
+use mosaic_boot::format::iso9660::{el_torito_image, ElToritoImage};
+use mosaic_boot::proto::x86_linux::SETUP_BASE;
 use mosaic_hw::intc::pic_8259::Pic8259;
-use mosaic_hw::rtc::rtc_mc146818::RtcMc146818;
+use mosaic_hw::rtc::mc146818::RtcMc146818;
 use mosaic_hw::timer::pit_8254::Pit8254;
 
 /// Conventional memory below the EBDA, as a PC reports it through `INT 12h`.
@@ -1600,7 +1600,7 @@ fn run_linux_machine(
     extended_kib: u64,
     cpu_model: mosaic_accel_unicorn::X86CpuModel,
 ) -> Result<PcBootReport, String> {
-    let parsed = super::linux_boot::BzImage::parse(&kernel.image)?;
+    let parsed = mosaic_boot::proto::x86_linux::BzImage::parse(&kernel.image)?;
     let initrd = kernel.initrd.as_ref().map(|bytes| {
         // Above the kernel, page aligned: the kernel relocates nothing that a
         // loader put there.
@@ -1608,10 +1608,10 @@ fn run_linux_machine(
         (base, bytes.clone())
     });
     let mut setup = parsed.setup.clone();
-    let command = super::linux_boot::prepare_setup(
+    let command = mosaic_boot::proto::x86_linux::prepare_setup(
         &mut setup,
         &parsed,
-        &super::linux_boot::BootParams {
+        &mosaic_boot::proto::x86_linux::BootParams {
             cmdline: kernel.cmdline.clone(),
             initrd: initrd
                 .as_ref()
@@ -1620,7 +1620,10 @@ fn run_linux_machine(
         extended_kib,
     )?;
     let mut blobs: Vec<(u64, Vec<u8>)> = initrd.iter().cloned().collect();
-    blobs.push((super::linux_boot::command_line_address(), command));
+    blobs.push((
+        mosaic_boot::proto::x86_linux::command_line_address(),
+        command,
+    ));
     let placement = KernelPlacement {
         setup,
         payload: parsed.payload.clone(),
@@ -1632,7 +1635,7 @@ fn run_linux_machine(
         ip: 0,
         drive: 0x80,
         data_segment: (SETUP_BASE >> 4) as u16,
-        stack_pointer: super::linux_boot::HEAP_END,
+        stack_pointer: mosaic_boot::proto::x86_linux::HEAP_END,
         interrupts: false,
     };
     let mut report = run_with(

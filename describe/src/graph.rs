@@ -179,27 +179,50 @@ impl MachineGraph {
             });
         }
 
+        // Clock sources may reference a peer block's output port by name
+        // (`rcc.gate-apb2-iopa`), so collect the block names first (ADR 0025).
+        let block_names: BTreeSet<&str> =
+            soc.block.iter().map(|block| block.name.as_str()).collect();
         for block in &soc.block {
             for (input, source) in &block.clk {
                 let source = source.as_str().ok_or_else(|| {
                     DescriptorError::new("block.clk", "clock source must be a string")
                 })?;
-                let clock_node = format!("clock.{source}");
-                if !nodes.contains_key(&clock_node) {
-                    insert_graph_node(
-                        &mut nodes,
-                        GraphNode {
-                            id: clock_node.clone(),
-                            kind: GraphNodeKind::ClockSignal,
-                            catalog_id: None,
-                            parameters: BTreeMap::new(),
-                        },
-                    )?;
-                }
+                // A clock source is either an abstract clock net name
+                // (`clk_hse`) or a device output port reference
+                // (`rcc.gate-apb2-iopa`): the former gets an abstract clock
+                // node, the latter wires the named block's output port
+                // directly, the way a board wires a clock gate.
+                let (from_node, from_port, edge_id) = match source.split_once('.') {
+                    Some((device, port)) if block_names.contains(device) => (
+                        format!("soc.{device}"),
+                        port.to_owned(),
+                        format!("clock.{}.{}.{}", block.name, input, port),
+                    ),
+                    _ => {
+                        let clock_node = format!("clock.{source}");
+                        if !nodes.contains_key(&clock_node) {
+                            insert_graph_node(
+                                &mut nodes,
+                                GraphNode {
+                                    id: clock_node.clone(),
+                                    kind: GraphNodeKind::ClockSignal,
+                                    catalog_id: None,
+                                    parameters: BTreeMap::new(),
+                                },
+                            )?;
+                        }
+                        (
+                            clock_node,
+                            "out".into(),
+                            format!("clock.{}.{}", block.name, input),
+                        )
+                    }
+                };
                 edges.push(GraphEdge {
-                    id: format!("clock.{}.{}", block.name, input),
-                    from_node: clock_node,
-                    from_port: "out".into(),
+                    id: edge_id,
+                    from_node,
+                    from_port,
                     to_node: format!("soc.{}", block.name),
                     to_port: input.clone(),
                     kind: "clock".into(),

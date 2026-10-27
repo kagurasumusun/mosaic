@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:arm/pl181'
+summary = 'ARM PL181 MultiMedia Card Interface (PrimeCell MCI host)'
+spec = ['ARM DDI 0232']
+variants = []
+
+[tags]
+function = ['storage']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['irq', 'fiq'] }
+
+[params]

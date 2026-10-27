@@ -1,0 +1,17 @@
+[package]
+name = "mosaic-boot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "boot"
+kind = "boot"
+level = 2
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-util = { path = "../util" }

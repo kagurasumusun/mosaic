@@ -425,13 +425,13 @@ fn run_entry_with(entry: &ImageEntry, data: Vec<u8>) -> Result<mosaic::SystemRep
             initrd,
             append,
         } => {
-            let kernel_bytes = mosaic_block::iso9660::iso_file(&data, kernel)
+            let kernel_bytes = mosaic_boot::format::iso9660::iso_file(&data, kernel)
                 .and_then(|file| file.read(&data))
                 .ok_or_else(|| format!("{kernel} is not in the ISO image"))?;
             let initrd_bytes = initrd
                 .as_ref()
                 .map(|path| {
-                    mosaic_block::iso9660::iso_file(&data, path)
+                    mosaic_boot::format::iso9660::iso_file(&data, path)
                         .and_then(|file| file.read(&data))
                         .ok_or_else(|| format!("{path} is not in the ISO image"))
                 })

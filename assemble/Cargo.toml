@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "assemble"
 kind = "assemble"
-level = 5
+level = 6
 
 [lints]
 workspace = true
@@ -22,6 +22,7 @@ unicorn-riscv = ["unicorn", "mosaic-accel-unicorn/arch-riscv"]
 
 [dependencies]
 mosaic-contract = { path = "../contract" }
+mosaic-bus = { path = "../bus" }
 mosaic-exec = { path = "../exec" }
 mosaic-runtime = { path = "../runtime" }
 mosaic-describe = { path = "../describe" }

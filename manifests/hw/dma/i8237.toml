@@ -1,0 +1,15 @@
+[identity]
+id = 'ip:intel/i8237'
+summary = 'Intel 8237A DMA controller, cascaded master+slave (PC/AT 8 channels)'
+spec = ['Intel 8237A-5 Datasheet']
+variants = ['PC/AT cascaded pair']
+
+[tags]
+function = ['dma']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+drq = { contract = 'model/signal', role = 'sink', count = 8 }
+
+[params]

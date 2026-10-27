@@ -1,0 +1,17 @@
+[identity]
+id = 'ip:arm/pl031'
+summary = 'ARM PrimeCell Real Time Clock (PL031)'
+spec = ['ARM DDI 0222']
+variants = []
+
+[tags]
+function = ['rtc']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x1000 }
+irq = { role = 'source', pins = ['rtc'] }
+clk = { contract = 'model/signal', role = 'sink', names = ['refclk'] }
+
+[params]

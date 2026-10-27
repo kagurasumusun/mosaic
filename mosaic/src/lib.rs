@@ -16,6 +16,7 @@
 //! `hw/<arch>` machines register `MODULE_INFO` without `vl.c` growing
 //! machine code (ADR 0021/0023/0024).
 
+#[cfg(feature = "unicorn")]
 pub mod report_json;
 
 pub use mosaic_machine::arm::stm32f103::Stm32F103Report;
@@ -208,6 +209,9 @@ pub enum CpuModel {
 /// The full machine-specific payload of one run.
 #[derive(Clone, Debug)]
 pub enum MachineReport {
+    /// The `pc` machine's report. Gated on the Unicorn backend, which is the
+    /// only engine the machine runs on today.
+    #[cfg(feature = "unicorn")]
     Pc(PcBootReport),
     Stm32f103(Stm32F103Report),
 }
@@ -216,6 +220,8 @@ impl MachineReport {
     /// Serial bytes the guest emitted, whatever machine produced them.
     pub fn serial(&self) -> &[u8] {
         match self {
+            #[cfg(feature = "unicorn")]
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => &report.serial,
             MachineReport::Stm32f103(report) => &report.output,
         }
@@ -224,6 +230,7 @@ impl MachineReport {
     /// Text console lines at the end of the run.
     pub fn screen(&self) -> Vec<String> {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.screen.clone(),
             MachineReport::Stm32f103(_) => Vec::new(),
         }
@@ -233,6 +240,7 @@ impl MachineReport {
     /// which console a guest chose.
     pub fn text(&self) -> String {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.text(),
             MachineReport::Stm32f103(report) => {
                 let mut text = String::from_utf8_lossy(&report.output).into_owned();
@@ -247,6 +255,7 @@ impl MachineReport {
     /// The run's own stop classification.
     pub fn stop_reason(&self) -> String {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.stop_reason.clone(),
             MachineReport::Stm32f103(report) => {
                 if report.instructions == 0 {
@@ -261,6 +270,7 @@ impl MachineReport {
     /// Instructions the guest executed.
     pub fn instructions(&self) -> u64 {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.instructions,
             MachineReport::Stm32f103(report) => report.instructions,
         }
@@ -270,6 +280,7 @@ impl MachineReport {
     /// messages, so callers never reach into one machine's report shape.
     pub fn diagnosis(&self) -> String {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => format!(
                 "eip {:#x} (unhandled {:?}, unclaimed {:?}, unmapped {:?})",
                 report.eip, report.unhandled_interrupt, report.unclaimed_interrupt, report.unmapped
@@ -285,6 +296,7 @@ impl MachineReport {
     /// interrupt no machine claimed), as opposed to a normal stop.
     pub fn failed(&self) -> bool {
         match self {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => {
                 report.engine_error.is_some()
                     || report.bus_fault.is_some()
@@ -312,6 +324,7 @@ impl SystemReport {
     /// Text console lines at the end of the run.
     pub fn screen(&self) -> &[String] {
         match &self.detail {
+            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => &report.screen,
             MachineReport::Stm32f103(_) => &[],
         }
@@ -343,7 +356,8 @@ impl SystemReport {
         self.detail.failed()
     }
 
-    /// The PC report, when the machine that ran is `pc`.
+    /// The PC report, when the machine that ran is `pc` (Unicorn backend).
+    #[cfg(feature = "unicorn")]
     pub fn pc(&self) -> Option<&PcBootReport> {
         match &self.detail {
             MachineReport::Pc(report) => Some(report),

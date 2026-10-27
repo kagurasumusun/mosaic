@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "accel"
 kind = "accel"
-level = 3
+level = 4
 
 [lints]
 workspace = true

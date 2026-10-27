@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "machine"
 kind = "machine"
-level = 6
+level = 8
 
 [lints]
 workspace = true
@@ -20,7 +20,8 @@ mosaic-runtime = { path = "../runtime" }
 mosaic-isa-arm = { path = "../isa/arm" }
 mosaic-isa-x86 = { path = "../isa/x86" }
 mosaic-hw = { path = "../hw" }
-mosaic-block = { path = "../block" }
+mosaic-bus = { path = "../bus" }
+mosaic-boot = { path = "../boot" }
 mosaic-describe = { path = "../describe" }
 mosaic-assemble = { path = "../assemble" }
 mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }

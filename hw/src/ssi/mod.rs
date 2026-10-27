@@ -1,4 +1,5 @@
-//! SPI / synchronous serial (QEMU `hw/ssi/`): the bus entity and the PL022.
+//! SPI controllers (QEMU `hw/ssi/` minus `core.c`, which lives in
+//! `mosaic-bus::spi`).
 
-pub mod bus;
+pub mod catalog;
 pub mod pl022;

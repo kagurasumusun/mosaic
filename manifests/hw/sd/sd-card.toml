@@ -1,0 +1,16 @@
+[identity]
+id = 'ip:sda/sd-card'
+summary = 'SD/eMMC card media model (SD PL 9.0 command set + eMMC 5.1 CMD1 path)'
+spec = ['SD Physical Layer Simplified Specification 9.0', 'JEDEC eMMC 5.1']
+variants = ['SD (ACMD41 path)', 'eMMC (CMD1 path)']
+
+[tags]
+function = ['storage']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+# The card speaks the SD command port; bus membership is board wiring.
+cmd = { contract = 'sd/command', role = 'target' }
+
+[params]

@@ -5,6 +5,7 @@
 #[cfg(feature = "unicorn")]
 use mosaic::{run, BootSource, DriveSpec, MachineKind, MediaKind, RunOptions, SystemConfig};
 
+#[cfg(feature = "unicorn")]
 const USAGE: &str = "\
 mosaic — Mosaic system emulator front-end
 
@@ -73,6 +74,7 @@ struct CommandLine {
     options: RunOptions,
 }
 
+#[cfg(feature = "unicorn")]
 fn fail_usage(message: &str) -> ! {
     eprintln!("mosaic: {message}\ntry 'mosaic --help'");
     std::process::exit(2);
@@ -253,7 +255,7 @@ fn read_image(path: &str, what: &str) -> Result<Vec<u8>, String> {
 fn read_kernel_operand(text: &str, what: &str) -> Result<Vec<u8>, String> {
     if let Some((iso_path, inner)) = text.split_once('!') {
         let iso = read_image(iso_path, what)?;
-        let file = mosaic_block::iso9660::iso_file(&iso, inner)
+        let file = mosaic_boot::format::iso9660::iso_file(&iso, inner)
             .ok_or_else(|| format!("{what}: '{inner}' is not a file in {iso_path}"))?;
         return file
             .read(&iso)

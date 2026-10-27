@@ -8,7 +8,7 @@ publish = false
 [package.metadata.layer]
 domain = "tooling"
 kind = "tooling"
-level = 8
+level = 10
 
 [lints]
 workspace = true

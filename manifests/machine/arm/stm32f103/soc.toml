@@ -21,16 +21,20 @@ at = { space = 'sysbus', base = 0xE000E000 }
 name = 'rcc'
 use = 'ip:st/rcc-f1'
 at = { space = 'sysbus', base = 0x40021000 }
+# The RCC's CIR interrupt (RM0008 NVIC position 5) reaches the NVIC as a wire.
+irq = { pin = 'rcc', to = ['scs.inputs:5'] }
 
 [[block]]
 name = 'gpioa'
 use = 'ip:st/gpio-f1'
 at = { space = 'sysbus', base = 0x40010800 }
+clk = { clock = 'rcc.gate-apb2-iopa' }
 
 [[block]]
 name = 'usart1'
 use = 'ip:st/usart-f1'
 at = { space = 'sysbus', base = 0x40013800 }
+clk = { clock = 'rcc.gate-apb2-usart1' }
 irq = { pin = 'combined', to = ['scs.inputs:37'] }
 
 [[view]]

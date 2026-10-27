@@ -70,18 +70,24 @@ cargo xtask doctor
 mosaic/            実行入り口は 1 本（QEMU の system/vl.c 相当）
 util/              汎用部品（bits, fifo, fnv）           … QEMU util/
 exec/              共通語彙（Addr, VTime, RegId, …）      … QEMU include/exec 系
-contract/          全ポート契約（12 契約を 1 クレートに） … QEMU include/hw/*.h
+contract/          全ポート契約（17 契約を 1 クレートに） … QEMU include/hw/*.h
+bus/               接続方式の基盤（ADR 0025）             … QEMU hw/*/core.c の集約
+    gpio/ i2c/ i3c/ spi/ can/ uart/ usb/ net/ pci/ sd/
+boot/              boot 基盤 + イメージ読み込み基盤（ADR 0025、decode 専用）
+    loader/ ELF・uImage・PE・SREC/IHEX・multiboot・raw（自動判別）
+    format/ ISO9660+El Torito・MBR/GPT・FAT12/16/32・initramfs cpio
+    proto/  x86・arm32・arm64・riscv Linux・Cortex-M・multiboot・FDT
 runtime/           アドレス空間・イベント・クロック・Machine … QEMU system/
 isa/{arm,aarch64,x86,riscv}/  ISA 語彙 + CPU モデル       … QEMU target/ *
 accel/{unicorn,armv7m,conformance}/  実行エンジン          … QEMU accel/
 hw/                デバイスモデル。機能別 1 ディレクトリ   … QEMU hw/<function>/
-    char/ intc/ timer/ rtc/ gpio/ ssi/ i2c/ can/ sensor/
-    misc/ mailbox/ nvram/ pci/ ide/ virtio/
+    char/ display/ dma/ flash/ gpio/ i2c/ i3c/ ide/ input/
+    intc/ mailbox/ misc/ net/ nvram/ pci/ rtc/ sd/ sensor/
+    ssi/ timer/ usb/ virtio/ + catalog.rs（モデル自己登録）
 machine/           機械モデル（SoC とボード）。アーキ別     … QEMU hw/<arch>/
     arm/stm32f103/    i386/pc/
-block/             ゲストイメージ形式（ISO9660、将来 raw/qcow2）… QEMU block/
-describe/          manifest → MachineGraph（IR）
-assemble/          IR → 実行時インスタンス（engine 結合）
+describe/          manifest → MachineGraph（IR、clk は block.port 参照可）
+assemble/          IR → 実行時インスタンス（engine 結合・HostAttachments）
 manifests/         manifest データ木（コードと同じ形にミラー）
 firmware/          ファームウェアの記述                    … QEMU pc-bios/
 host/ ops/ bridge/ 将来層のプレースホルダ（chardev/ui/monitor 等）
@@ -91,10 +97,12 @@ tests/ xtask/ docs/ ffi/ third_party/
 \* QEMU の `target/` に相当しますが、cargo が `target/` をビルド出力として
 予約しているため `isa/` という名前です。
 
-**モデル追加は定型作業**（ADR 0024 §5）: 機能デバイスは
-`hw/src/<function>/<model>.rs` 1 ファイル + `mod.rs` 1 行 + manifest 1 ファイル。
-機械は `machine/src/<arch>/<name>/` + レジストリ 1 arm。既存のどこかの
-ディレクトリに機能が溶け込むことはありません。
+**モデル追加は定型作業**（ADR 0024 §5 + ADR 0025）: 機能デバイスは
+`hw/src/<function>/<model>.rs` 1 ファイル + `<function>/catalog.rs` 1 行 +
+manifest 1 ファイル。機械は manifest（部品・wire・`rcc.gate-apb2-iopa` 形式の
+クロック配線）+ 固有情報（どの UART がコンソールか等）のみで、モデルの生成知識
+（IRQ・クロック・パラメータ）はカタログ側が持つためボードに再利用される。
+既存のどこかのディレクトリに機能が溶け込むことはありません。
 
 ### 実装済み
 
@@ -116,8 +124,25 @@ tests/ xtask/ docs/ ffi/ third_party/
 - L5 `mosaic-assemble`: FlatView から engine ページと MMIO region を導出する
   `bind_flat_view`、命令量子とイベント配送を交互に行う `MachineDriver`、
   固定順ラウンドロビンの `MulticoreDriver`（コア別ビュー・共有 RAM ミラー同期）。
-- バスとピン: I2C バス実体（GPIO ネット上のビット単位デコーダと bit-bang 経路）、
-  SPI バスと CS 配線、CAN バス、pinmux。
+- バスとピン（ADR 0025 の `bus` 基盤）: GPIO ネット、I2C（アドレス解決 + ビット
+  単位デコーダと bit-bang 経路）、SPI（CS 配線）、CAN（決定性アービトレーション）、
+  UART ペア、I3C（DAA・CCC・SDR）、USB（ポート・SET_ADDRESS・転送ルーティング）、
+  Ethernet セグメント、PCI コンフィグ空間ルーティング、SD/eMMC コマンドポート。
+- boot 基盤（ADR 0025 の `boot` 基盤、decode 専用）: loader 6 形式（ELF32/64 両
+  エンディアン・uImage legacy/multi・PE32/PE32+・SREC・Intel HEX・multiboot、
+  bzImage 認識と raw 代替）、format（ISO9660+El Torito・MBR 拡張チェーン・GPT
+  CRC 検証・FAT12/16/32 LFN・initramfs cpio 連結）、proto 8 種（x86 Linux
+  boot_params・ARM32 Linux+ATAGS・AArch64 Image header・RISC-V・Cortex-M リセット
+  列・multiboot 情報構造・FDT/DTB 解析と in-place fixup）。
+- モデルカタログ（ADR 0025）: 各機能ディレクトリの `catalog.rs` が 30+ モデルを
+  自己登録（QEMU TYPE_INFO 相当）。`ModelEntry::outputs` が RCC 43 ゲート等の
+  ベンダー出力表を公開し、宣言的 `clk` 配線を可能にする。stm32f103 ボードは
+  ファクトリクロージャ 0 個で manifest とカタログだけで組まれている。
+- 個別モデル: NS16550A（FIFO・モデム線・ループバック）、VGA（レジスタ・
+  VRAM アパーチャ・VBE）、8042 + PS/2 キーボード/マウス、HPET、8237A DMA、
+  PL031 RTC、CFI NOR フラッシュ、SD カード（SD/eMMC 両プロトコル）+ SDHCI +
+  PL181、LAN9118、UHCI + USB HID、I3C ターゲット、DW APB I2C、PL022、
+  PIC/PIT/RTC/PL011/PL061/SP804/PL190/GICv2/SCS ほか。
 - 機械: `-M pc`（BIOS INT サービス、ISA ポート空間、VGA text、El Torito・
   ブートセクタ・bzImage 直接起動）、`-M stm32f103`（RM0008 マップ、
   `-kernel` のベクタテーブル起動）。

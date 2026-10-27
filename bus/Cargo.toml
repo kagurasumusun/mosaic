@@ -1,0 +1,19 @@
+[package]
+name = "mosaic-bus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "bus"
+kind = "bus"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../exec" }
+mosaic-contract = { path = "../contract" }
+mosaic-util = { path = "../util" }

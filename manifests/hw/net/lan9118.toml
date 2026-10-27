@@ -1,0 +1,18 @@
+[identity]
+id = 'ip:smsc/lan9118'
+summary = 'SMSC LAN9118 Ethernet controller (TX/RX FIFOs, MAC, internal PHY)'
+spec = ['SMSC LAN9118 Datasheet']
+variants = []
+
+[tags]
+function = ['network']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+mmio = { role = 'target', size = 0x100 }
+irq = { role = 'source', pins = ['irq'] }
+eth = { contract = 'ethernet/port', role = 'endpoint' }
+
+[params]
+mac = { type = 'string', default = '52:54:00:12:34:56' }
