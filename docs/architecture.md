@@ -15,6 +15,13 @@
 > FDT)。個別モデルは `hw/src/<fn>/catalog.rs` が自己登録するカタログ経由
 > で全機械に再利用され、ボードは宣言 (manifest) + ホスト固有物のみを持つ。
 > `block` は `boot/format` に吸収され削除。
+>
+> **v0.4 の改訂(ADR 0028)**: ワークスペースクレートをすべて `crates/` の
+> 下に集約した (util/exec/contract/runtime/isa/accel/hw/machine/bus/boot/
+> describe/assemble/mosaic/tests/xtask + 将来層の予約 host/ops/bridge/
+> ffi)。ルートに残るのは非クレート (manifests/firmware/third_party/docs/
+> ci-reports と設定ファイル) だけ。§5 の「領域」語彙は `crates/<領域>` と
+> 読み替える。分類軸 (§1) は不変。
 
 > **凡例** 【確認済】今回の調査で一次情報を確認した事実 ／ 【既知】筆者の既存知識(今回は再確認していない) ／ 【要検証】設計上の仮定で、実装前に小さな実験で確かめること。プロジェクト名は未定のため `<proj>` と表記する。
 

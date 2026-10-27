@@ -33,3 +33,4 @@
 | [0025](0025-reuse-foundations.md) | 再利用基盤 (bus/boot) とモデルカタログ | 採用 |
 | [0026](0026-fabric-expansion-and-mass-models.md) | ファブリック拡張 (9→31 種) と実モデル大量実装 (1000+ 件) | 採用 |
 | [0027](0027-fabric-expansion-step3-video-audio-input.md) | ファブリック拡張 step 3 — ビデオ/オーディオ/入力の接続方式 12 種 (HDMI/DP/DSI/CSI/PS2/S/PDIF/eSPI/SoundWire/SLIMbus/FireWire/MIDI/GamePort) + 178 件の新モデル | 採用 |
+| [0028](0028-workspace-crates-directory.md) | リポジトリルート整理 — ワークスペースクレートを `crates/` へ集約 (ルートはデータ木と設定のみ) | 採用 |

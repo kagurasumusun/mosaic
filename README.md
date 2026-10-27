@@ -15,12 +15,12 @@ ISA と CPU モデルは `isa/`、エンジンは `accel/`）。テストは実�
 ```sh
 # 実 CD イメージからブートする（ISOLINUX が画面にバナーを出すまで実行）:
 cargo run --locked -p mosaic --features unicorn -- \
-    -M pc -cdrom tests/assets/tinycore-16-core.iso -m 64M -display text
+    -M pc -cdrom crates/tests/assets/tinycore-16-core.iso -m 64M -display text
 
 # カーネルだけを ISO から取り出して直接起動する（-kernel/-initrd/-append）:
 cargo run --locked -p mosaic --features unicorn -- \
-    -kernel tests/assets/tinycore-16-core.iso\!boot/vmlinuz \
-    -initrd tests/assets/tinycore-16-core.iso\!boot/core.gz \
+    -kernel crates/tests/assets/tinycore-16-core.iso\!boot/vmlinuz \
+    -initrd crates/tests/assets/tinycore-16-core.iso\!boot/core.gz \
     -append "console=ttyS0,115200 console=tty0" -serial stdio
 
 # フロッピイメージからブートする（FreeDOS の KERNEL.SYS まで実行）:
@@ -37,7 +37,7 @@ cargo run --locked -p mosaic --features unicorn -- \
 
 ## ゲスト OS のテスト
 
-実イメージだけを扱う（ADR 0022）。台帳は `tests/images.toml`、
+実イメージだけを扱う（ADR 0022）。台帳は `crates/tests/images.toml`、
 ハーネスは OS を知らない 1 本のループ:
 
 ```sh
@@ -67,31 +67,33 @@ cargo xtask doctor
 ## 構造（QEMU 型ディレクトリ軸、ADR 0024）
 
 ```
-mosaic/            実行入り口は 1 本（QEMU の system/vl.c 相当）
-util/              汎用部品（bits, fifo, fnv）           … QEMU util/
-exec/              共通語彙（Addr, VTime, RegId, …）      … QEMU include/exec 系
-contract/          全ポート契約（17 契約を 1 クレートに） … QEMU include/hw/*.h
-bus/               接続方式の基盤（ADR 0025）             … QEMU hw/*/core.c の集約
-    gpio/ i2c/ i3c/ spi/ can/ uart/ usb/ net/ pci/ sd/
-boot/              boot 基盤 + イメージ読み込み基盤（ADR 0025、decode 専用）
-    loader/ ELF・uImage・PE・SREC/IHEX・multiboot・raw（自動判別）
-    format/ ISO9660+El Torito・MBR/GPT・FAT12/16/32・initramfs cpio
-    proto/  x86・arm32・arm64・riscv Linux・Cortex-M・multiboot・FDT
-runtime/           アドレス空間・イベント・クロック・Machine … QEMU system/
-isa/{arm,aarch64,x86,riscv}/  ISA 語彙 + CPU モデル       … QEMU target/ *
-accel/{unicorn,armv7m,conformance}/  実行エンジン          … QEMU accel/
-hw/                デバイスモデル。機能別 1 ディレクトリ   … QEMU hw/<function>/
-    char/ display/ dma/ flash/ gpio/ i2c/ i3c/ ide/ input/
-    intc/ mailbox/ misc/ net/ nvram/ pci/ rtc/ sd/ sensor/
-    ssi/ timer/ usb/ virtio/ + catalog.rs（モデル自己登録）
-machine/           機械モデル（SoC とボード）。アーキ別     … QEMU hw/<arch>/
-    arm/stm32f103/    i386/pc/
-describe/          manifest → MachineGraph（IR、clk は block.port 参照可）
-assemble/          IR → 実行時インスタンス（engine 結合・HostAttachments）
+crates/            ワークスペースクレートはすべてこの下（ADR 0028）
+    mosaic/        実行入り口は 1 本（QEMU の system/vl.c 相当）
+    util/          汎用部品（bits, fifo, fnv）           … QEMU util/
+    exec/          共通語彙（Addr, VTime, RegId, …）      … QEMU include/exec 系
+    contract/      全ポート契約（契約ごとに 1 モジュール）… QEMU include/hw/*.h
+    bus/           接続方式の基盤（ADR 0025）             … QEMU hw/*/core.c の集約
+        56 fabric: gpio/ i2c/ i3c/ spi/ can/ uart/ usb/ net/ pci/ sd/ …
+    boot/          boot 基盤 + イメージ読み込み基盤（ADR 0025、decode 専用）
+        loader/ ELF・uImage・PE・SREC/IHEX・multiboot・raw（自動判別）
+        format/ ISO9660+El Torito・MBR/GPT・FAT12/16/32・initramfs cpio
+        proto/  x86・arm32・arm64・riscv Linux・Cortex-M・multiboot・FDT
+    runtime/       アドレス空間・イベント・クロック・Machine … QEMU system/
+    isa/{arm,aarch64,x86,riscv}/  ISA 語彙 + CPU モデル   … QEMU target/ *
+    accel/{unicorn,armv7m,conformance}/  実行エンジン      … QEMU accel/
+    hw/            デバイスモデル。機能別 1 ディレクトリ   … QEMU hw/<function>/
+        char/ display/ dma/ flash/ gpio/ i2c/ i3c/ ide/ input/
+        intc/ mailbox/ misc/ net/ nvram/ pci/ rtc/ sd/ sensor/
+        ssi/ timer/ usb/ virtio/ + catalog.rs（モデル自己登録）
+    machine/       機械モデル（SoC とボード）。アーキ別     … QEMU hw/<arch>/
+        arm/stm32f103/    i386/pc/
+    describe/      manifest → MachineGraph（IR、clk は block.port 参照可）
+    assemble/      IR → 実行時インスタンス（engine 結合・HostAttachments）
+    tests/ xtask/  実イメージ boot テスト・CI 検査ツール
+    host/ ops/ bridge/ ffi/  将来層のプレースホルダ（chardev/ui/monitor 等）
 manifests/         manifest データ木（コードと同じ形にミラー）
 firmware/          ファームウェアの記述                    … QEMU pc-bios/
-host/ ops/ bridge/ 将来層のプレースホルダ（chardev/ui/monitor 等）
-tests/ xtask/ docs/ ffi/ third_party/
+docs/ third_party/ ci-reports/
 ```
 
 \* QEMU の `target/` に相当しますが、cargo が `target/` をビルド出力として

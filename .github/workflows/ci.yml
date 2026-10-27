@@ -118,7 +118,7 @@ jobs:
         run: |
           set +e
           cargo run --locked --package mosaic --features unicorn -- \
-            -cdrom tests/assets/tinycore-16-core.iso -m 64M \
+            -cdrom crates/tests/assets/tinycore-16-core.iso -m 64M \
             --instruction-limit 8000000 --report ci-reports/front-end.json \
             -q > ci-reports/front-end.stdout 2> ci-reports/front-end.log
           code=$?
