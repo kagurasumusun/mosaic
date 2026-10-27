@@ -178,295 +178,67 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
-name = "mosaic-apps-bringup"
+name = "mosaic"
 version = "0.1.0"
 dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-engine-unicorn",
- "mosaic-interconnect-uart-pair",
- "mosaic-ip-arm-pl011",
- "mosaic-ip-arm-sp804",
+ "mosaic-accel-unicorn",
+ "mosaic-block",
+ "mosaic-machine",
+]
+
+[[package]]
+name = "mosaic-accel-armv7m"
+version = "0.1.0"
+dependencies = [
+ "mosaic-contract",
+ "mosaic-exec",
  "mosaic-isa-arm",
 ]
 
 [[package]]
-name = "mosaic-apps-cli"
+name = "mosaic-accel-conformance"
 version = "0.1.0"
 dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-engine-conformance",
- "mosaic-engine-unicorn",
+ "mosaic-contract",
+ "mosaic-exec",
  "mosaic-isa-arm",
 ]
 
 [[package]]
-name = "mosaic-apps-multicore"
+name = "mosaic-accel-unicorn"
 version = "0.1.0"
 dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-cpu-arm-arm926ej-s",
- "mosaic-cpu-sifive-e31",
- "mosaic-engine-unicorn",
- "mosaic-interconnect-uart-pair",
- "mosaic-ip-arm-mhu",
- "mosaic-ip-arm-pl011",
-]
-
-[[package]]
-name = "mosaic-apps-sensorbus"
-version = "0.1.0"
-dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-gpio",
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-contract-net",
- "mosaic-contract-spi",
- "mosaic-contract-stream",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-engine-unicorn",
- "mosaic-interconnect-gpio-net",
- "mosaic-interconnect-i2c-bus",
- "mosaic-interconnect-spi-bus",
- "mosaic-interconnect-uart-pair",
- "mosaic-ip-arm-pl011",
- "mosaic-ip-arm-pl022",
- "mosaic-ip-arm-pl061",
- "mosaic-ip-synopsys-dw-apb-i2c",
+ "mosaic-contract",
+ "mosaic-exec",
+ "mosaic-isa-aarch64",
  "mosaic-isa-arm",
- "mosaic-part-bosch-bme280",
- "mosaic-part-ti-tca9548a",
-]
-
-[[package]]
-name = "mosaic-apps-stm32f103"
-version = "0.1.0"
-dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-model",
- "mosaic-contract-signal",
- "mosaic-contract-stream",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-describe",
- "mosaic-engine-native-armv7m",
- "mosaic-engine-unicorn",
- "mosaic-interconnect-uart-pair",
- "mosaic-ip-arm-scs",
- "mosaic-ip-st-gpio-f1",
- "mosaic-ip-st-rcc-f1",
- "mosaic-ip-st-usart-f1",
- "mosaic-isa-arm",
- "toml",
-]
-
-[[package]]
-name = "mosaic-apps-system"
-version = "0.1.0"
-dependencies = [
- "mosaic-board-ibm-pc-glue",
- "mosaic-engine-unicorn",
- "mosaic-modelkit-iso9660",
-]
-
-[[package]]
-name = "mosaic-apps-vic-thermal"
-version = "0.1.0"
-dependencies = [
- "mosaic-assemble",
- "mosaic-contract-cpu-engine",
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-core-runtime",
- "mosaic-core-types",
- "mosaic-engine-unicorn",
- "mosaic-interconnect-i2c-bus",
- "mosaic-interconnect-uart-pair",
- "mosaic-ip-arm-pl011",
- "mosaic-ip-arm-pl190",
- "mosaic-ip-synopsys-dw-apb-i2c",
- "mosaic-isa-arm",
- "mosaic-part-nxp-lm75a",
+ "mosaic-isa-riscv",
+ "mosaic-isa-x86",
+ "unicorn-engine",
 ]
 
 [[package]]
 name = "mosaic-assemble"
 version = "0.1.0"
 dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-signal",
- "mosaic-core-runtime",
- "mosaic-core-types",
+ "mosaic-accel-unicorn",
+ "mosaic-contract",
  "mosaic-describe",
- "mosaic-engine-unicorn",
+ "mosaic-exec",
  "mosaic-isa-arm",
  "mosaic-isa-riscv",
+ "mosaic-runtime",
 ]
 
 [[package]]
-name = "mosaic-board-ibm-pc-glue"
+name = "mosaic-block"
 version = "0.1.0"
-dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
- "mosaic-engine-unicorn",
- "mosaic-ip-x86-pic-8259",
- "mosaic-ip-x86-pit-8254",
- "mosaic-ip-x86-rtc-mc146818",
- "mosaic-isa-x86",
- "mosaic-modelkit-iso9660",
-]
 
 [[package]]
-name = "mosaic-contract-can"
+name = "mosaic-contract"
 version = "0.1.0"
 dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-clock"
-version = "0.1.0"
-dependencies = [
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-contract-cpu-engine"
-version = "0.1.0"
-dependencies = [
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-contract-gpio"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-i2c"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-mmio"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-contract-model"
-version = "0.1.0"
-dependencies = [
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-contract-net"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-gpio",
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-signal"
-version = "0.1.0"
-dependencies = [
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-contract-spi"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-stream"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-contract-uart-line"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
-]
-
-[[package]]
-name = "mosaic-core-runtime"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-clock",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-signal",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-core-types"
-version = "0.1.0"
-dependencies = [
- "mosaic-prim-bits",
-]
-
-[[package]]
-name = "mosaic-cpu-arm-arm926ej-s"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
- "mosaic-isa-arm",
-]
-
-[[package]]
-name = "mosaic-cpu-arm-cortex-m3"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-isa-arm",
-]
-
-[[package]]
-name = "mosaic-cpu-sifive-e31"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-isa-riscv",
+ "mosaic-exec",
 ]
 
 [[package]]
@@ -474,382 +246,89 @@ name = "mosaic-describe"
 version = "0.1.0"
 
 [[package]]
-name = "mosaic-engine-conformance"
+name = "mosaic-exec"
 version = "0.1.0"
 dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-core-types",
- "mosaic-isa-arm",
+ "mosaic-util",
 ]
 
 [[package]]
-name = "mosaic-engine-native-armv7m"
+name = "mosaic-hw"
 version = "0.1.0"
 dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-core-types",
- "mosaic-isa-arm",
-]
-
-[[package]]
-name = "mosaic-engine-unicorn"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-cpu-engine",
- "mosaic-core-types",
- "mosaic-isa-aarch64",
- "mosaic-isa-arm",
- "mosaic-isa-riscv",
- "mosaic-isa-x86",
- "mosaic-isa-x86-64",
- "unicorn-engine",
-]
-
-[[package]]
-name = "mosaic-interconnect-can-bus"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-can",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-interconnect-gpio-net"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-gpio",
- "mosaic-contract-model",
- "mosaic-contract-net",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-interconnect-i2c-bus"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-gpio",
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-interconnect-pinmux"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-gpio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-interconnect-spi-bus"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
- "mosaic-contract-spi",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-interconnect-uart-pair"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-contract-uart-line",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-arm-gic-v2"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-arm-mhu"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-arm-pl011"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-core-types",
- "mosaic-ip-arm-primecell-id",
- "mosaic-modelkit-fifo",
-]
-
-[[package]]
-name = "mosaic-ip-arm-pl022"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-spi",
- "mosaic-core-types",
- "mosaic-ip-arm-primecell-id",
-]
-
-[[package]]
-name = "mosaic-ip-arm-pl061"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-gpio",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
- "mosaic-ip-arm-primecell-id",
-]
-
-[[package]]
-name = "mosaic-ip-arm-pl190"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
- "mosaic-ip-arm-primecell-id",
-]
-
-[[package]]
-name = "mosaic-ip-arm-primecell-id"
-version = "0.1.0"
-
-[[package]]
-name = "mosaic-ip-arm-scs"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-arm-sp804"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
- "mosaic-ip-arm-primecell-id",
-]
-
-[[package]]
-name = "mosaic-ip-pci-pci-host"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-pci-pci-ide"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-st-gpio-f1"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-st-rcc-f1"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-st-usart-f1"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-contract-stream",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-synopsys-dw-apb-i2c"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-i2c",
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-virtio-virtio-blk"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-virtio-virtio-net"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-x86-fw-cfg"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-x86-ioapic"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-x86-pic-8259"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-x86-pit-8254"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-ip-x86-rtc-mc146818"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-mmio",
- "mosaic-contract-model",
- "mosaic-core-types",
+ "mosaic-contract",
+ "mosaic-exec",
+ "mosaic-util",
 ]
 
 [[package]]
 name = "mosaic-isa-aarch64"
 version = "0.1.0"
 dependencies = [
- "mosaic-core-types",
+ "mosaic-exec",
 ]
 
 [[package]]
 name = "mosaic-isa-arm"
 version = "0.1.0"
 dependencies = [
- "mosaic-core-types",
+ "mosaic-contract",
+ "mosaic-exec",
 ]
 
 [[package]]
 name = "mosaic-isa-riscv"
 version = "0.1.0"
 dependencies = [
- "mosaic-core-types",
+ "mosaic-contract",
+ "mosaic-exec",
 ]
 
 [[package]]
 name = "mosaic-isa-x86"
 version = "0.1.0"
 dependencies = [
- "mosaic-core-types",
+ "mosaic-exec",
 ]
 
 [[package]]
-name = "mosaic-isa-x86-64"
+name = "mosaic-machine"
 version = "0.1.0"
 dependencies = [
- "mosaic-core-types",
+ "mosaic-accel-armv7m",
+ "mosaic-accel-unicorn",
+ "mosaic-assemble",
+ "mosaic-block",
+ "mosaic-contract",
+ "mosaic-describe",
+ "mosaic-exec",
+ "mosaic-hw",
+ "mosaic-isa-arm",
+ "mosaic-isa-x86",
+ "mosaic-runtime",
+ "toml",
 ]
 
 [[package]]
-name = "mosaic-modelkit-fifo"
-version = "0.1.0"
-
-[[package]]
-name = "mosaic-modelkit-iso9660"
-version = "0.1.0"
-
-[[package]]
-name = "mosaic-part-bosch-bme280"
+name = "mosaic-runtime"
 version = "0.1.0"
 dependencies = [
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-contract-spi",
- "mosaic-core-types",
- "mosaic-prim-bits",
+ "mosaic-contract",
+ "mosaic-exec",
 ]
-
-[[package]]
-name = "mosaic-part-nxp-lm75a"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-part-ti-tca9548a"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract-i2c",
- "mosaic-contract-model",
- "mosaic-core-types",
-]
-
-[[package]]
-name = "mosaic-prim-bits"
-version = "0.1.0"
 
 [[package]]
 name = "mosaic-tests-boot"
 version = "0.1.0"
 dependencies = [
- "mosaic-apps-system",
- "mosaic-modelkit-iso9660",
+ "mosaic",
+ "mosaic-block",
  "toml",
 ]
+
+[[package]]
+name = "mosaic-util"
+version = "0.1.0"
 
 [[package]]
 name = "mosaic-xtask"

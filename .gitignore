@@ -1,6 +1,6 @@
 /target/
 **/__pycache__/
-/catalog/firmware/*.bin
-/catalog/firmware/*.elf
+/firmware/*.bin
+/firmware/*.elf
 /tmp/
 test-images/

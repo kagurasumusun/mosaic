@@ -1,0 +1,17 @@
+[package]
+name = "mosaic-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "contract"
+kind = "contract"
+level = 2
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../exec" }

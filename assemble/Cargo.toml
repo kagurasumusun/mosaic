@@ -1,0 +1,32 @@
+[package]
+name = "mosaic-assemble"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "assemble"
+kind = "assemble"
+level = 5
+
+[lints]
+workspace = true
+
+[features]
+# The Unicorn backend stays opt-in, matching the front end and ADR 0007.
+unicorn = ["dep:mosaic-accel-unicorn"]
+# Heterogeneous AMP needs the RV32I backend of the same engine crate
+# (design §12.3 rule 6: arch_* features narrow the ISA set).
+unicorn-riscv = ["unicorn", "mosaic-accel-unicorn/arch-riscv"]
+
+[dependencies]
+mosaic-contract = { path = "../contract" }
+mosaic-exec = { path = "../exec" }
+mosaic-runtime = { path = "../runtime" }
+mosaic-describe = { path = "../describe" }
+mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
+
+[dev-dependencies]
+mosaic-isa-arm = { path = "../isa/arm" }
+mosaic-isa-riscv = { path = "../isa/riscv" }

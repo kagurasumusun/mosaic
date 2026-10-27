@@ -1,0 +1,19 @@
+[package]
+name = "mosaic-accel-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "accel"
+kind = "accel"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../../exec" }
+mosaic-contract = { path = "../../contract" }
+mosaic-isa-arm = { path = "../../isa/arm" }

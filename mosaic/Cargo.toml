@@ -1,0 +1,23 @@
+[package]
+name = "mosaic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "front"
+kind = "front"
+level = 7
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-machine = { path = "../machine" }
+mosaic-block = { path = "../block" }
+mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
+
+[features]
+default = []
+unicorn = ["dep:mosaic-accel-unicorn", "mosaic-machine/unicorn"]

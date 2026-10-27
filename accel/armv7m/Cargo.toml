@@ -1,0 +1,21 @@
+[package]
+name = "mosaic-accel-armv7m"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "accel"
+kind = "accel"
+level = 3
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../../exec" }
+mosaic-contract = { path = "../../contract" }
+
+[dev-dependencies]
+mosaic-isa-arm = { path = "../../isa/arm" }

@@ -2,18 +2,15 @@
 
 ## 動かす
 
-```sh
-cargo run --locked -p mosaic-apps-cli --features unicorn -- unicorn-smoke
-```
+アダプタの検証は `accel/unicorn` の単体テスト（`cargo test -p mosaic-accel-unicorn
+--all-features`）と、実イメージを起動するフロントエンド
+（`cargo run --locked -p mosaic --features unicorn -- -M pc -cdrom <実イメージ>`）が担います。
+旧 `apps/cli` の unicorn-smoke デモは ADR 0024 の再編で削除され、
+同等の検証（FlatView 結合・A32 実行・レジスタとメモリの確認）は単体テスト側にあります。
 
-CLI の `unicorn` feature は明示的な opt-in です。通常の CLI ビルドにはリンクしません。
+`unicorn` feature は明示的な opt-in です。通常のビルドにはリンクしません。
 ただし workspace 全体の build / test では engine クレートもビルドし、CI は all-features を検証します。
 ビルドには C/C++ コンパイラ、CMake、pkg-config、libclang が必要です。Actions がこれらを用意します。
-
-smoke は nested Region から FlatView を作り、RX コード領域と RW データ領域をマップして、
-A32 命令列（MOV / ADD / STR / LDR）を 4 命令実行します。r0=42、r1=r3=43、
-PC=0x1010、メモリ 0x2000=43 を確認します。期待出力は tests/unicorn-arm.stdout にあります。
-命令列は手で符号化したテスト入力であり、外部ファームウェアのコピーではありません。
 
 ## 構造
 
@@ -26,10 +23,10 @@ PC=0x1010、メモリ 0x2000=43 を確認します。期待出力は tests/unico
 - `assemble`（L5、`unicorn` feature）: `bind_flat_view` が FlatView から engine の
   ページ構成を導出し、Ram/Rom は backing をコピー、Mmio は `MachineBus` 経由で
   runtime の `Machine` へ転送する。`MachineDriver` が命令量子とイベント配送を協調させる。
-- `apps/cli`: assemble の結合を使う harness。L3 相互依存は作らない。
+- `(deleted)`: assemble の結合を使う harness。L3 相互依存は作らない。
 
 CPU catalog は実行しない宣言である。Cortex-M3 は `cpu:arm/cortex-m3`（偽の MMIO 窓は持たない）。
-STM32F103 のメモリマップは `catalog/soc/st/stm32f103/soc.toml` で、`mosaic-assemble` の
+STM32F103 のメモリマップは `manifests/machine/ + machine/src/st/stm32f103/soc.toml` で、`mosaic-assemble` の
 `materialize` が Registry 経由で Machine にする（ADR 0016）。例外ベクタの自動取り込みは
 未実装のままである。A32 スモークの成功は ARM ISA 全体への適合性を意味しない。
 
@@ -119,8 +116,8 @@ Send の不変条件と 1 箇所の unsafe impl については [ADR 0007](../ad
 - `MODE_16` のインスタンスに `CR0` を書く経路は失敗する。モード遷移は
   ゲストの `CR0` 書き込みに任せる。
 
-PC マシンは `catalog/board/ibm/pc/glue`（`mosaic-board-ibm-pc-glue`、ADR 0023）にあり、
-実 ISO で駆動する（ADR 0021/0022）。フロントエンド `apps/system` はディスパッチのみ。
+PC マシンは `machine/src/ibm/pc/glue`（`mosaic-board-ibm-pc-glue`、ADR 0023）にあり、
+実 ISO で駆動する（ADR 0021/0022）。フロントエンド `mosaic` はディスパッチのみ。
 
 ```sh
 cargo test -p mosaic-tests-boot --features unicorn -- --nocapture boot_matrix

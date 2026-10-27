@@ -1,0 +1,16 @@
+[package]
+name = "mosaic-describe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "describe"
+kind = "describe"
+level = 4
+
+[lints]
+workspace = true
+
+[dependencies]

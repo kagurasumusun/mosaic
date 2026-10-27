@@ -98,37 +98,26 @@ jobs:
             | head -120 > ci-reports/test-summary.txt || true
           exit 0
 
-      # ゴールデン出力の diff は旧 tests/ 削除（2c93146）で失ったため、
-      # 実行時クラッシュだけを検出する。出力の正本は cargo test 側にある。
       - name: Runtime examples execute
         if: always()
         run: |
           set +e
           ok=0
           for example in events machine snapshot; do
-            cargo run --locked --package mosaic-core-runtime --example $example > ci-reports/runtime-$example.stdout 2> ci-reports/runtime-$example.log
+            cargo run --locked --package mosaic-runtime --example $example > ci-reports/runtime-$example.stdout 2> ci-reports/runtime-$example.log
             code=$?
             [ $code -eq 0 ] || ok=1
             echo "runtime-$example: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           done
           exit 0
 
-      - name: Unicorn ARM execution smoke test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-apps-cli --features unicorn -- unicorn-smoke > ci-reports/unicorn-arm.stdout 2> ci-reports/unicorn-arm.log
-          code=$?
-          echo "smoke-unicorn: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
-          exit 0
-
-      # ADR 0021/0022: 実行の入り口が実イメージを起動できることを
-      # コマンドライン経由で検証する（CD から ISOLINUX バナーまで）。
+      # ADR 0021/0022/0024: 実行の入り口 (`mosaic`) が実イメージを起動できる
+      # ことをコマンドライン経由で検証する（CD から ISOLINUX バナーまで）。
       - name: System front-end boots a real CD
         if: always()
         run: |
           set +e
-          cargo run --locked --package mosaic-apps-system --features unicorn -- \
+          cargo run --locked --package mosaic --features unicorn -- \
             -cdrom tests/assets/tinycore-16-core.iso -m 64M \
             --instruction-limit 8000000 --report ci-reports/front-end.json \
             -q > ci-reports/front-end.stdout 2> ci-reports/front-end.log
@@ -136,42 +125,6 @@ jobs:
           grep -q "ISOLINUX" ci-reports/front-end.json
           gcode=$?
           echo "front-end: $([ $code -eq 0 ] && [ $gcode -eq 0 ] && echo ok || echo "fail (run=$code report=$gcode)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: P1 bring-up golden test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-apps-bringup --features unicorn > ci-reports/bringup.log 2>&1
-          code=$?
-          echo "bringup: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: P2 sensor-bus golden test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-apps-sensorbus --features unicorn > ci-reports/sensorbus.log 2>&1
-          code=$?
-          echo "sensorbus: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: P3 multicore golden test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-apps-multicore --features riscv > ci-reports/multicore.log 2>&1
-          code=$?
-          echo "multicore: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
-          exit 0
-
-      - name: P3 VIC thermal golden test
-        if: always()
-        run: |
-          set +e
-          cargo run --locked --package mosaic-apps-vic-thermal --features unicorn > ci-reports/vic-thermal.log 2>&1
-          code=$?
-          echo "vic-thermal: $([ $code -eq 0 ] && echo ok || echo "fail (code=$code)")" >> ci-reports/status.txt
           exit 0
 
       - name: Workspace diagnostics

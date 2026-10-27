@@ -1,5 +1,12 @@
 # 0023: 機械モデルの居場所（catalog board とブート経路の分担）
 
+> **2026-10-27 修正(ADR 0024)**: 機械モデルの居場所は `catalog/board/
+> <origin>/<board>/glue` から **`machine/src/<arch>/`**(QEMU の
+> `hw/<arch>/`)へ移された。IP/CPU/部品クレートの種別→出自の軸も
+> 機能軸 `hw/`・アーキ軸 `machine/` へ置換済み。本 ADR の
+> 「`-kernel` は機械のブート経路」「イメージ形式の解析は共有」の
+> 分担と QEMU 参照の考え方はそのまま有効。
+
 状態: 採用。機械モデル（マシンの実装）は `catalog/board/<origin>/<board>/`
 のコードパッケージに置く。フロントエンド（`apps/system`）は QEMU の
 `softmmu/vl.c` 相当（オプション解析と `-M` のディスパッチ）だけを担い、

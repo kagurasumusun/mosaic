@@ -1,6 +1,6 @@
 #![cfg(feature = "unicorn")]
 #![forbid(unsafe_code)]
-//! End-to-end tests of the execution entry point itself: the `mosaic-system`
+//! End-to-end tests of the execution entry point itself: the `mosaic`
 //! command line, driven the way an operator drives it — real image on the
 //! command line, machine-readable report out.
 
@@ -9,7 +9,7 @@ use std::process::Command;
 use mosaic_tests_boot::{image_path, load_catalog, workspace_root, ASSETS_DIR, CATALOG};
 
 fn binary() -> std::path::PathBuf {
-    workspace_root().join("target/debug/mosaic-system")
+    workspace_root().join("target/debug/mosaic")
 }
 
 fn require_binary() -> Option<std::path::PathBuf> {
@@ -18,7 +18,7 @@ fn require_binary() -> Option<std::path::PathBuf> {
         Some(path)
     } else {
         eprintln!(
-            "skip: {} is not built; build with `cargo build -p mosaic-apps-system --features unicorn`",
+            "skip: {} is not built; build with `cargo build -p mosaic --features unicorn`",
             path.display()
         );
         None
@@ -62,7 +62,7 @@ fn machine_help_lists_the_registry() {
         .arg("-M")
         .arg("help")
         .output()
-        .expect("mosaic-system runs");
+        .expect("mosaic runs");
     assert!(output.status.success(), "-M help must exit 0");
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("pc"), "the machine list names pc: {text}");
@@ -79,7 +79,7 @@ fn an_unknown_machine_is_a_usage_error() {
         .arg("-cdrom")
         .arg(committed_tinycore())
         .output()
-        .expect("mosaic-system runs");
+        .expect("mosaic runs");
     assert_eq!(
         output.status.code(),
         Some(2),
@@ -92,7 +92,7 @@ fn a_missing_boot_source_is_a_usage_error() {
     let Some(binary) = require_binary() else {
         return;
     };
-    let output = Command::new(binary).output().expect("mosaic-system runs");
+    let output = Command::new(binary).output().expect("mosaic runs");
     assert_eq!(
         output.status.code(),
         Some(2),
@@ -123,7 +123,7 @@ fn boots_the_committed_cd_and_writes_a_report() {
         .arg(&serial)
         .arg("-q")
         .output()
-        .expect("mosaic-system runs");
+        .expect("mosaic runs");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "the real CD must boot: {stderr}");
     let json = std::fs::read_to_string(&report).expect("the report file was written");
@@ -165,7 +165,7 @@ fn the_iso_kernel_operand_boots_the_kernel_directly() {
         .arg(temp_file("kernel"))
         .arg("-q")
         .output()
-        .expect("mosaic-system runs");
+        .expect("mosaic runs");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "the kernel must boot: {stderr}");
 }

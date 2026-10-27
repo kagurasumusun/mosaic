@@ -1,6 +1,6 @@
 # 決定論的イベント基盤
 
-`mosaic-core-runtime` は CPU やホスト実時間に依存しない単一スレッドのイベント基盤を提供します。
+`mosaic-runtime` は CPU やホスト実時間に依存しない単一スレッドのイベント基盤を提供します。
 モデルの実行エンジンや全機械スケジューラではありません。
 
 ## キューと時刻
@@ -16,7 +16,7 @@ let event = queue.pop_next(); // ここで時刻 10 へ進む。
 ```
 
 この断片の `?` は `ContextError` を返す呼び出し元を想定しています。
-完全な実行例は `framework/core/runtime/examples/events.rs` にあります。
+完全な実行例は `runtime/examples/events.rs` にあります。
 
 - 時間は u64 ピコ秒。同じ時刻では EventId（予約順）が小さいイベントから返します。
 - ID はキュー内で一意。取り消し・dispatch 後も再利用しません。
@@ -73,7 +73,7 @@ CPU engine context、signal sink、外部共有 RAM、永続化・IR ハッシ�
 ## 動く例と CI
 
 ```sh
-cargo run --locked --package mosaic-core-runtime --example events
+cargo run --locked --package mosaic-runtime --example events
 ```
 
 二つのノードのタイマと出力 signal を予約し、タイマ処理からの追加予約も含めたトレースを作ります。
@@ -136,7 +136,7 @@ machine.run_until(VTime(1000), 32).unwrap();
   CPU engine / sink / shared mirror と永続形式は未対応です。
 
 ```sh
-cargo run --locked --package mosaic-core-runtime --example machine
+cargo run --locked --package mosaic-runtime --example machine
 ```
 
 この例は Rom/Ram 権限、MMIO 経由のタイマ予約、signal 配送、各種 BusFault をトレースし、
@@ -147,7 +147,7 @@ cargo run --locked --package mosaic-core-runtime --example machine
 ### Machine snapshot と replay
 
 ```sh
-cargo run --locked --package mosaic-core-runtime --example snapshot
+cargo run --locked --package mosaic-runtime --example snapshot
 ```
 
 RAM、snapshot 対応デバイスの State、未配送 timer をまとめて保存し、全てを変更した後に復元します。

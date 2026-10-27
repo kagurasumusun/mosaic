@@ -376,30 +376,24 @@ pub fn boot_case(entry: &ImageEntry) {
 
 /// Build the machine configuration one entry describes and run it.
 #[cfg(feature = "unicorn")]
-pub fn run_entry(
-    entry: &ImageEntry,
-    data: &[u8],
-) -> Result<mosaic_apps_system::SystemReport, String> {
+pub fn run_entry(entry: &ImageEntry, data: &[u8]) -> Result<mosaic::SystemReport, String> {
     // The CD image stays attached while the kernel boots out of it, so the
     // machine owns exactly one copy: `data` itself.
     run_entry_with(entry, data.to_vec())
 }
 
-fn run_entry_with(
-    entry: &ImageEntry,
-    data: Vec<u8>,
-) -> Result<mosaic_apps_system::SystemReport, String> {
-    use mosaic_apps_system::{BootSource, DriveSpec, MediaKind, SystemConfig};
+fn run_entry_with(entry: &ImageEntry, data: Vec<u8>) -> Result<mosaic::SystemReport, String> {
+    use mosaic::{BootSource, DriveSpec, MediaKind, SystemConfig};
     let mut config = SystemConfig {
-        machine: mosaic_apps_system::MachineKind::try_from(entry.machine.as_str())
+        machine: mosaic::MachineKind::try_from(entry.machine.as_str())
             .map_err(|error| error.to_string())?,
         ram_kib: entry.ram_mib.unwrap_or(64) * 1024,
         // Distribution kernels are built for x86-64-v2 and fault on BMI2
         // under the backend's qemu64-class default core.
-        cpu_model: mosaic_apps_system::CpuModel::Haswell,
+        cpu_model: mosaic::CpuModel::Haswell,
         drives: Vec::new(),
         boot: BootSource::Order("dca".into()),
-        options: mosaic_apps_system::PcBootOptions {
+        options: mosaic::RunOptions {
             quantum: 50_000,
             instruction_limit: entry.budget,
             ..Default::default()
@@ -431,13 +425,13 @@ fn run_entry_with(
             initrd,
             append,
         } => {
-            let kernel_bytes = mosaic_modelkit_iso9660::iso_file(&data, kernel)
+            let kernel_bytes = mosaic_block::iso9660::iso_file(&data, kernel)
                 .and_then(|file| file.read(&data))
                 .ok_or_else(|| format!("{kernel} is not in the ISO image"))?;
             let initrd_bytes = initrd
                 .as_ref()
                 .map(|path| {
-                    mosaic_modelkit_iso9660::iso_file(&data, path)
+                    mosaic_block::iso9660::iso_file(&data, path)
                         .and_then(|file| file.read(&data))
                         .ok_or_else(|| format!("{path} is not in the ISO image"))
                 })
@@ -447,7 +441,7 @@ fn run_entry_with(
                 media: MediaKind::Cdrom,
                 data,
             });
-            config.boot = BootSource::DirectKernel(mosaic_apps_system::DirectKernel {
+            config.boot = BootSource::DirectKernel(mosaic::DirectKernel {
                 image: kernel_bytes,
                 initrd: initrd_bytes,
                 cmdline: append.clone(),
@@ -466,7 +460,7 @@ fn run_entry_with(
                         .map_err(|error| format!("initramfs {}: {error}", path.display()))
                 })
                 .transpose()?;
-            config.boot = BootSource::DirectKernel(mosaic_apps_system::DirectKernel {
+            config.boot = BootSource::DirectKernel(mosaic::DirectKernel {
                 image: data,
                 initrd: initrd_bytes,
                 cmdline: append.clone(),
@@ -479,12 +473,12 @@ fn run_entry_with(
             ))
         }
     }
-    mosaic_apps_system::run(&config)
+    mosaic::run(&config)
 }
 
 /// Assert the recorded expectation against what the guest actually emitted.
 #[cfg(feature = "unicorn")]
-pub fn check_entry(entry: &ImageEntry, report: &mosaic_apps_system::SystemReport) {
+pub fn check_entry(entry: &ImageEntry, report: &mosaic::SystemReport) {
     let text = report.text();
     println!(
         "---- {}: stopped {} after {} instructions ----",
@@ -513,14 +507,11 @@ pub fn check_entry(entry: &ImageEntry, report: &mosaic_apps_system::SystemReport
             // reports an error before this point.
             if !missing.is_empty() {
                 panic!(
-                    "{}: never reached {}: stopped {} at eip {:#x} (unhandled {:?}, unclaimed {:?}, unmapped {:?})",
+                    "{}: never reached {}: stopped {} ({})",
                     entry.id,
                     missing.join(", "),
                     report.stop_reason(),
-                    report.pc.eip,
-                    report.pc.unhandled_interrupt,
-                    report.pc.unclaimed_interrupt,
-                    report.pc.unmapped,
+                    report.diagnosis(),
                 );
             }
         }

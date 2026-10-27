@@ -1,5 +1,14 @@
 #![forbid(unsafe_code)]
-//! Pure architecture policy; independent of Cargo metadata transport.
+//! Pure architecture policy for the QEMU-shaped tree (ADR 0024); independent
+//! of Cargo metadata transport.
+//!
+//! The tree is one domain per directory, mirroring QEMU's own top level:
+//! `util`, `exec`, `contract`, `runtime`, `isa/<arch>` (QEMU `target/`),
+//! `accel/<engine>`, `hw` (device models, one function directory per kind),
+//! `block`, `describe`, `assemble`, `machine` (SoC/board models per arch,
+//! QEMU `hw/<arch>`), the `mosaic` front-end, `tests`, `xtask`.
+//! Dependencies only point downward; `hw` never sees `machine`, and nothing
+//! below `machine` sees an engine's concrete types except `accel` itself.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -19,114 +28,87 @@ pub struct Package {
     pub dependencies: Vec<PathBuf>,
 }
 
-const CATALOG_KINDS: &[&str] = &[
-    "cpu", "ip", "ip-lib", "part", "subsys", "soc", "module", "board", "world",
-];
-const COMPOSITE_KINDS: &[&str] = &["subsys", "soc", "module", "board", "world"];
+/// `misc` is deliberately absent: QEMU's one catch-all function directory is
+/// the only accepted `misc`, and `lint_names` allows it exactly there
+/// (ADR 0024 §3.2).
 const FORBIDDEN: &[&str] = &[
-    "misc", "common", "utils", "util", "generic", "base", "helper", "manager", "handler", "impl",
-    "shared", "new", "old", "stuff",
+    "common", "utils", "generic", "base", "helper", "manager", "handler", "impl", "shared", "new",
+    "old", "stuff",
 ];
 
-fn framework_level(kind: &str) -> Option<u64> {
-    match kind {
-        "prim" => Some(0),
-        "types" => Some(1),
-        "contract" | "modelkit" | "isa" => Some(2),
-        "runtime" | "interconnect" | "engine" => Some(3),
-        "describe" => Some(4),
-        "assemble" | "host" | "ops" | "bridge" => Some(5),
-        _ => None,
-    }
+/// Every domain's level. One function per line, one direction: downward.
+pub fn level_of(kind: &str) -> Option<u64> {
+    Some(match kind {
+        "util" => 0,
+        "exec" | "contract" | "isa" | "block" => {
+            // exec=1, contract=2, isa=2, block=2
+            match kind {
+                "exec" => 1,
+                _ => 2,
+            }
+        }
+        "runtime" | "accel" | "hw" => 3,
+        "describe" => 4,
+        "assemble" => 5,
+        "machine" => 6,
+        "front" | "tests" => 7,
+        "tooling" => 8,
+        _ => return None,
+    })
 }
 
-/// Path is authoritative: metadata cannot turn a model into an application.
+/// Path is authoritative: metadata cannot turn a device into a machine.
 pub fn validate_layer(path: &str, layer: &Layer) -> bool {
-    let kind = layer.kind.as_str();
-    match layer.domain.as_str() {
-        "framework" => {
-            let prefix = match kind {
-                "types" => "framework/core/types".to_string(),
-                "runtime" => "framework/core/runtime".to_string(),
-                _ => format!("framework/{kind}"),
-            };
-            framework_level(kind) == Some(layer.level)
-                && (path == prefix || path.starts_with(&(prefix + "/")))
-        }
-        "catalog" => {
-            let directory = match kind {
-                "part" => "parts",
-                "ip-lib" => "ip",
-                _ => kind,
-            };
-            CATALOG_KINDS.contains(&kind)
-                && layer.level == 3
-                && path.starts_with(&format!("catalog/{directory}/"))
-                && (!COMPOSITE_KINDS.contains(&kind) || path.ends_with("/glue"))
-        }
-        "apps" => kind == "app" && layer.level == 6 && path.starts_with("apps/"),
-        // Machine-level guest tests: the design document's `tests/` directory
-        // (§6), holding real-image boot tests. Same rights as apps, because a
-        // boot test assembles a whole machine the same way an app does.
-        "tests" => {
-            kind == "machine" && layer.level == 6 && (path == "tests" || path.starts_with("tests/"))
-        }
-        "tooling" => kind == "tooling" && layer.level == 7 && path == "xtask",
-        _ => false,
-    }
+    let prefix = match layer.domain.as_str() {
+        "util" => "util",
+        "exec" => "exec",
+        "contract" => "contract",
+        "runtime" => "runtime",
+        "isa" => "isa",
+        "accel" => "accel",
+        "hw" => "hw",
+        "block" => "block",
+        "describe" => "describe",
+        "assemble" => "assemble",
+        "machine" => "machine",
+        "front" => "mosaic",
+        "tests" => "tests",
+        "tooling" => "xtask",
+        _ => return false,
+    };
+    layer.kind == layer.domain
+        && layer.level == level_of(&layer.kind).unwrap_or(u64::MAX)
+        && (path == prefix || path.starts_with(&format!("{prefix}/")))
 }
 
-/// R1/R2/R3/R5. Equal-level framework dependencies are explicitly enumerated.
-///
-/// R5 as amended by ADR 0023: a composite `glue` crate (board/soc/subsys/
-/// module/world code) additionally reaches the catalog leaves it mounts
-/// (ip/part/cpu/ip-lib), the model-authoring tooling (modelkit, isa) and the
-/// engine adapters its boot loop drives — the same reach QEMU's `hw/<arch>`
-/// machine models have. Composition services (assemble/host/ops/bridge/
-/// describe/runtime) stay composition-root concerns, and glue still never
-/// touches another composite.
+/// Dependencies point downward only, with the single exception that the boot
+/// test suite drives the front-end binary's own library at the same level.
 pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
-    let f = from.kind.as_str();
-    let t = to.kind.as_str();
-    match from.domain.as_str() {
-        "tooling" | "apps" | "tests" => true,
-        "catalog" => {
-            if to.domain == "catalog" {
-                if COMPOSITE_KINDS.contains(&f) {
-                    // Glue wires the chips it mounts, but never another
-                    // composite (R3: boards do not see each other).
-                    return matches!(t, "ip" | "part" | "cpu" | "ip-lib");
-                }
-                return t == "ip-lib";
-            }
-            if to.domain != "framework" {
-                return false;
-            }
-            if COMPOSITE_KINDS.contains(&f) {
-                return matches!(t, "types" | "contract" | "modelkit" | "isa" | "engine");
-            }
-            matches!(t, "prim" | "types" | "contract" | "modelkit" | "isa")
-        }
-        "framework" if to.domain == "framework" => {
-            if to.level < from.level {
-                return true;
-            }
-            matches!((f, t), ("contract", "contract") | ("modelkit", "contract"))
-        }
-        _ => false,
+    // The boot tests drive the front-end library at their own level.
+    if from.kind == "tests" && to.kind == "front" {
+        return true;
     }
+    // CPU models speak the engine contract: QEMU's target/ includes cpu.h.
+    // (isa and contract share level 2; this is the one sanctioned edge.)
+    if from.kind == "isa" && to.kind == "contract" {
+        return true;
+    }
+    to.level < from.level
 }
 
-/// R7: only this exact engine boundary may bring in the native CPU backend.
+/// R7: external crates are allowlisted per boundary. The Unicorn binding may
+/// only enter at its adapter, TOML only where manifests or ledgers are read.
 pub fn external_dependency_allowed(path: &str, layer: &Layer, dependency: &str) -> bool {
     if matches!(dependency, "unicorn-engine" | "unicorn-engine-sys") {
-        return path == "framework/engine/unicorn"
-            && layer.domain == "framework"
-            && layer.kind == "engine"
-            && layer.level == 3
+        return path == "accel/unicorn"
+            && layer.domain == "accel"
+            && layer.kind == "accel"
             && dependency == "unicorn-engine";
     }
-    matches!(layer.domain.as_str(), "tooling" | "apps" | "tests")
+    matches!(
+        (layer.kind.as_str(), dependency),
+        ("tooling", "toml") | ("tooling", "serde_json") | ("tests", "toml") | ("machine", "toml")
+    )
 }
 
 pub fn lint_layers(packages: &[Package]) -> Vec<String> {
@@ -169,145 +151,113 @@ pub fn forbidden_name(s: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn layer(domain: &str, kind: &str, level: u64) -> Layer {
+    fn layer(kind: &str) -> Layer {
         Layer {
-            domain: domain.into(),
+            domain: kind.into(),
             kind: kind.into(),
-            level,
+            level: level_of(kind).unwrap(),
         }
-    }
-    fn fw(kind: &str) -> Layer {
-        layer("framework", kind, framework_level(kind).unwrap())
-    }
-    fn cat(kind: &str) -> Layer {
-        layer("catalog", kind, 3)
     }
 
     #[test]
     fn unicorn_is_allowlisted_only_at_its_adapter_boundary() {
         assert!(external_dependency_allowed(
-            "framework/engine/unicorn",
-            &fw("engine"),
+            "accel/unicorn",
+            &layer("accel"),
             "unicorn-engine"
         ));
         assert!(!external_dependency_allowed(
-            "apps/cli",
-            &layer("apps", "app", 6),
+            "machine",
+            &layer("machine"),
             "unicorn-engine"
         ));
         assert!(!external_dependency_allowed(
-            "framework/engine/native",
-            &fw("engine"),
+            "hw",
+            &layer("hw"),
             "unicorn-engine"
         ));
         assert!(!external_dependency_allowed(
-            "catalog/cpu/arm/cortex-a9",
-            &cat("cpu"),
-            "unicorn-engine"
-        ));
-        assert!(!external_dependency_allowed(
-            "framework/engine/unicorn",
-            &fw("engine"),
+            "accel/unicorn",
+            &layer("accel"),
             "unicorn-engine-sys"
         ));
         assert!(!external_dependency_allowed(
-            "framework/engine/unicorn",
-            &fw("engine"),
+            "accel/unicorn",
+            &layer("accel"),
             "rand"
         ));
     }
 
     #[test]
-    fn framework_cannot_depend_on_catalog_or_upper_layers() {
-        assert!(!dependency_allowed(&fw("runtime"), &cat("ip")));
-        assert!(!dependency_allowed(&fw("types"), &fw("contract")));
-        assert!(!dependency_allowed(&fw("runtime"), &fw("engine")));
-        assert!(!dependency_allowed(&fw("engine"), &fw("interconnect")));
-        assert!(dependency_allowed(&fw("runtime"), &fw("contract")));
+    fn toml_is_only_for_manifest_and_ledger_readers() {
+        assert!(external_dependency_allowed(
+            "machine",
+            &layer("machine"),
+            "toml"
+        ));
+        assert!(external_dependency_allowed(
+            "tests",
+            &layer("tests"),
+            "toml"
+        ));
+        assert!(external_dependency_allowed(
+            "xtask",
+            &layer("tooling"),
+            "toml"
+        ));
+        assert!(!external_dependency_allowed("hw", &layer("hw"), "toml"));
+        assert!(!external_dependency_allowed(
+            "mosaic",
+            &layer("front"),
+            "toml"
+        ));
     }
+
     #[test]
-    fn contracts_can_share_contracts_but_not_model_implementations() {
-        assert!(dependency_allowed(&fw("contract"), &fw("contract")));
-        assert!(dependency_allowed(&fw("modelkit"), &fw("contract")));
-        assert!(!dependency_allowed(&fw("contract"), &fw("modelkit")));
+    fn dependencies_point_downward_only() {
+        // The two-axis boundary (ADR 0024 §3.4): machines reach hw, never
+        // the other way around.
+        assert!(dependency_allowed(&layer("machine"), &layer("hw")));
+        assert!(!dependency_allowed(&layer("hw"), &layer("machine")));
+        assert!(dependency_allowed(&layer("hw"), &layer("contract")));
+        assert!(dependency_allowed(&layer("machine"), &layer("accel")));
+        assert!(dependency_allowed(&layer("accel"), &layer("isa")));
+        // Engines and devices sit at the same level and stay strangers.
+        assert!(!dependency_allowed(&layer("accel"), &layer("hw")));
+        assert!(!dependency_allowed(&layer("hw"), &layer("accel")));
+        assert!(!dependency_allowed(&layer("runtime"), &layer("accel")));
+        // The boot tests drive the front-end library at their own level.
+        assert!(dependency_allowed(&layer("tests"), &layer("front")));
+        assert!(!dependency_allowed(&layer("front"), &layer("tests")));
     }
-    #[test]
-    fn catalog_dependencies_are_restricted() {
-        for kind in ["prim", "types", "contract", "modelkit", "isa"] {
-            assert!(dependency_allowed(&cat("ip"), &fw(kind)));
-        }
-        for kind in [
-            "runtime", "engine", "assemble", "describe", "host", "ops", "bridge",
-        ] {
-            assert!(!dependency_allowed(&cat("ip"), &fw(kind)));
-        }
-        assert!(!dependency_allowed(&cat("ip"), &cat("ip")));
-        assert!(!dependency_allowed(&cat("part"), &cat("cpu")));
-        assert!(dependency_allowed(&cat("ip"), &cat("ip-lib")));
-    }
-    #[test]
-    fn glue_uses_models_tools_leaves_and_engines_but_not_composition() {
-        for kind in COMPOSITE_KINDS {
-            assert!(dependency_allowed(&cat(kind), &fw("contract")));
-            assert!(dependency_allowed(&cat(kind), &fw("types")));
-            assert!(dependency_allowed(&cat(kind), &fw("modelkit")));
-            assert!(dependency_allowed(&cat(kind), &fw("isa")));
-            assert!(dependency_allowed(&cat(kind), &fw("engine")));
-            assert!(dependency_allowed(&cat(kind), &cat("ip")));
-            assert!(dependency_allowed(&cat(kind), &cat("part")));
-            assert!(dependency_allowed(&cat(kind), &cat("cpu")));
-            assert!(dependency_allowed(&cat(kind), &cat("ip-lib")));
-            // Composition services and other composites stay out of glue
-            // (ADR 0023): glue is a machine, not a composition root.
-            assert!(!dependency_allowed(&cat(kind), &fw("prim")));
-            assert!(!dependency_allowed(&cat(kind), &fw("runtime")));
-            assert!(!dependency_allowed(&cat(kind), &fw("assemble")));
-            assert!(!dependency_allowed(&cat(kind), &fw("describe")));
-            assert!(!dependency_allowed(&cat(kind), &fw("host")));
-            assert!(!dependency_allowed(&cat(kind), &fw("ops")));
-            assert!(!dependency_allowed(&cat(kind), &fw("bridge")));
-            assert!(!dependency_allowed(&cat(kind), &cat("board")));
-            assert!(!dependency_allowed(&cat(kind), &cat("soc")));
-        }
-    }
-    #[test]
-    fn catalog_leaves_stay_under_r2() {
-        for kind in ["cpu", "ip", "part", "ip-lib"] {
-            assert!(!dependency_allowed(&cat(kind), &fw("engine")));
-            assert!(!dependency_allowed(&cat(kind), &fw("assemble")));
-        }
-    }
+
     #[test]
     fn metadata_cannot_spoof_a_layer() {
-        assert!(!validate_layer("catalog/ip/arm/pl011", &fw("prim")));
-        assert!(!validate_layer("framework/core/runtime", &fw("types")));
-        assert!(!validate_layer(
-            "catalog/board/raspberrypi/pico",
-            &cat("board")
-        ));
-        assert!(validate_layer(
-            "catalog/board/raspberrypi/pico/glue",
-            &cat("board")
-        ));
-        assert!(validate_layer("catalog/parts/bosch/bme280", &cat("part")));
-        assert!(!validate_layer("framework/core/types-extra", &fw("types")));
+        assert!(!validate_layer("hw", &layer("machine")));
+        assert!(validate_layer("hw", &layer("hw")));
+        assert!(validate_layer("isa/arm", &layer("isa")));
+        assert!(!validate_layer("isa", &layer("isa")));
+        assert!(validate_layer("mosaic", &layer("front")));
+        assert!(!validate_layer("apps/system", &layer("front")));
     }
+
     #[test]
     fn names_use_tokens_not_substrings() {
-        assert!(forbidden_name("mosaic-ip-arm-utils"));
-        assert!(!forbidden_name("mosaic-ip-arm-pl011"));
+        assert!(forbidden_name("mosaic-hw-utils"));
+        assert!(!forbidden_name("mosaic-hw-intc"));
         assert!(!forbidden_name("newton"));
         for invalid in ["", "PL011", "foo_bar", "foo--bar", "-foo", "foo-"] {
             assert!(!kebab_case(invalid));
         }
         assert!(kebab_case("dw-apb-i2c"));
     }
+
     #[test]
     fn unresolved_local_dependency_is_not_an_escape_hatch() {
         let package = Package {
             name: "test".into(),
             dir: "/repo/test".into(),
-            layer: fw("types"),
+            layer: layer("exec"),
             dependencies: vec!["/external/unclassified".into()],
         };
         assert_eq!(lint_layers(&[package]).len(), 1);

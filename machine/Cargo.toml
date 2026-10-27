@@ -1,0 +1,33 @@
+[package]
+name = "mosaic-machine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "machine"
+kind = "machine"
+level = 6
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../exec" }
+mosaic-contract = { path = "../contract" }
+mosaic-runtime = { path = "../runtime" }
+mosaic-isa-arm = { path = "../isa/arm" }
+mosaic-isa-x86 = { path = "../isa/x86" }
+mosaic-hw = { path = "../hw" }
+mosaic-block = { path = "../block" }
+mosaic-describe = { path = "../describe" }
+mosaic-assemble = { path = "../assemble" }
+mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
+mosaic-accel-armv7m = { path = "../accel/armv7m", optional = true }
+toml = "0.8"
+
+[features]
+default = []
+unicorn = ["dep:mosaic-accel-unicorn", "mosaic-assemble/unicorn"]
+native = ["dep:mosaic-accel-armv7m"]

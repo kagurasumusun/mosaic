@@ -1,0 +1,18 @@
+[package]
+name = "mosaic-isa-riscv"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.layer]
+domain = "isa"
+kind = "isa"
+level = 2
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-exec = { path = "../../exec" }
+mosaic-contract = { path = "../../contract" }

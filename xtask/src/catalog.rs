@@ -1233,21 +1233,45 @@ kind='mmo'
 
     #[test]
     fn graph_builder_rejects_unknown_bus_nodes() {
-        let soc: toml::Value = toml::from_str(include_str!(
-            "../../catalog/soc/arm/versatile/arm926ej-s/soc.toml"
-        ))
+        // A self-contained pair: the board wires a part onto a bus the SoC
+        // never declared, and the graph builder must say so by node id.
+        let soc: toml::Value = toml::from_str(
+            r#"
+[soc]
+id = 'soc:test/fixture'
+summary = 'parser fixture'
+[[cpu]]
+name = 'core0'
+use = 'cpu:test/core'
+view = 'sysbus'
+[[view]]
+name = 'sysbus'
+[[view.region]]
+name = 'ram'
+target = 'ram'
+base = 0
+size = 4096
+kind = 'ram'
+"#,
+        )
         .unwrap();
         let soc = parse_soc(&soc).unwrap();
-        let board: toml::Value = toml::from_str(include_str!(
-            "../../catalog/board/arm/versatile-pb/board.toml"
-        ))
+        let board: toml::Value = toml::from_str(
+            r#"
+[board]
+id = 'board:test/fixture'
+summary = 'parser fixture'
+[[part]]
+name = 'env0'
+use = 'part:test/device'
+bind = 'stream'
+conn = { bus = 'soc.not-a-device' }
+"#,
+        )
         .unwrap();
-        let mut board = parse_board(&board).unwrap();
-        board.part[0]
-            .conn
-            .insert("bus".into(), ConfigValue::String("soc.not-a-device".into()));
+        let board = parse_board(&board).unwrap();
         let error = mosaic_describe::MachineGraph::build(&soc, Some(&board)).unwrap_err();
-        assert!(error.message.contains("unknown bus node"));
+        assert!(error.message.contains("unknown bus node"), "{error:?}");
     }
 
     #[test]
@@ -1300,23 +1324,21 @@ size = 4096
 
     #[test]
     fn parser_uses_typed_schema_for_checked_in_manifests() {
+        // The real STM32F103 machine declaration is the checked-in fixture:
+        // what the machine crate assembles is what this parser must accept.
         let soc: toml::Value = toml::from_str(include_str!(
-            "../../catalog/soc/arm/versatile/arm926ej-s/soc.toml"
+            "../../manifests/machine/arm/stm32f103/soc.toml"
         ))
         .unwrap();
         let soc = parse_soc(&soc).unwrap();
-        assert_eq!(soc.block.len(), 6);
+        assert_eq!(soc.block.len(), 4);
+        assert_eq!(soc.cpu.len(), 1);
+        assert_eq!(soc.cpu[0].use_id, "cpu:arm/cortex-m3");
 
-        let board: toml::Value = toml::from_str(include_str!(
-            "../../catalog/board/arm/versatile-pb/board.toml"
-        ))
-        .unwrap();
-        let board = parse_board(&board).unwrap();
-        assert_eq!(board.part.len(), 4);
-        let graph = mosaic_describe::MachineGraph::build(&soc, Some(&board)).unwrap();
-        assert_eq!(graph.board_id.as_deref(), Some("board:arm/versatile-pb"));
+        let graph = mosaic_describe::MachineGraph::build(&soc, None).unwrap();
+        assert_eq!(graph.board_id, None);
         assert_eq!(graph.regions.len(), 7);
-        assert!(graph.nodes.iter().any(|node| node.id == "board.env2"));
+        assert!(graph.nodes.iter().any(|node| node.id == "soc.usart1"));
         assert!(graph.nodes.iter().any(|node| node.id == "view.sysbus"));
         assert!(graph.edges.iter().any(|edge| {
             edge.kind == "address-space"
@@ -1324,28 +1346,11 @@ size = 4096
                 && edge.to_node == "view.sysbus"
         }));
         assert!(graph.edges.iter().any(|edge| {
-            edge.from_node == "board.mux0"
-                && edge.from_port == "channel3"
-                && edge.to_node == "board.env2"
-        }));
-        assert!(graph.edges.iter().any(|edge| {
-            edge.kind == "clock"
-                && edge.from_node == "clock.clk_uart"
-                && edge.to_node == "soc.uart0"
-        }));
-        assert!(graph.edges.iter().any(|edge| {
             edge.kind == "irq"
-                && edge.from_node == "soc.timer0"
-                && edge.from_port == "timer2"
-                && edge.to_node == "soc.vic0"
-                && edge.to_port == "inputs:5"
-        }));
-        assert!(graph.edges.iter().any(|edge| {
-            edge.kind == "irq"
-                && edge.from_node == "soc.vic0"
-                && edge.from_port == "fiq"
-                && edge.to_node == "soc.core0"
-                && edge.to_port == "irq:fiq"
+                && edge.from_node == "soc.usart1"
+                && edge.from_port == "combined"
+                && edge.to_node == "soc.scs"
+                && edge.to_port == "inputs:37"
         }));
     }
 }

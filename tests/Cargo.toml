@@ -7,8 +7,8 @@ publish = false
 
 [package.metadata.layer]
 domain = "tests"
-kind = "machine"
-level = 6
+kind = "tests"
+level = 7
 
 [lints]
 workspace = true
@@ -18,8 +18,8 @@ name = "mosaic_tests_boot"
 path = "src/lib.rs"
 
 [dependencies]
-mosaic-apps-system = { path = "../apps/system" }
-mosaic-modelkit-iso9660 = { path = "../framework/modelkit/iso9660" }
+mosaic = { path = "../mosaic" }
+mosaic-block = { path = "../block" }
 
 [dependencies.toml]
 version = "0.8"
@@ -28,4 +28,4 @@ features = ["parse", "display"]
 
 [features]
 default = []
-unicorn = ["mosaic-apps-system/unicorn"]
+unicorn = ["mosaic/unicorn"]

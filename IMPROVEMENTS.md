@@ -32,19 +32,19 @@ The changes add/update tests for event-budget exhaustion without event loss; que
 
 ## Changed Rust files
 
-- `framework/describe/src/{lib.rs,schema.rs,graph.rs,endpoint.rs,tests.rs}`
-- `framework/core/types/src/lib.rs` (`VDelta`)
-- `framework/assemble/src/{driver.rs,multicore.rs}` (`VDelta` use)
+- `describe/src/{lib.rs,schema.rs,graph.rs,endpoint.rs,tests.rs}`
+- `exec/src/lib.rs` (`VDelta`)
+- `assemble/src/{driver.rs,multicore.rs}` (`VDelta` use)
 - `xtask/src/{catalog.rs,lib.rs,main.rs}`
-- `framework/core/runtime/src/{events.rs,context.rs,machine.rs}`
-- `framework/contract/model/src/lib.rs`
+- `runtime/src/{events.rs,context.rs,machine.rs}`
+- `contract/src/model.rs`
 - `framework/contract/gpio/src/lib.rs`
-- `framework/assemble/src/{driver.rs,multicore.rs,irq.rs}`
-- `framework/interconnect/{gpio-net,pinmux,i2c-bus}/src/lib.rs`
-- `catalog/ip/arm/{pl011,pl022,pl061,pl190,sp804}/src/lib.rs`
-- `catalog/ip/st/{gpio-f1,rcc-f1,usart-f1}/src/lib.rs`
-- `catalog/ip/synopsys/dw-apb-i2c/src/lib.rs`
-- `catalog/parts/nxp/lm75a/src/lib.rs`
+- `assemble/src/{driver.rs,multicore.rs,irq.rs}`
+- `hw/src/(interconnect bus entities)/{gpio-net,pinmux,i2c-bus}/src/lib.rs`
+- `hw/src/(by function)/arm/{pl011,pl022,pl061,pl190,sp804}/src/lib.rs`
+- `hw/src/(by function)/st/{gpio-f1,rcc-f1,usart-f1}/src/lib.rs`
+- `hw/src/(by function)/synopsys/dw-apb-i2c/src/lib.rs`
+- `hw/src/sensor 等/nxp/lm75a/src/lib.rs`
 
 
 ## Design and structure improvement

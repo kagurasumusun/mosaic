@@ -1,6 +1,11 @@
 # 大規模仮想マシン 構成設計書
 
-ドラフト v0.1 ／ 2026-10-23 ／ 前提: Rust 主体(C/C++ 併用)。CPU 実行は初期 Unicorn Engine、最終的に自前実装へ置換。
+ドラフト v0.2 ／ 2026-10-27 改訂 ／ 前提: Rust 主体(C/C++ 併用)。CPU 実行は初期 Unicorn Engine、最終的に自前実装へ置換。
+
+> **v0.2 の改訂(ADR 0024)**: ディレクトリの軸を「種別 → 出自」から
+> **QEMU 型(領域 → 機能/アーキ)**へ置換した。§1・§5・§6・§8・§9・§15・§25 を
+> 改訂済み。契約/実装の分離、振る舞いと配線の分離、IR 一本化、ctx、決定論、
+> スナップショットといった設計原則は不変。
 
 > **凡例** 【確認済】今回の調査で一次情報を確認した事実 ／ 【既知】筆者の既存知識(今回は再確認していない) ／ 【要検証】設計上の仮定で、実装前に小さな実験で確かめること。プロジェクト名は未定のため `<proj>` と表記する。
 
@@ -14,9 +19,9 @@
 
 ## 1. 結論(要点)
 
-1. **大分割**: `framework/`(VM 本体 = コア + 共通基盤。変わりにくい)と `catalog/`(CPU・IP・部品・SoC・ボード。増え続ける)に二分する。依存は catalog → framework の一方向のみ。
-2. **ディレクトリが表す軸は「種別 → 出自」の 2 つだけ**。機能(i2c, uart, sensor…)、バス上の役割、忠実度、実装言語などは manifest のタグに持たせ、機能別の一覧は**生成**する。ディレクトリ木は 1 つの軸しか表せないので、多軸の属性を木に詰め込まない。
-3. **契約(contract)・接続の実装(interconnect)・モデル(ip / parts / cpu)を別クレートに分ける**。例えば i2c なら、プロトコル定義・バス実体・コントローラ IP・センサ部品が別々の場所に住む。
+1. **大分割は領域ごと(QEMU 型)**: `util / exec / contract / runtime / isa / accel / hw / machine / block / describe / assemble / mosaic(入り口)`。**デバイスは機能軸(`hw/char`, `hw/intc`, …)、機械はアーキ軸(`machine/arm`, `machine/i386`)**の 2 軸を使い分け、出自(ベンダー)はディレクトリでなく識別子の名前空間に持たせる(ADR 0024。旧案の framework/catalog 2 分割は構造欠陥のため置換)。
+2. **ディレクトリが表す軸は「領域 → 機能 または アーキ」だけ**。出自・バス上の役割・忠実度・実装言語などは manifest のタグに持たせ、多軸の一覧は**生成**する。ディレクトリ木は 1 つの軸しか表せないので、多軸の属性を木に詰め込まない。
+3. **契約(contract)と実装(hw・accel・runtime)を分け、モデルは 1 モデル 1 ファイル**。多数の単 file クレートは実装が育たないため、契約は 1 クレート多モジュール、デバイスは `hw` 1 クレートに機能別ディレクトリで収める(QEMU の `hw/` と同じ)。
 4. **モデル内部を logic / bind / state に分ける**。「i2c の下の各モデルが混ざる」問題の最後の砦はここ。レジスタ定義・状態機械・バス適合・ホスト入出力を 1 ファイルに入れない。
 5. **振る舞いと配線を分ける**。モデルはベースアドレス・IRQ 番号・接続先を知らない。SoC/ボードは宣言的記述が主体で、コードは本当に固有な部分だけ。宣言もコードも同じ中間表現(MachineGraph)に落とす。
 6. **プロセッサは常にグラフ上のただのノード**。CPU モデル = ISA + 実行エンジン + コア固有部分。エンジンは「1 コア = 1 インスタンス」を前提にし、SMP・AMP・異種・多機械はスケジューラ側の責務にする。
@@ -78,8 +83,9 @@
 
 | 軸 | 内容 | 表現場所 |
 | --- | --- | --- |
-| A1 種別 (kind) | prim / core / contract / interconnect / isa / engine / cpu / ip / part / subsys / soc / module / board / world | **ディレクトリ(第 1 階層)** |
-| A2 出自 (origin) | 仕様や製品の定義者。ベンダー名、標準化団体、コミュニティ | **ディレクトリ(第 2 階層)** |
+| A1 領域 (domain) | util / exec / contract / runtime / isa / accel / hw / machine / block / describe / assemble / front | **ディレクトリ(第 1 階層)** |
+| A2 機能 (function) または アーキ (arch) | デバイスは機能(char, intc, timer, …)、機械はアーキ(arm, i386, …)。語彙は QEMU `hw/` に同じ | **ディレクトリ(第 2 階層)** |
+| A2' 出自 (origin) | 仕様や製品の定義者。ベンダー名、標準化団体 | **識別子の名前空間と manifest のみ**(`ip:arm/pl011`、`origins.toml`)。ディレクトリには現れない(QEMU が `imx_serial.c` を `hw/char/` に置くのと同じ) |
 | A3 機能 | uart, i2c-controller, temperature-sensor, display など | manifest のタグ + 生成ビュー |
 | A4 バス上の役割 | initiator / target / monitor / bridge / mux | manifest の ports |
 | A5 忠実度 | functional / timing-approx / cycle / rtl-cosim | manifest |
@@ -106,59 +112,65 @@
 
 ## 6. 全体構成(ディレクトリ)
 
+ADR 0024 による QEMU 型の構成。旧案(framework/catalog の 2 分割)からの
+対応は ADR 0024 §3.1 の表を参照。
+
 ```
 <proj>/
-├─ docs/                  # adr/ architecture/ guides/ catalog-views/(生成物)
-├─ framework/             # VM 本体 = コア + 共通基盤(変わりにくい)
-│  ├─ prim/               # L0 VM 概念を持たない純粋部品(bit操作, endian, crc, 固定長コンテナ)
-│  ├─ core/
-│  │  ├─ types/           # L1 共通語彙: Addr, VTime, Attr(security/priv/master), BusFault, Snapshot trait
-│  │  └─ runtime/         # L3 スケジューラ, アドレス空間(Region木→FlatView), イベント, snapshot機構, RNG, log, ctx実装
-│  ├─ contract/           # L2 trait と型だけ(実装なし)+ 各契約の conformance テスト
-│  │  ├─ mmio/ bus/       #    レジスタアクセス, 汎用バストランザクション, DMI(直接メモリ経路)
-│  │  ├─ signal/          #    irq, gpio-pin, net(デジタル), analog
-│  │  ├─ clock/ reset/ power/
-│  │  ├─ serial/          #    i2c, spi, uart-line, can, i3c ...(1 プロトコル 1 クレート)
-│  │  ├─ stream/ block/   #    バイト列, ブロックデバイス
-│  │  ├─ cpu-engine/      #    CpuEngine trait, StopReason, EngineCaps
-│  │  ├─ host/            #    display, audio, input, tty, netdev, storage のホスト側ポート
-│  │  └─ model/           #    DeviceFactory, Params スキーマ, Ctx(モデルが受け取る唯一のハンドル)
-│  ├─ modelkit/           # L2 モデルを書く道具: regbank マクロ, fifo, timer, 状態機械ヘルパ
-│  ├─ isa/                # L2 ISA の仕様データ: arm/ riscv/ xtensa/ ...(レジスタID, 例外モデル)
-│  ├─ interconnect/       # L3 接続の実体: i2c-bus, spi-bus, can-bus, axi-xbar, apb-bridge, pci-bus ...
-│  ├─ engine/             # L3 CPU 実行エンジン
-│  │  ├─ unicorn/         #    初期実装(GPL-2.0, 第21章)。FFI の unsafe はここだけ
-│  │  ├─ native/          #    自前実装(ISA ごとにクレート + 共通の native-kit)
-│  │  ├─ kvm/ remote/     #    将来: ハードウェア支援 / 実チップ・他シミュレータ越し
-│  │  └─ conformance/     #    全エンジンに同一テストを流し結果を突き合わせる
-│  ├─ describe/           # L4 記述スキーマ, パーサ, include/overlay 解決, MachineGraph(IR), 検証
-│  ├─ assemble/           # L5 Registry, IR→実行時インスタンス生成, FDT/ACPI 出力
-│  ├─ host/               # L5 contract/host の実装: sdl-display, tty, tap-net, file-storage ...
-│  ├─ ops/                # L5 trace, gdbstub, snapshot/replay, fault-injection, coverage
-│  └─ bridge/             # L5 他言語/他シミュレータとの橋: rtl-verilator, systemc-tlm, fmi, remote-port, c-abi, wasm
-├─ catalog/               # 増え続ける側。外部 pack と同一レイアウト
+├─ docs/                  # adr/ architecture/ guides/
+├─ util/                  # L0 純粋部品(bits, fifo, fnv)。QEMU util/
+├─ exec/                  # L1 共通語彙: Addr, VTime, Attr, RegId, BusFault, Snapshot
+├─ contract/              # L2 全ポート契約を 1 クレート 12 モジュールに
+│                         #    (mmio, signal, clock, cpu_engine, gpio, i2c, spi,
+│                         #     uart_line, can, net, stream, model)
+├─ runtime/               # L3 スケジューラ, アドレス空間(Region木→FlatView),
+│                         #    イベント, clock tree, snapshot 機構, ctx 実装, Machine
+├─ isa/                   # L2 ISA 語彙 + CPU モデル(QEMU target/。cargo が
+│  ├─ arm/                #    target/ を予約しているため isa/ と呼ぶ)
+│  ├─ aarch64/            #    arm: regs + cpu/{arm926ej-s, cortex-m3}
+│  ├─ x86/                #    i386 と x86_64 を 1 クレートに
+│  └─ riscv/              #    regs + cpu/e31
+├─ accel/                 # L3 CPU 実行エンジン(QEMU accel/)
+│  ├─ unicorn/            #    初期エンジン(GPL-2.0, 第21章)。FFI の unsafe はここだけ
+│  ├─ armv7m/             #    自前インタプリタ(ADR 0017)
+│  └─ conformance/        #    全エンジンに同一テストを流す枠
+├─ hw/                    # L3 デバイスモデル。機能別 1 ディレクトリ(QEMU hw/<function>/)
+│  └─ src/                #    char(pl011, usart-f1, pair) / intc(pl190, pic-8259,
+│                         #    ioapic, gic-v2, scs) / timer(sp804, pit-8254) / rtc /
+│                         #    gpio(pl061, gpio-f1, net, pinmux) / ssi(pl022, bus) /
+│                         #    i2c(bus, dw-apb-i2c, tca9548a) / can(bus) /
+│                         #    sensor(bme280/, lm75a) / misc(primecell-id, rcc-f1) /
+│                         #    mailbox(mhu) / nvram(fw-cfg) / pci / ide / virtio
+│                         #    バス実体(hw/i2c/bus.rs)は QEMU hw/i2c/core.c と同じ位置
+├─ machine/               # L6 機械モデル。アーキ別(QEMU hw/<arch>/)
+│  └─ src/                #    arm/stm32f103/ i386/pc/(machine.rs, linux_boot.rs)
+│                         #    機械レジストリ(-M)とアーキ共通ブート経路もここ
+├─ block/                 # L2 ゲストイメージ形式(iso9660、将来 raw/qcow2)。QEMU block/
+├─ describe/              # L4 記述スキーマ, パーサ, MachineGraph(IR), 検証
+├─ assemble/              # L5 Registry, IR→実行時インスタンス生成, engine 結合
+├─ manifests/             # manifest データ木。コードと同じ形にミラー
 │  ├─ origins.toml        #    出自の正規名一覧
-│  ├─ cpu/<origin>/<core>/            # 例 arm/cortex-m0plus
-│  ├─ ip/<origin>/<ip>/               # 例 arm/pl011, synopsys/dw-apb-i2c
-│  ├─ parts/<origin>/<part>/          # 例 bosch/bme280, ti/tca9548a
-│  ├─ subsys/<origin>/<name>/         # 例 arm/cortex-a53-cluster
-│  ├─ soc/<origin>/<family>/<chip>/   # 例 raspberrypi/rp2/rp2040
-│  ├─ module/<origin>/<name>/         # 例 raspberrypi/compute-module-4
-│  ├─ board/<origin>/<board>/         # 例 raspberrypi/pico。宣言(board.toml)+必要なら glue/ クレート
-│  ├─ world/<scenario>/               # 複数ボード + 環境
-│  └─ firmware/                       # ブートROM等の記述(ハッシュ・入手方法)。バイナリは置かない
-├─ apps/                  # cli/ gui/ server/(リモート制御)
-├─ tests/                 # 機械レベル(ファームを起動し出力を比較), 互換性, 性能
-├─ xtask/                 # lint-layers, lint-names, catalog-build, new, sync-workspace, doctor
-├─ ffi/                   # 自前で抱える *-sys クレート(verilator, systemc など)
+│  ├─ isa/…  hw/…        #    CPU・IP・部品の manifest(機能ミラー)
+│  └─ machine/…           #    soc.toml / board.toml(機械ミラー)
+├─ firmware/              # ブートROM等の記述(ハッシュ・入手方法)。QEMU pc-bios/
+├─ host/ ops/ bridge/     # L5 将来層のプレースホルダ(chardev/ui/monitor 等)
+├─ mosaic/                # 実行入り口は 1 本(bin `mosaic`)。QEMU system/vl.c 相当
+├─ tests/                 # 機械レベル(実イメージを起動し出力を比較)
+├─ xtask/                 # lint-layers, lint-names, lint-catalog(manifest ミラー含む)
+├─ ffi/                   # 自前で抱える *-sys クレート
 └─ third_party/
 ```
 
-**framework と catalog を分ける理由**: 変更頻度と所有者が違う。framework は少人数が慎重に変えるもの、catalog は多数が日常的に足すもの。この境界に CI の規則(catalog は framework の公開面だけを使う)と CODEOWNERS を置くと、「足す作業」が「コアを壊す作業」に化けない。外部の pack(第16章)は catalog と同じレイアウトなので、自社内の機密モデルやカスタム SoC も同じ作法で足せる。
+**領域で分ける理由**: 変更頻度と所有者が領域ごとに違う点は旧案と同じ。
+さらに (a) `hw` は `machine` を決して依存できず、逆方向のみ許される、
+(b) 機能が既存ディレクトリに溶け込まない(1 モデル 1 ファイル)、
+(c) モデル追加が「mod.rs かレジストリに 1 行」で終わる、の 3 点が
+クレート境界で機械的に強制される。外部 pack(第16章)は `hw`/`machine`
+と同じ形のディレクトリを別リポジトリに置く形に読み替える。
 
-**深さの固定**: catalog は `種別/出自/名前` の 3 階層を基本とし、soc だけ `family` を 1 段挟む。深さが固定なので、ツールとレビューが場所を機械的に判定できる。
-
-**前回案からの変更**: `kernel` → `core`(types と runtime に分割)、`fabric` → `contract`(契約)と `interconnect`(接続の実体)に分割、`compose` → `describe`(記述→IR)と `assemble`(IR→実体)に分割、`engine/api` → `contract/cpu-engine` へ移動、`engine/isa` → `isa` に独立。理由は、契約と実装、記述と生成を同じ層に置くと、まさに第3章の M2・M3 が再発するため。
+**深さの固定**: hw は `機能/モデル` の 2 階層(+多バスモデルのディレクトリ)、
+machine は `アーキ/機械`、isa は `アーキ`(+`cpu/`)。深さが固定なので、
+ツールとレビューが場所を機械的に判定できる。
 
 ## 7. 層の責務
 
@@ -197,22 +209,36 @@
 ## 8. 依存規則
 
 ```
-apps ─► assemble ─► core/runtime ─► contract ─► core/types ─► prim
-  │         └─► describe ─────────────────────────► core/types
-  ├─► host / ops / bridge ─► contract
-  ├─► engine/* ─► contract(cpu-engine), isa
-  └─► catalog-all(xtask 生成) ─► catalog/* ─► modelkit, contract, isa, core/types
-        (catalog は assemble / describe / host / engine 実装を知らない)
+mosaic(front) ─► machine ─► hw ─► contract ─► exec ─► util
+     │             │   │       └► (accel 経由で isa)
+     │             │   └► accel ─► isa
+     │             └► runtime ─► contract
+     ├─► block
+tests ─► mosaic + block
+assemble ─► runtime, accel, describe, contract, exec
+describe(依存なし)   isa ─► contract(※), exec
 ```
 
-- **R1** 依存は下位層へのみ。同じ L3 同士(interconnect, engine, core/runtime)は互いに依存しない。
-- **R2** catalog が使える framework は prim, core/types, contract, modelkit, isa のみ。実行エンジンの実装・assemble・host・ops・bridge は使えない。**ただし composite(board/soc/subsys/module/world)の `glue` クレートに限り、搭載する機械のブートループが直接駆動する `engine` と、catalog の葉(ip/part/cpu/ip-lib)への依存を認める**(ADR 0023。QEMU の `hw/<arch>` 機械が cpu コアを直接使うのと同じ到達範囲。合成サービス層と他の composite へは依存したまま禁止)。
-- **R3** catalog 内の横依存は禁止(ip から ip、parts から ip など)。共有ロジックは modelkit に入れるか、概念名の独立クレート(例: ARM PrimeCell の ID レジスタ群を `primecell-id`)にして manifest に `kind = 'ip-lib'` と書く。ip-lib だけが他モデルから依存できる(デバイス登録は持たない)。
-- **R4** 複合 IP(USB OTG = コントローラ + PHY + DMA など)はコード依存ではなく、subsys の宣言(グラフ)で合成する。
-- **R5** soc / subsys / module / board / world のコードは任意の `glue` クレートに限り、contract と core/types だけに依存できる。glue の行数が閾値(初期値 500 行、要調整)を超えたら昇格(ip 化)か見直しを促す警告を出す。
-- **R6** `unsafe` は engine/*、host/*、bridge/\*、core/runtime の限定モジュールだけで許し、それ以外は `#![forbid(unsafe_code)]`。
-- **R7** 外部クレートは層ごとの許可リストで管理する。catalog では実時間・乱数・ファイル・ネットワーク・スレッドを扱うクレートを禁止し、必要なら contract/host 経由にする。
-- **R8** contract の破壊的変更は ADR 必須。contract は最も変更コストが高い層なので、小さく保ち、`#[non_exhaustive]` と能力交渉で後方互換を保つ。
+- **R1** 依存は下位層へのみ(レベルは util 0 < exec 1 < contract 2 =
+  isa 2 < block 2 < runtime = accel = hw 3 < describe 4 < assemble 5 <
+  machine 6 < front = tests 7 < tooling 8)。
+- **R2** `hw`(デバイス)は `machine`・`accel`・`runtime` を依存禁止。
+  機械がデバイスを載せる方向のみ許される(ADR 0024 の 2 軸境界)。
+  ※ isa → contract は CPU モデルが CpuDescriptor を読むための唯一の
+  同位依存(QEMU の target/ が cpu.h を含むのと同じ)。
+- **R3** `hw` 内の横依禁止は「機能ディレクトリをまたぐ依存」で判定
+  (char から intc へ等)。共有ロジックは util か概念モジュール
+  (misc/primecell_id)へ切り出す。
+- **R5** 機械(machine)は任意の下位(hw, accel, isa, runtime, block,
+  describe, assemble)を依存してよい。QEMU の `hw/<arch>` が cpu コアと
+  デバイスを直接使うのと同じ到達範囲。フロントエンド(`mosaic`)は
+  `machine` + `block` のみで機械コードを持たない。
+- **R6** `unsafe` は accel 内の限定モジュールだけで許し、それ以外は
+  `#![forbid(unsafe_code)]`(workspace lints)。
+- **R7** 外部クレートは層ごとの許可リストで管理する(unicorn-engine は
+  accel/unicorn のみ、toml は machine/tests/tooling のみ)。
+- **R8** contract の破壊的変更は ADR 必須。contract は最も変更コストが
+  高い層なので、小さく保ち、`#[non_exhaustive]` と能力交渉で後方互換を保つ。
 
 **強制の手段**(ルールは CI に置く):
 
@@ -226,9 +252,9 @@ apps ─► assemble ─► core/runtime ─► contract ─► core/types ─�
 ## 9. 命名規則
 
 - **N1 実世界の名前で呼ぶ**: 型番・規格名・公式の IP 名(`pl011`, `bme280`, `dw-apb-i2c`)。用途名(`uart`, `temp-sensor`)や自作の愛称は使わない。用途は manifest のタグが担う。
-- **N2 禁止語**: `misc` `common` `utils` `util` `generic` `base` `helper` `manager` `handler` `impl` `shared` `new` `old` `stuff` をディレクトリ名・クレート名に使わない(`xtask lint-names` で検出)。受け皿が必要に見えたら、それは概念の切り出しが足りないサイン。
+- **N2 禁止語**: `common` `utils` `generic` `base` `helper` `manager` `handler` `impl` `shared` `new` `old` `stuff` をディレクトリ名・クレート名に使わない(`xtask lint-names` で検出)。受け皿が必要に見えたら、それは概念の切り出しが足りないサイン。**例外**: `misc` は QEMU の `hw/misc` と同じく `hw/src/misc`(とその manifest ミラー)に限り許可(ADR 0024)。
 - **N3 表記**: kebab-case。出自は `origins.toml` の正規名のみ(例 `arm`, `st`, `nxp`, `ti`, `bosch`, `synopsys`, `riscv`)。
-- **N4 クレート名**: `<proj>-<kind>-<origin>-<name>`(例 `<proj>-ip-arm-pl011`)。framework は `<proj>-contract-i2c`、`<proj>-engine-unicorn` のようにディレクトリ階層をそのまま写す。
+- **N4 クレート名**: ディレクトリ階層をそのまま写す(`<proj>-hw`, `<proj>-machine`, `<proj>-accel-unicorn`, `<proj>-isa-arm`, …)。入り口バイナリは `<proj>` のみ。
 - **N5 変種は公式の呼称**: `@r1p5`(ARM の版表記)、`@v2`(ベンダーの IP 版)。SoC 名を変種名にしない。
 - **N6 インスタンス名は soc/board 記述の中だけ**: `uart0`、`i2c1`、`env0`。
 - **N7 共有ロジックは概念名の独立クレート**: 例 `primecell-id`。manifest は `kind = 'ip-lib'`。
@@ -581,18 +607,18 @@ add     = [ { region = 'rpu-tcm', at = 0x0, size = 0x10000 } ]   # RPU の専用
 
 | 足したいもの | 置き場所 | 補足 |
 | --- | --- | --- |
-| 新しいバスプロトコル(例 I3C) | `contract/serial/i3c` + `interconnect/i3c-bus` + conformance | 契約・実体・適合テストを 1 セットで追加 |
-| 新しい ISA | `isa/<name>` + `engine/native/<name>` | Unicorn が対応する ISA は Unicorn 経由でも可 |
-| 新しい CPU コア | `catalog/cpu/<origin>/<core>` | ISA の拡張・実装依存値・コア固有ブロック |
+| 新しいバスプロトコル(例 I3C) | `contract/src/i3c.rs` + `hw/src/i2c` 隣接の機能ディレクトリ + conformance | 契約・実体・適合テストを 1 セットで追加 |
+| 新しい ISA | `isa/<name>` + `accel/<name>`(自前)または accel/unicorn の arch feature | QEMU の target/<arch> に同じ |
+| 新しい CPU コア | `isa/<arch>/src/cpu/<core>.rs` + `manifests/isa/<arch>/<core>.toml` | QEMU の target/<arch> 内の CPU モデルと同じ居場所 |
 | CPU クラスタ(コア × N + L2 + GIC) | `catalog/subsys/<origin>/<name>` | 宣言が主 |
-| SoC 内蔵の周辺 IP | `catalog/ip/<origin>/<ip>` | 版差は variant、SoC 差は params |
+| SoC 内蔵の周辺 IP | `hw/src/<function>/<ip>.rs` + `manifests/hw/<function>/<ip>.toml` | 版差は variant、SoC 差は params |
 | その SoC だけの専用ブロック | `catalog/soc/.../local/<chip>-<block>` | 2 つ目の利用者が出たら ip へ昇格 |
-| 外部のセンサ・メモリ・PMIC | `catalog/parts/<origin>/<part>` | 複数バス対応は bind を feature で選ぶ |
-| バススイッチ・mux(PCA9548 など) | `catalog/parts/...` | ports に role = bridge を宣言 |
+| 外部のセンサ・メモリ・PMIC | `hw/src/sensor/<part>.rs` 等(機能軸)+ manifest | 複数バス対応はモデルをディレクトリにして bind 別モジュール(bme280 型) |
+| バススイッチ・mux(PCA9548 など) | `hw/src/i2c/<part>.rs` | ports に role = bridge を宣言 |
 | クロスバ・ブリッジ(AXI, APB) | プロトコルのモデルは `interconnect`、SoC 固有の設定は soc の記述 | 配置・優先度は記述側 |
 | IOMMU / SMMU | `catalog/ip/arm/...` + `contract/bus` の変換ロール | DMA マスタごとの視点で表現 |
-| 割り込みコントローラ | 独立 IP は `catalog/ip`、コア密結合(NVIC)は `catalog/cpu` | 境界は「CPU と別に存在できるか」 |
-| SoC 内蔵の DSP・管理コア | soc / subsys の cpu ノード | ファーム読み込みはメモリ書き込み + reset 線 |
+| 割り込みコントローラ | 独立 IP は `hw/src/intc/`、コア密結合(NVIC)は `isa/<arch>` 側 | 境界は「CPU と別に存在できるか」 |
+| SoC 内蔵の DSP・管理コア | machine の機械が cpu ノードとして宣言 | ファーム読み込みはメモリ書き込み + reset 線 |
 | FPGA の論理(PL) | subsys + `bridge/rtl-verilator` または ip | RTL 協調は第17章 |
 | ボード改訂・部品の実装差 | `board/.../<board>/rev-*` の overlay | DNP は remove で表現 |
 | SoM + キャリアボード | `catalog/module` + `catalog/board` | module のコネクタ契約で接続 |
@@ -602,7 +628,7 @@ add     = [ { region = 'rpu-tcm', at = 0x0, size = 0x10000 } ]   # RPU の専用
 | ホストの USB / I2C / GPIO の実機パススルー | `framework/host/*-passthrough` | Target 側アダプタとして実装 |
 | 複数ボードのネットワーク・CAN バス | `catalog/world` + `interconnect/*-bus` | 仮想時間は全マシンで共有 |
 | 温度・電池・ロボットなど物理環境 | `catalog/world` の環境 + `bridge/fmi` | FMI などの外部モデルに接続 |
-| 実チップの ROM・ブートローダ | `catalog/firmware` に記述のみ | ハッシュと入手方法だけを持つ |
+| 実チップの ROM・ブートローダ | `firmware/` に記述のみ | ハッシュと入手方法だけを持つ |
 | 時刻(RTC)をホストと同期 | `core/runtime` の時間モード + `host/clock` | 決定論モードでは使わない |
 | gdb・トレース・カバレッジ・故障注入 | `framework/ops/*` | タップ点を購読する |
 | 電源管理(PMIC)・電源ドメイン | 内蔵は ip、外部は parts + `contract/power` | ドメインは soc の記述 |
@@ -612,11 +638,11 @@ add     = [ { region = 'rpu-tcm', at = 0x0, size = 0x10000 } ]   # RPU の専用
 | 実機を繋ぐ HIL | `engine/remote` または `bridge/hil` | バス上の MMIO を実機へ中継 |
 | ホスト側の高速実行(KVM 等) | `engine/kvm` | contract は同じ |
 | 外部の C/C++ 資産(既存デバイスモデル) | `ffi/*-sys` + `bridge/c-abi` | `catalog` には直接入れない |
-| GUI・CLI・リモート制御 | `apps/*` | 全部に依存してよいのは apps のみ |
-| 検証用のテストベンチ(CPU なし) | `catalog/board` 相当 + tests | CPU の無い machine も同じ仕組み |
-| SoC を持たないマルチチップマシン全体(PC/AT など) | `catalog/board/<origin>/<board>`(soc 宣言なし)+ `glue` | 8259A/PIT/RTC は個別チップ。組立は glue が担い、parts/conn は宣言できない(ADR 0023) |
-| `-kernel` による直接カーネル起動の実装 | 各機械(board)のブート経路モジュール | QEMU の `hw/i386/x86.c::x86_load_linux` / `hw/arm/boot.c` と同じ分担。語彙はフロントエンドが機械中立に保持。2 台目の同 ISA 機で modelkit へ昇格 |
-| ゲストイメージの形式解析(ISO9660, El Torito, 将来の FAT/ELF) | `framework/modelkit` の形式クレート | QEMU の `hw/core/loader.c` + `block/` 相当。CLI・機械・テストの 3 者が共有する形式関心事 |
+| GUI・リモート制御 | `mosaic`(bin)を拡張、monitor 系は `ops/` | 実行入り口は 1 本だけ(ADR 0021/0024) |
+| 検証用のテストベンチ(CPU なし) | `machine/src/<arch>/` + tests | CPU の無い machine も同じ仕組み |
+| SoC を持たないマルチチップマシン全体(PC/AT など) | `machine/src/i386/pc/`(soc 宣言なし) | 8259A/PIT/RTC は `hw/src/intc` `hw/src/timer` `hw/src/rtc` の個別チップ(ADR 0023/0024) |
+| `-kernel` による直接カーネル起動の実装 | `machine/src/<arch>/<機械>/` のブート経路モジュール | QEMU の `hw/i386/x86.c::x86_load_linux` / `hw/arm/boot.c` と同じ分担。語彙はフロントエンドが機械中立に保持。2 台目の同アーキ機で `machine/src/<arch>/boot.rs` へ昇格 |
+| ゲストイメージの形式解析(ISO9660, El Torito, 将来の FAT/ELF) | `block/src/<format>.rs` | QEMU の `block/` 相当。CLI・機械・テストの 3 者が共有する形式関心事 |
 
 ## 16. pack とカスタム SoC / ボード
 
@@ -883,12 +909,12 @@ DCO か CLA のどちらかを初日に決める。A を選ぶ場合、将来の
 
 | 案 | 長所 | 短所 | 判断 |
 | --- | --- | --- | --- |
-| A 機能別に分ける(QEMU / Renode 型) | 機能で探しやすい | 種別・出自・バス役割が溶け込み、受け皿が肥大する | 不採用。ただし機能別一覧は**生成ビュー**として取り込む |
+| A 機能別に分ける(QEMU / Renode 型) | 機能で探しやすい、モデル千件でも破綻しない(QEMU が実証) | 機能 1 軸に種別・出自を詰め込むと混ざる | **修正採用**(ADR 0024): 機能軸(デバイス)とアーキ軸(機械)の 2 軸を使い分け、出自は名前空間へ退避 |
 | B 出自(ベンダー別)のみで分ける | 同一性が明確 | SoC・IP・部品・ボードが混在する | 種別を最上位にして解決 |
 | C 巨大な 1 クレート + feature | クレート数が少ない | 依存規則が機械で効かない、並列ビルドが効きにくい、独立テストが難しい | 不採用(数千規模で再検討) |
 | D IP ごとに別リポジトリ | 所有が明確 | 版の整合管理が重く、契約の変更が全体に波及しづらい | 不採用。必要な分だけ pack として外出し |
 | E Rust の動的ライブラリによるプラグイン | 後から差し込める | ABI が安定しない | 不採用。C ABI / WASM / 別プロセスに限る |
-| F 本設計(種別 → 出自 + タグ + 生成ビュー、契約/実体/モデルの分離、IR 一本化) | 多軸の属性を衝突させず、依存を機械で強制できる | 初期の骨格作りの手間、規則の学習コスト | **採用** |
+| F 本設計(v0.1: 種別 → 出自 + タグ + 生成ビュー) | 多軸の属性を衝突させず、依存を機械で強制できる |出自軸は機能を答えず、1 モデル 1 クレートが lib.rs 単体を生み、機械が apps に逃げた | v0.2 で軸を QEMU 型へ置換(ADR 0024)。タグ + 生成ビュー、契約/実体の分離、IR 一本化は維持 |
 
 ## 付録 A. 参考資料
 

@@ -11,25 +11,28 @@ rust-version / lints を継承し、ライセンス決定までは `publish = fa
 
 ```toml
 [package.metadata.layer]
-domain = "framework"
-kind = "contract"
-level = 2
+domain = "hw"        # 領域名 = ディレクトリ名
+kind = "hw"          # domain と同じ値
+level = 3            # 下の表のレベル
 ```
 
-| domain | kind | level |
+| domain (= kind) | level | 例 |
 | --- | --- | --- |
-| framework | prim | 0 |
-| framework | types | 1 |
-| framework | contract / modelkit / isa | 2 |
-| framework | runtime / interconnect / engine | 3 |
-| framework | describe | 4 |
-| framework | assemble / host / ops / bridge | 5 |
-| catalog | cpu / ip / ip-lib / part / subsys / soc / module / board / world | 3（依存は別ルール） |
-| apps | app | 6 |
-| tooling | tooling | 7 |
+| util | 0 | bits / fifo / fnv |
+| exec | 1 | Addr, VTime, RegId, Snapshot |
+| contract | 2 | 12 契約モジュール |
+| isa | 2 | isa/arm, isa/x86（+ contract への唯一の同位依存） |
+| block | 2 | ISO9660 形式 |
+| runtime / accel / hw | 3 | Machine / unicorn, armv7m / デバイスモデル |
+| describe | 4 | manifest → MachineGraph |
+| assemble | 5 | IR → 実体、engine 結合 |
+| machine | 6 | arm/stm32f103, i386/pc |
+| front / tests | 7 | bin `mosaic` / 実イメージ起動テスト |
+| tooling | 8 | xtask |
 
-メタデータは配置と照合するため、catalog のモデルを app と偽装して検査を回避できません。
-SoC 等の Rust コードは `glue` ディレクトリに限ります。
+依存は下位レベルへのみ（例外: isa → contract の CPU モデル、tests → front）。
+`hw` は `machine` を依存禁止（2 軸境界、ADR 0024）。外部クレートは
+unicorn-engine が accel/unicorn のみ、toml が machine / tests / tooling のみ。
 
 ## 構成検査
 
@@ -120,8 +123,8 @@ signal を統合した `Machine` を検証できます。
 これは P1 のファームウェア起動という出口条件を満たすものではありません。
 
 ```sh
-cargo run --locked --package mosaic-core-runtime --example events
-cargo run --locked --package mosaic-core-runtime --example machine
+cargo run --locked --package mosaic-runtime --example events
+cargo run --locked --package mosaic-runtime --example machine
 ```
 
 ## P1 に進む前の確認

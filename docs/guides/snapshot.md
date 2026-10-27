@@ -1,6 +1,6 @@
 # Runtime snapshots (P4 initial slice)
 
-`mosaic-core-runtime` now supports an **in-memory runtime checkpoint** that restores
+`mosaic-runtime` now supports an **in-memory runtime checkpoint** that restores
 these state domains together:
 
 - the deterministic event queue and virtual time;
@@ -18,7 +18,7 @@ device or any signal sink rather than silently saving an incomplete checkpoint.
 
 ## Model contract
 
-Implement [`Snapshot`](../../framework/core/types/src/lib.rs) for the model,
+Implement [`Snapshot`](../../exec/src/lib.rs) for the model,
 then register it as a typed snapshot device:
 
 ```rust
@@ -93,7 +93,7 @@ a later phase.
 ## Example and verification
 
 ```sh
-cargo run --locked --package mosaic-core-runtime --example snapshot
+cargo run --locked --package mosaic-runtime --example snapshot
 ```
 
 The example captures RAM, a device State, and a pending timer; mutates all three;
