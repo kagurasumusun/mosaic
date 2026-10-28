@@ -8,6 +8,7 @@
 pub mod arm;
 pub mod i386;
 pub mod manifest;
+pub mod riscv;
 
 /// One machine type the front-end can select (QEMU's `MODULE_INFO` metadata).
 pub struct MachineInfo {
@@ -25,5 +26,6 @@ pub fn machines() -> Vec<MachineInfo> {
         i386::pc::info(),
         arm::stm32f103::info(),
         arm::virt64::info(),
+        riscv::virt::info(),
     ]
 }

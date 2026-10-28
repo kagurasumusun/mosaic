@@ -314,6 +314,7 @@ dependencies = [
  "mosaic-hw",
  "mosaic-isa-aarch64",
  "mosaic-isa-arm",
+ "mosaic-isa-riscv",
  "mosaic-isa-x86",
  "mosaic-runtime",
  "toml",

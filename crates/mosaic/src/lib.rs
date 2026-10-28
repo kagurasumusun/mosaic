@@ -24,6 +24,8 @@ pub use mosaic_machine::arm::virt64::Virt64Report;
 #[cfg(feature = "unicorn")]
 pub use mosaic_machine::i386::pc::{run_pc_machine, PcBootOptions, PcBootReport, PcMachineConfig};
 pub use mosaic_machine::MachineInfo;
+#[cfg(feature = "arch-riscv")]
+pub use mosaic_machine::riscv::virt::VirtReport as RiscvVirtReport;
 
 /// A kernel the operator asked the machine to boot directly, bypassing every
 /// loader in the attached images (QEMU's `-kernel`/`-initrd`/`-append`).
@@ -56,6 +58,11 @@ pub enum MachineKind {
     /// `-kernel` loads an arm64 `Image` and boots it through the AArch64
     /// boot protocol; GICv3, PL011 and virtio-mmio are wired.
     Virt64,
+    /// `soc:riscv/virt`: the RISC-V `virt` map on a SiFive U54 (RV64)
+    /// core. `-kernel` loads a flat image and boots it through the
+    /// RISC-V boot protocol; CLINT, PLIC, PL011 and virtio-mmio are
+    /// wired. Requires the `arch-riscv` feature at build time.
+    RiscvVirt,
 }
 
 impl MachineKind {
@@ -65,6 +72,7 @@ impl MachineKind {
             MachineKind::Pc => mosaic_machine::i386::pc::MACHINE_NAME,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::MACHINE_NAME,
             MachineKind::Virt64 => mosaic_machine::arm::virt64::MACHINE_NAME,
+            MachineKind::RiscvVirt => mosaic_machine::riscv::virt::MACHINE_NAME,
         }
     }
 
@@ -74,6 +82,7 @@ impl MachineKind {
             MachineKind::Pc => mosaic_machine::i386::pc::MACHINE_SUMMARY,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::MACHINE_SUMMARY,
             MachineKind::Virt64 => mosaic_machine::arm::virt64::MACHINE_SUMMARY,
+            MachineKind::RiscvVirt => mosaic_machine::riscv::virt::MACHINE_SUMMARY,
         }
     }
 
@@ -83,6 +92,7 @@ impl MachineKind {
             MachineKind::Pc => mosaic_machine::i386::pc::ARCHITECTURES,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::ARCHITECTURES,
             MachineKind::Virt64 => mosaic_machine::arm::virt64::ARCHITECTURES,
+            MachineKind::RiscvVirt => mosaic_machine::riscv::virt::ARCHITECTURES,
         }
     }
 
@@ -91,6 +101,7 @@ impl MachineKind {
             "pc" => Some(MachineKind::Pc),
             "stm32f103" => Some(MachineKind::Stm32f103),
             "virt64" => Some(MachineKind::Virt64),
+            "riscv-virt" => Some(MachineKind::RiscvVirt),
             _ => None,
         }
     }
@@ -99,7 +110,12 @@ impl MachineKind {
 /// All machines, in `-M help` order. A test pins this against the machine
 /// crate's registry so the listing cannot drift from the real catalogue.
 pub fn machines() -> Vec<MachineKind> {
-    vec![MachineKind::Pc, MachineKind::Stm32f103, MachineKind::Virt64]
+    vec![
+        MachineKind::Pc,
+        MachineKind::Stm32f103,
+        MachineKind::Virt64,
+        MachineKind::RiscvVirt,
+    ]
 }
 
 /// The machine registry's own listing (`-M help` data, QEMU's `MODULE_INFO`
@@ -224,6 +240,8 @@ pub enum MachineReport {
     Pc(PcBootReport),
     Stm32f103(Stm32F103Report),
     Virt64(Virt64Report),
+    #[cfg(feature = "arch-riscv")]
+    RiscvVirt(RiscvVirtReport),
 }
 
 impl MachineReport {
@@ -234,6 +252,8 @@ impl MachineReport {
             MachineReport::Pc(report) => &report.serial,
             MachineReport::Stm32f103(report) => &report.output,
             MachineReport::Virt64(report) => &report.output,
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => &report.output,
         }
     }
 
@@ -244,6 +264,8 @@ impl MachineReport {
             MachineReport::Pc(report) => report.screen.clone(),
             MachineReport::Stm32f103(_) => Vec::new(),
             MachineReport::Virt64(_) => Vec::new(),
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(_) => Vec::new(),
         }
     }
 
@@ -267,6 +289,14 @@ impl MachineReport {
                 }
                 text
             }
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => {
+                let mut text = String::from_utf8_lossy(&report.output).into_owned();
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text
+            }
         }
     }
 
@@ -283,6 +313,8 @@ impl MachineReport {
                 }
             }
             MachineReport::Virt64(report) => report.stop_reason.clone(),
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => report.stop_reason.clone(),
         }
     }
 
@@ -293,6 +325,8 @@ impl MachineReport {
             MachineReport::Pc(report) => report.instructions,
             MachineReport::Stm32f103(report) => report.instructions,
             MachineReport::Virt64(report) => report.instructions,
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => report.instructions,
         }
     }
 
@@ -313,6 +347,11 @@ impl MachineReport {
                 "{} instructions, {} events, stop reason {}",
                 report.instructions, report.events, report.stop_reason
             ),
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => format!(
+                "{} instructions, {} events, stop reason {}",
+                report.instructions, report.events, report.stop_reason
+            ),
         }
     }
 
@@ -328,6 +367,8 @@ impl MachineReport {
             }
             MachineReport::Stm32f103(_) => false,
             MachineReport::Virt64(report) => report.stop_reason == "fault",
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(report) => report.stop_reason == "fault",
         }
     }
 }
@@ -353,6 +394,8 @@ impl SystemReport {
             MachineReport::Pc(report) => &report.screen,
             MachineReport::Stm32f103(_) => &[],
             MachineReport::Virt64(_) => &[],
+            #[cfg(feature = "arch-riscv")]
+            MachineReport::RiscvVirt(_) => &[],
         }
     }
 
@@ -400,6 +443,7 @@ pub fn run(config: &SystemConfig) -> Result<SystemReport, String> {
         MachineKind::Pc => run_pc(config),
         MachineKind::Stm32f103 => run_stm32f103(config),
         MachineKind::Virt64 => run_virt64(config),
+        MachineKind::RiscvVirt => run_riscv_virt(config),
     }
 }
 
@@ -485,6 +529,42 @@ fn run_virt64(config: &SystemConfig) -> Result<SystemReport, String> {
     {
         let _ = config;
         Err("rebuild with --features unicorn: the virt64 machine needs the Unicorn engine".into())
+    }
+}
+
+fn run_riscv_virt(config: &SystemConfig) -> Result<SystemReport, String> {
+    #[cfg(all(feature = "unicorn", feature = "arch-riscv"))]
+    {
+        if !config.drives.is_empty() {
+            return Err("the riscv-virt machine has no drives yet; boot it with -kernel".into());
+        }
+        let kernel = match &config.boot {
+            BootSource::DirectKernel(kernel) => kernel,
+            BootSource::Order(_) => {
+                return Err("the riscv-virt machine boots with -kernel only".into())
+            }
+        };
+        if kernel.initrd.is_some() {
+            return Err("the riscv-virt machine has no initramfs concept yet".into());
+        }
+        let options = mosaic_machine::riscv::virt::VirtOptions {
+            instruction_limit: config.options.instruction_limit,
+            quantum: config.options.quantum,
+            ram_bytes: config.ram_kib * 1024,
+        };
+        let report = mosaic_machine::riscv::virt::run(&kernel.image, &options)?;
+        Ok(SystemReport {
+            machine: config.machine.name(),
+            detail: MachineReport::RiscvVirt(report),
+        })
+    }
+    #[cfg(not(all(feature = "unicorn", feature = "arch-riscv")))]
+    {
+        let _ = config;
+        Err(
+            "rebuild with --features unicorn,arch-riscv: the riscv-virt machine needs the Unicorn RV64 backend"
+                .into(),
+        )
     }
 }
 

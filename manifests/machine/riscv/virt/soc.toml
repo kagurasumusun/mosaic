@@ -1,0 +1,125 @@
+# RISC-V `virt` machine — QEMU's `hw/riscv/virt.c` map for the SiFive U54
+# class (RV64GC). The map is the architectural one (QEMU's `VIRT_MEMMAP`):
+# RAM at 0x80000000, CLINT at 0x02000000, PLIC at 0x0c000000, PL011 UART
+# at 0x10000000, virtio-mmio transports starting at 0x10001000. A
+# bare-metal `-kernel` image lands at a 2 MiB-aligned address 2 MiB above
+# the RAM base (QEMU's `riscv_load_kernel` convention).
+#
+# QEMU's `virt` is the RISC-V reference board: Linux and FreeBSD mainline
+# boot on it without port-specific patches, which is why it is the third
+# machine Mosaic targets (ADR 0033 wave 3). Unicorn 2.1.x has no
+# external-interrupt injection for RISC-V (ADR 0009), so a real OS's
+# interrupt-driven path is machine-pending — the bring-up ledger records
+# this — but the map, the PLIC register model, the CLINT timer and the
+# virtio-mmio transports are all in place.
+[soc]
+id = 'soc:riscv/virt'
+summary = 'RISC-V virt-class machine: SiFive U54 (RV64), CLINT, PLIC, PL011, virtio-mmio'
+
+[[cpu]]
+name = 'core0'
+use = 'cpu:sifive/u54'
+view = 'sysbus'
+
+# CLINT at 0x02000000 — QEMU's `VIRT_CLINT`. The CLINT's `irq` (machine
+# timer) and `msip` (machine software interrupt) outputs reach the core's
+# `mtimer` and `msoft` inputs.
+[[block]]
+name = 'clint'
+use = 'ip:riscv/clint'
+at = { space = 'sysbus', base = 0x02000000 }
+irq = [
+    { pin = 'irq', to = ['core0.mtimer'] },
+    { pin = 'msip', to = ['core0.msoft'] },
+]
+
+# PLIC at 0x0c000000 — QEMU's `VIRT_PLIC`. The PLIC's `irq` (context 0's
+# machine external interrupt) reaches the core's `mext` input. Device IRQ
+# outputs route into the PLIC by source ID through `inputs:<source_id>`.
+[[block]]
+name = 'plic'
+use = 'ip:riscv/plic'
+at = { space = 'sysbus', base = 0x0c000000 }
+irq = [{ pin = 'irq', to = ['core0.mext'] }]
+
+# PL011 UART at 0x10000000 — QEMU's `VIRT_UART0`. The combined IRQ is PLIC
+# source 10 (QEMU's `VIRTIO_MMIO` IRQ base + 1, the `virt` convention).
+[[block]]
+name = 'uart0'
+use = 'ip:arm/pl011'
+at = { space = 'sysbus', base = 0x10000000 }
+irq = [{ pin = 'combined', to = ['plic.inputs:10'] }]
+
+# virtio-mmio transports at 0x10001000, 0x10001200, ... — QEMU's
+# `VIRTIO_MMIO` window. Each transport gets its own PLIC source, starting
+# at source 8 (the QEMU `virt` convention: 8 + index).
+[[block]]
+name = 'virtio0'
+use = 'ip:virtio/virtio-rng'
+at = { space = 'sysbus', base = 0x10001000 }
+irq = [{ pin = 'irq', to = ['plic.inputs:8'] }]
+
+[[block]]
+name = 'virtio1'
+use = 'ip:virtio/virtio-blk'
+at = { space = 'sysbus', base = 0x10001200 }
+irq = [{ pin = 'irq', to = ['plic.inputs:9'] }]
+
+[[block]]
+name = 'virtio2'
+use = 'ip:virtio/virtio-console'
+at = { space = 'sysbus', base = 0x10001400 }
+irq = [{ pin = 'irq', to = ['plic.inputs:11'] }]
+
+[[view]]
+name = 'sysbus'
+
+# RAM: 128 MiB default, matching QEMU's `virt` `-m 128` for bring-up.
+[[view.region]]
+name = 'ram'
+target = 'ram'
+base = 0x80000000
+size = 0x08000000
+kind = 'ram'
+
+[[view.region]]
+name = 'clint-mmio'
+target = 'clint'
+base = 0x02000000
+size = 0x10000
+kind = 'mmio'
+
+[[view.region]]
+name = 'plic-mmio'
+target = 'plic'
+base = 0x0c000000
+size = 0x201000
+kind = 'mmio'
+
+[[view.region]]
+name = 'uart0-mmio'
+target = 'uart0'
+base = 0x10000000
+size = 0x1000
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio0-mmio'
+target = 'virtio0'
+base = 0x10001000
+size = 0x200
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio1-mmio'
+target = 'virtio1'
+base = 0x10001200
+size = 0x200
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio2-mmio'
+target = 'virtio2'
+base = 0x10001400
+size = 0x200
+kind = 'mmio'

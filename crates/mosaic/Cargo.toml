@@ -21,3 +21,7 @@ mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
 [features]
 default = []
 unicorn = ["dep:mosaic-accel-unicorn", "mosaic-machine/unicorn"]
+# Build the RISC-V virt machine's Unicorn RV64 backend. Off by default
+# because the unicorn-engine crate's `arch_riscv` feature is a separate
+# build input; turn it on when running `-M riscv-virt`.
+arch-riscv = ["mosaic-machine/arch-riscv", "unicorn"]

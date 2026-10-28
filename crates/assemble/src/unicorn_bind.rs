@@ -19,7 +19,7 @@ use mosaic_exec::{Addr, BusFault, Mapping, MemoryKind, NodeId, Permissions};
 use mosaic_runtime::{FlatView, Machine};
 
 #[cfg(feature = "unicorn-riscv")]
-use mosaic_accel_unicorn::UnicornRiscV32;
+use mosaic_accel_unicorn::{UnicornRiscV32, UnicornRiscV64};
 
 use crate::bus::MachineBus;
 
@@ -167,6 +167,27 @@ impl EngineMap for UnicornRiscV32 {
         ram: Arc<SharedRam>,
     ) -> Result<(), EngineError> {
         UnicornRiscV32::map_shared_memory(self, base, size, permissions, ram)
+    }
+}
+
+#[cfg(feature = "unicorn-riscv")]
+impl EngineMap for UnicornRiscV64 {
+    fn attach_bus(&mut self, bus: Box<dyn EngineBus>) -> Result<(), EngineError> {
+        UnicornRiscV64::attach_bus(self, bus)
+    }
+
+    fn map_mmio(&mut self, base: Addr, size: u64) -> Result<(), EngineError> {
+        UnicornRiscV64::map_mmio(self, base, size)
+    }
+
+    fn map_shared_memory(
+        &mut self,
+        base: Addr,
+        size: u64,
+        permissions: Permissions,
+        ram: Arc<SharedRam>,
+    ) -> Result<(), EngineError> {
+        UnicornRiscV64::map_shared_memory(self, base, size, permissions, ram)
     }
 }
 

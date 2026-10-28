@@ -19,6 +19,7 @@ mosaic-contract = { path = "../contract" }
 mosaic-runtime = { path = "../runtime" }
 mosaic-isa-arm = { path = "../isa/arm" }
 mosaic-isa-aarch64 = { path = "../isa/aarch64" }
+mosaic-isa-riscv = { path = "../isa/riscv" }
 mosaic-isa-x86 = { path = "../isa/x86" }
 mosaic-hw = { path = "../hw" }
 mosaic-bus = { path = "../bus" }
@@ -31,3 +32,7 @@ toml = "0.8"
 [features]
 default = []
 unicorn = ["dep:mosaic-accel-unicorn", "mosaic-assemble/unicorn"]
+# Build the RISC-V virt machine's Unicorn RV64 backend. Off by default
+# because the unicorn-engine crate's `arch_riscv` feature is a separate
+# build input; turn it on when running `-M riscv-virt`.
+arch-riscv = ["mosaic-accel-unicorn/arch-riscv", "unicorn"]
