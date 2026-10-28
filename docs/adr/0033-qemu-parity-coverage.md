@@ -113,4 +113,41 @@ ADR 0022 の方針は拡張中も不変。スケルトン置換の単体テス�
 
 ## 実装の結果（後で追記）
 
-- 未追記。
+- **Wave 1 (commit 520add6)**: GICv3 (GICD+GICR)・PLIC・CLINT を仕様ベース
+  の実装へ置換。GICv3 は IHI 0069、PLIC は SiFive 仕様、CLINT は RISC-V
+  特権仕様の machine timer 章からクリーンルーム。各モデルはレジスタ単体
+  テストで仕様値を返す。
+- **Wave 2 (commit d0e43e5)**: virtio 3 層化 — `vqueue.rs` (共通 vring)、
+  `port.rs` (`VirtioDevice` ポート)、`virtio_mmio.rs` (MMIO v2 トランス
+  ポート)、および blk/net/console/rng/input/gpu/balloon/scsi/9p の各デバイス。
+  `contract::block` と `contract::guest_mem` でブロックイメージ基盤とゲスト
+  メモリポートを横断契約化。
+- **Wave 3 step 1 (commit 5a647a0)**: AArch64 + RV64 エンジン語彙。
+  `EngineArch` に `AArch64Le` と `RiscV64Le` を追加、unicorn アダプタに
+  `Backend::RiscV64` + `UnicornRiscV64` ラッパーを追加。Cortex-A53 と
+  SiFive U54 の CPU モデル + manifest を追加。
+- **Wave 3 step 2 (commit cc75000)**: `machine/arm/virt64` (-M virt64)。
+  QEMU `hw/arm/virt.c` の VIRT_MEMMAP (RAM 0x40000000, GICv3 0x08000000,
+  PL011 0x09000000, virtio-mmio 0x0a000000+)。ボードはカタログからのみ
+  組成、UnicornArm64 で arm64 Image ヘッダを解釈して PC/X0 を設定。
+  GICv3 + PLIC に `inputs:<intid>` / `inputs:<source_id>` 配線面を追加、
+  モデルの `on_signal` が (source, signal) → INTID/source-id を検索。
+  `machine/manifest::parse_soc` を全機械共有化、stm32f103 のパーサを
+  include_str! + parse_soc に簡素化。
+- **Wave 3 step 3 (commit a8084dc)**: `machine/riscv/virt` (-M riscv-virt)。
+  QEMU `hw/riscv/virt.c` の VIRT_MEMMAP (RAM 0x80000000, CLINT 0x02000000,
+  PLIC 0x0c000000, PL011 0x10000000, virtio-mmio 0x10001000+)。ボードは
+  カタログからのみ組成、UnicornRiscV64 で a0/a1/PC を設定。`arch-riscv`
+  feature で unicorn の RV64 バックエンドを有効化、`assemble::EngineMap`
+  に UnicornRiscV64 実装を追加。
+
+### 検証
+
+- 各 step で `cargo build --locked --workspace --all-features` が緑。
+- 各 step で `cargo test --locked --workspace --all-features` が全パッ
+  ケージ緑 (705→712 テスト)。
+- 各 step で `cargo run -p mosaic-xtask -- check` が OK (19 クレート、
+  manifest ミラー・語彙・ID 一意性検査込み)。
+- AArch64 / RISC-V の実 OS 起動は Unicorn 2.1.x に外部割込み注入 API
+  が無いため machine-pending (ADR 0009)。WFI 停止は「waiting-for-
+  interrupt」として停止理由に明記、合成イメージで代替しない。
