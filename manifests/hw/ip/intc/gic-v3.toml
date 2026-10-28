@@ -1,7 +1,7 @@
 [identity]
 id = 'ip:arm/gic-v3'
-summary = "ARM Generic Interrupt Controller v3"
-spec = ['vendor datasheet']
+summary = "ARM Generic Interrupt Controller v3 (GICD + redistributor frames)"
+spec = ['ARM IHI 0069']
 variants = []
 
 [tags]
@@ -10,7 +10,12 @@ fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x30000 }
 irq = { role = 'source', pins = ['irq'] }
+fiq = { role = 'source', pins = ['fiq'] }
 
 [params]
+# SPI count (INTIDs above 31).
+spis = { type = 'u32', default = 224 }
+# CPU (redistributor) count.
+redistributors = { type = 'u32', default = 1 }

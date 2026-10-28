@@ -1,16 +1,21 @@
 [identity]
 id = 'ip:riscv/clint'
-summary = "RISC-V Core-Local Interruptor"
-spec = ['vendor datasheet']
+summary = "RISC-V Core-Local Interruptor (msip + mtimecmp + mtime)"
+spec = ['SiFive CLINT', 'RISC-V machine timer']
 variants = []
 
 [tags]
-function = ['intc']
+function = ['intc', 'timer']
 fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x10000 }
 irq = { role = 'source', pins = ['irq'] }
+msip = { role = 'source', pins = ['msip'] }
 
 [params]
+# Hart count.
+harts = { type = 'u32', default = 1 }
+# mtime counter frequency in Hz.
+hz = { type = 'u64', default = 10000000 }

@@ -91,12 +91,23 @@ fn spawn_lapic(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Materi
     machine.register_device(ctx.node, Box::new(device))?;
     Ok(())
 }
-/// Default spawn for gic-v3: reads the irq output from the catalog
-/// output table and registers the device with the machine.
+/// Default spawn for gic-v3: parameters select the SPI and redistributor
+/// counts; `irq` (if wired) is cpu 0's Group-1 output and `fiq` cpu 0's
+/// Group-0 output. Device IRQ outputs route into the GIC by INTID through
+/// signals.
 fn spawn_gic_v3(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
-    let irq = ctx.output("irq")?;
-    let device = GicV3::new(irq);
-    machine.register_device(ctx.node, Box::new(device))?;
+    let params = crate::ip::intc::gic_v3::GicV3Params {
+        spis: ctx.parameter_int("spis").unwrap_or(224) as u32,
+        cpus: ctx.parameter_int("redistributors").unwrap_or(1) as u32,
+    };
+    let mut device = GicV3::new(params);
+    if let Ok(signal) = ctx.output("irq") {
+        device.bind_irq_output(0, signal);
+    }
+    if let Ok(signal) = ctx.output("fiq") {
+        device.bind_fiq_output(0, signal);
+    }
+    machine.register_snapshot_device(ctx.node, device)?;
     Ok(())
 }
 /// Default spawn for gic-v4: reads the irq output from the catalog
@@ -123,20 +134,37 @@ fn spawn_pl192(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Materi
     machine.register_device(ctx.node, Box::new(device))?;
     Ok(())
 }
-/// Default spawn for plic: reads the irq output from the catalog
-/// output table and registers the device with the machine.
+/// Default spawn for plic: parameters select the source/context counts;
+/// the output table's `irq` entry (source-ID-addressed lines come through
+/// signals) wires context 0's external-interrupt line.
 fn spawn_plic(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
-    let irq = ctx.output("irq")?;
-    let device = Plic::new(irq);
-    machine.register_device(ctx.node, Box::new(device))?;
+    let params = crate::ip::intc::plic::PlicParams {
+        sources: ctx.parameter_int("sources").unwrap_or(96) as u32,
+        contexts: ctx.parameter_int("contexts").unwrap_or(1) as u32,
+    };
+    let mut device = Plic::new(params);
+    if let Ok(signal) = ctx.output("irq") {
+        device.bind_output(0, signal);
+    }
+    machine.register_snapshot_device(ctx.node, device)?;
     Ok(())
 }
-/// Default spawn for clint: reads the irq output from the catalog
-/// output table and registers the device with the machine.
+/// Default spawn for clint: parameters select the hart count and tick
+/// frequency; `irq` (if wired) is hart 0's machine timer line and `msip`
+/// is hart 0's software-interrupt line.
 fn spawn_clint(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
-    let irq = ctx.output("irq")?;
-    let device = Clint::new(irq);
-    machine.register_device(ctx.node, Box::new(device))?;
+    let params = crate::ip::intc::clint::ClintParams {
+        harts: ctx.parameter_int("harts").unwrap_or(1) as u32,
+        hz: ctx.parameter_int("hz").unwrap_or(10_000_000) as u64,
+    };
+    let mut device = Clint::new(params);
+    if let Ok(signal) = ctx.output("irq") {
+        device.bind_mtip_output(0, signal);
+    }
+    if let Ok(signal) = ctx.output("msip") {
+        device.bind_msip_output(0, signal);
+    }
+    machine.register_snapshot_device(ctx.node, device)?;
     Ok(())
 }
 /// Default spawn for aia: reads the irq output from the catalog

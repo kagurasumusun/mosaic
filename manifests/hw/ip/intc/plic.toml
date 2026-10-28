@@ -1,7 +1,7 @@
 [identity]
 id = 'ip:riscv/plic'
-summary = "RISC-V Platform-Level Interrupt Controller"
-spec = ['vendor datasheet']
+summary = "RISC-V Platform-Level Interrupt Controller (SiFive register map)"
+spec = ['SiFive PLIC', 'RISC-V PLIC']
 variants = []
 
 [tags]
@@ -10,7 +10,11 @@ fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x201000 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]
+# Interrupt source count (IDs 1..=sources).
+sources = { type = 'u32', default = 96 }
+# Hart context count.
+contexts = { type = 'u32', default = 1 }
