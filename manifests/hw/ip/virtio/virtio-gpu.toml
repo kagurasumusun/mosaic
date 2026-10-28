@@ -1,16 +1,16 @@
 [identity]
 id = 'ip:virtio/virtio-gpu'
-summary = "VirtIO GPU device"
-spec = ['vendor datasheet']
+summary = 'VirtIO 2D GPU on the MMIO transport'
+spec = ['VirtIO Specification v1.1']
 variants = []
 
 [tags]
-function = ['virtio']
+function = ['display']
 fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x200 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]

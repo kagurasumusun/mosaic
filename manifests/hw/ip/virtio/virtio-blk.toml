@@ -1,6 +1,6 @@
 [identity]
 id = 'ip:virtio/virtio-blk'
-summary = 'VirtIO MMIO Block Device'
+summary = 'VirtIO block device on the MMIO transport'
 spec = ['VirtIO Specification v1.1']
 variants = []
 
@@ -11,7 +11,6 @@ verified = 'spec-tested'
 
 [ports]
 mmio = { role = 'target', size = 0x200 }
-irq = { role = 'source', pins = ['virtio'] }
+irq = { role = 'source', pins = ['irq'] }
 
 [params]
-unmapped = { type = 'policy', default = 'raz-wi' }

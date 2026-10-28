@@ -1,16 +1,18 @@
 [identity]
 id = 'ip:virtio/virtio-rng'
-summary = "VirtIO RNG device"
-spec = ['vendor datasheet']
+summary = 'VirtIO entropy source on the MMIO transport'
+spec = ['VirtIO Specification v1.1']
 variants = []
 
 [tags]
-function = ['virtio']
+function = ['rng']
 fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x200 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]
+# Stream seed (0: the fixed default).
+seed = { type = 'u64', default = 0 }

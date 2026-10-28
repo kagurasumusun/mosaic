@@ -1,16 +1,18 @@
 [identity]
 id = 'ip:virtio/virtio-input'
-summary = "VirtIO input device"
-spec = ['vendor datasheet']
+summary = 'VirtIO evdev input device on the MMIO transport'
+spec = ['VirtIO Specification v1.1']
 variants = []
 
 [tags]
-function = ['virtio']
+function = ['input']
 fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x200 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]
+# Evdev device name.
+name = { type = 'string', default = 'mosaic-input' }

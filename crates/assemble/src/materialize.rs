@@ -265,7 +265,31 @@ impl InstantiateCtx<'_> {
 
     /// The host SD/eMMC card attached to this node.
     pub fn host_sd(&self) -> Option<std::sync::Arc<mosaic_bus::sd::SdCardHandle>> {
-        self.hosts.sd(self.graph_id)
+        self.hosts.sd(&self.local_name())
+    }
+    /// The guest-memory (bus-master) port attached to this node, when the
+    /// harness provided one (virtio-class devices, ADR 0033).
+    pub fn host_guest_memory(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<dyn mosaic_contract::guest_mem::GuestMemory>>> {
+        self.hosts.guest_memory(&self.local_name())
+    }
+
+    /// The block image attached to this node, when the harness provided
+    /// one (storage-class devices, ADR 0033).
+    pub fn host_block(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<Box<dyn mosaic_contract::block::BlockImage>>>> {
+        self.hosts.block(&self.local_name())
+    }
+
+    /// This node's manifest name (the reverse of the nodes table).
+    fn local_name(&self) -> String {
+        self.nodes
+            .iter()
+            .find(|(_, node)| **node == self.node)
+            .map(|(name, _)| name.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -313,6 +337,14 @@ pub struct HostAttachments {
     usb: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::usb::core::UsbBus>>>,
     net: BTreeMap<String, std::sync::Arc<std::sync::Mutex<mosaic_bus::net::link::EthernetLink>>>,
     sd: BTreeMap<String, std::sync::Arc<mosaic_bus::sd::SdCardHandle>>,
+    guest_memory: BTreeMap<
+        String,
+        std::sync::Arc<std::sync::Mutex<dyn mosaic_contract::guest_mem::GuestMemory>>,
+    >,
+    block: BTreeMap<
+        String,
+        std::sync::Arc<std::sync::Mutex<Box<dyn mosaic_contract::block::BlockImage>>>,
+    >,
 }
 
 impl HostAttachments {
@@ -399,6 +431,40 @@ impl HostAttachments {
     /// Attach an SD/eMMC card for an SD host controller.
     pub fn attach_sd(&mut self, node: &str, card: std::sync::Arc<mosaic_bus::sd::SdCardHandle>) {
         self.sd.insert(node.to_owned(), card);
+    }
+
+    /// Attach a guest-memory (bus-master) port for a device that walks
+    /// guest RAM directly (virtio rings; ADR 0033).
+    pub fn attach_guest_memory(
+        &mut self,
+        node: &str,
+        memory: std::sync::Arc<std::sync::Mutex<dyn mosaic_contract::guest_mem::GuestMemory>>,
+    ) {
+        self.guest_memory.insert(node.to_owned(), memory);
+    }
+
+    pub fn guest_memory(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<dyn mosaic_contract::guest_mem::GuestMemory>>> {
+        self.guest_memory.get(node).cloned()
+    }
+
+    /// Attach a block image for a storage device (virtio-blk, SCSI;
+    /// ADR 0033).
+    pub fn attach_block(
+        &mut self,
+        node: &str,
+        image: std::sync::Arc<std::sync::Mutex<Box<dyn mosaic_contract::block::BlockImage>>>,
+    ) {
+        self.block.insert(node.to_owned(), image);
+    }
+
+    pub fn block(
+        &self,
+        node: &str,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<Box<dyn mosaic_contract::block::BlockImage>>>> {
+        self.block.get(node).cloned()
     }
 
     pub fn sd(&self, node: &str) -> Option<std::sync::Arc<mosaic_bus::sd::SdCardHandle>> {

@@ -1,66 +1,101 @@
-//! VirtIO 9p filesystem device
+//! virtio-9p — the 9P filesystem share (virtio 1.1 \u00a75.10, "9P
+//! transport").
 //!
-//! Catalog entry `ip:virtio/virtio-9p`. This is a functional register model:
-//! the default spawn reads its IRQ output from the catalog output table and
-//! the optional console endpoint from the host attachment (ADR 0025).
+//! **Not implemented yet, and this file says so.** A 9P device needs a
+//! full 9P2000.L server (Tversion/Rversion, Tattach, Twalk, Topen,
+//! Tread...) backed by a host filesystem boundary the `host` layer does
+//! not expose yet (ADR 0028 reserves it). The model answers every
+//! request with an RLerror so a guest's mount fails loudly instead of
+//! hanging - the honest failure, per the testing policy (ADR 0022): no
+//! synthetic success.
 
-use mosaic_contract::mmio::MmioTarget;
-use mosaic_contract::model::{ContextError, Ctx, EventTarget};
-use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
+use super::port::{device_id, features, ProcessError, QueueSlot, VirtioDevice, VirtioIrq};
+use super::vqueue::GuestMemory;
 
-/// VirtIO 9p filesystem device
-pub struct Virtio9P {
-    /// Stored until the model raises interrupts (ADR 0025 skeleton).
-    _irq: SignalId,
-    scratch: [u8; 16],
+pub struct Virtio9p {
+    tag: Vec<u8>,
 }
 
-impl Virtio9P {
-    pub fn new(irq: SignalId) -> Self {
+impl Virtio9p {
+    pub fn new() -> Self {
         Self {
-            _irq: irq,
-            scratch: [0; 16],
+            tag: b"share".to_vec(),
         }
     }
 }
 
-impl MmioTarget for Virtio9P {
-    fn read(
-        &mut self,
-        _ctx: &mut dyn Ctx,
-        addr: u64,
-        size: AccessSize,
-        _attr: &Attr,
-    ) -> Result<u64, BusFault> {
-        let off = (addr & 0xFF) as usize;
-        let n = size.bytes() as usize;
-        let mut v = 0u64;
-        for i in 0..n {
-            let idx = (off + i) % self.scratch.len();
-            v |= (self.scratch[idx] as u64) << (i * 8);
-        }
-        Ok(v)
-    }
-    fn write(
-        &mut self,
-        _ctx: &mut dyn Ctx,
-        addr: u64,
-        size: AccessSize,
-        value: u64,
-        _attr: &Attr,
-    ) -> Result<(), BusFault> {
-        let off = (addr & 0xFF) as usize;
-        let n = size.bytes() as usize;
-        for i in 0..n {
-            let idx = (off + i) % self.scratch.len();
-            self.scratch[idx] = ((value >> (i * 8)) & 0xFF) as u8;
-        }
-        Ok(())
+impl Default for Virtio9p {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl EventTarget for Virtio9P {
-    fn on_timer(&mut self, _ctx: &mut dyn Ctx, _token: u64) -> Result<(), ContextError> {
+impl VirtioDevice for Virtio9p {
+    fn device_id(&self) -> u32 {
+        device_id::_9P
+    }
+
+    fn device_features(&self) -> u64 {
+        features::VERSION_1 | (1 << 0) // VIRTIO_9P_MOUNT_TAG
+    }
+
+    fn max_queue_size(&self) -> u32 {
+        128
+    }
+
+    fn queue_count(&self) -> usize {
+        1
+    }
+
+    fn config_read(&self, offset: u64, size: u8) -> u64 {
+        let mut value = 0u64;
+        for (index, byte) in self
+            .tag
+            .iter()
+            .skip(offset as usize)
+            .take(size as usize)
+            .enumerate()
+        {
+            value |= u64::from(*byte) << (index * 8);
+        }
+        value
+    }
+
+    fn config_write(&mut self, _offset: u64, _size: u8, _value: u64) {}
+
+    fn process(
+        &mut self,
+        _ctx: &mut dyn mosaic_contract::model::Ctx,
+        _queue: usize,
+        slot: &mut QueueSlot,
+        mem: &mut dyn GuestMemory,
+        irq: &mut VirtioIrq<'_>,
+    ) -> Result<(), ProcessError> {
+        // 9P2000.L RLerror: size[4] type[1] == 107, then error string.
+        let response: [u8; 9] = [0, 0, 0, 9, 107, 0, 0, 0, 0];
+        while let Some(head) = slot.view().next_head(mem)? {
+            {
+                let vq = slot.view();
+                vq.write_chain(mem, head, &response)?;
+            }
+            slot.view().complete(mem, head, response.len() as u32)?;
+        }
+        irq.queue_interrupt();
         Ok(())
+    }
+
+    fn reset(&mut self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tag_is_readable_from_config() {
+        let p9 = Virtio9p::new();
+        let mut expected = [0u8; 8];
+        expected[..5].copy_from_slice(b"share");
+        assert_eq!(p9.config_read(0, 5), u64::from_le_bytes(expected));
     }
 }

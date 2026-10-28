@@ -1,16 +1,18 @@
 [identity]
 id = 'ip:virtio/virtio-mmio'
-summary = "VirtIO MMIO transport"
-spec = ['vendor datasheet']
+summary = 'VirtIO MMIO transport, device chosen by the device parameter'
+spec = ['VirtIO Specification v1.1']
 variants = []
 
 [tags]
-function = ['virtio']
+function = ['bus']
 fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
+mmio = { role = 'target', size = 0x200 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]
+# The virtio function: blk | net | console | rng | input | gpu | balloon | scsi | 9p.
+device = { type = 'string' }

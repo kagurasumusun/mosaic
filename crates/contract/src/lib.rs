@@ -6,6 +6,7 @@
 //! `runtime`.
 
 pub mod ac97;
+pub mod block;
 pub mod can;
 pub mod canfd;
 pub mod clock;
@@ -20,6 +21,7 @@ pub mod flexray;
 pub mod gameport;
 pub mod gpib;
 pub mod gpio;
+pub mod guest_mem;
 pub mod hda;
 pub mod hdmi;
 pub mod hyperbus;
