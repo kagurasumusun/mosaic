@@ -1,0 +1,25 @@
+//! Network parts: PHYs, wireless modules, PC Card NICs and modems.
+pub mod broadcom_bcm43438;
+pub mod broadcom_bcm43455;
+pub mod catalog;
+pub mod cypress_cyw43439;
+pub mod cypress_cyw4343w;
+pub mod dm9051;
+pub mod espressif_esp8089;
+pub mod etherlink_iii_3c509b;
+pub mod etherlink_iii_3c589c;
+pub mod intel_etherexpress_16;
+pub mod lucent_orinoco_silver;
+pub mod marvell_88w8686;
+pub mod marvell_88w8787;
+pub mod megahertz_xj2288;
+pub mod netgear_ma401;
+pub mod netgear_ma701;
+pub mod realtek_rtl8019as;
+pub mod realtek_rtl8189es;
+pub mod realtek_rtl8821cs;
+pub mod sandisk_connect_plus_wifi_128;
+pub mod ti_wl1835;
+pub mod usr_sportster_14400_int;
+pub mod usr_sportster_28800_pccard;
+pub mod xircom_ce3_10_100;

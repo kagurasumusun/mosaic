@@ -39,9 +39,9 @@ pub use super::DirectKernel;
 
 use mosaic_boot::format::iso9660::{el_torito_image, ElToritoImage};
 use mosaic_boot::proto::x86_linux::SETUP_BASE;
-use mosaic_hw::intc::pic_8259::Pic8259;
-use mosaic_hw::rtc::mc146818::RtcMc146818;
-use mosaic_hw::timer::pit_8254::Pit8254;
+use mosaic_hw::ip::intc::pic_8259::Pic8259;
+use mosaic_hw::ip::rtc::mc146818::RtcMc146818;
+use mosaic_hw::ip::timer::pit_8254::Pit8254;
 
 /// Conventional memory below the EBDA, as a PC reports it through `INT 12h`.
 pub const CONVENTIONAL_KIB: u64 = 640;

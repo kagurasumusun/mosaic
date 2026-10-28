@@ -1,0 +1,141 @@
+//! On-SoC real-time clock IP blocks (QEMU `hw/rtc/`); external RTC
+//! chips live in `crate::part::rtc`.
+
+use crate::catalog::ModelEntry;
+use crate::ip::rtc::am335x_rtc::Am335XRtc;
+use crate::ip::rtc::lpc11xx_rtc::Lpc11XxRtc;
+use crate::ip::rtc::lpc17xx_rtc::Lpc17XxRtc;
+use crate::ip::rtc::mc146818::RtcMc146818;
+use crate::ip::rtc::rp2040_rtc::Rp2040Rtc;
+use crate::ip::rtc::rtc_f1::RtcF1;
+use crate::ip::rtc::rtc_f4::RtcF4;
+use crate::ip::rtc::rtc_h7::RtcH7;
+use crate::ip::rtc::rtc_l4::RtcL4;
+use mosaic_assemble::{InstantiateCtx, MaterializeError};
+use mosaic_runtime::Machine;
+
+/// Motorola MC146818A RTC / PC CMOS: register model.
+fn spawn_rtc_mc146818(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    machine.register_device(ctx.node, Box::new(RtcMc146818::new()))?;
+    Ok(())
+}
+/// Default spawn for rtc-f1: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rtc_f1(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RtcF1::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for rtc-f4: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rtc_f4(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RtcF4::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for rtc-h7: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rtc_h7(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RtcH7::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for rtc-l4: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rtc_l4(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = RtcL4::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for lpc11xx-rtc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc11xx_rtc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc11XxRtc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for lpc17xx-rtc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_lpc17xx_rtc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Lpc17XxRtc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for rp2040-rtc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_rp2040_rtc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Rp2040Rtc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+/// Default spawn for am335x-rtc: reads the irq output from the catalog
+/// output table and registers the device with the machine.
+fn spawn_am335x_rtc(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
+    let irq = ctx.output("irq")?;
+    let device = Am335XRtc::new(irq);
+    machine.register_device(ctx.node, Box::new(device))?;
+    Ok(())
+}
+pub const MODELS: &[ModelEntry] = &[
+    ModelEntry {
+        id: "ip:motorola/mc146818",
+        summary: "Motorola MC146818A RTC / PC CMOS RAM (MC146818-compatible)",
+        outputs: &[],
+        spawn: spawn_rtc_mc146818,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-f1",
+        summary: "STM32F1 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_f1,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-f4",
+        summary: "STM32F4 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_f4,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-h7",
+        summary: "STM32H7 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_h7,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-l4",
+        summary: "STM32L4 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_l4,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-rtc",
+        summary: "NXP LPC11xx RTC",
+        outputs: &[],
+        spawn: spawn_lpc11xx_rtc,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-rtc",
+        summary: "NXP LPC17xx RTC",
+        outputs: &[],
+        spawn: spawn_lpc17xx_rtc,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-rtc",
+        summary: "Raspberry Pi RP2040 RTC",
+        outputs: &[],
+        spawn: spawn_rp2040_rtc,
+    },
+    ModelEntry {
+        id: "ip:ti/am335x-rtc",
+        summary: "TI AM335x RTC",
+        outputs: &[],
+        spawn: spawn_am335x_rtc,
+    },
+];

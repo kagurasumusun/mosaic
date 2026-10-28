@@ -1,6 +1,5 @@
 //! `onewire` bus entity (ADR 0025): Dallas/Maxim 1-Wire: single-pin half-duplex, ROM search + device commands.
 
-
 use mosaic_contract::model::Ctx;
 use mosaic_contract::onewire::{OneWireError, OneWireInitiator, OneWireRom, OneWireTarget};
 

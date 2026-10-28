@@ -111,12 +111,43 @@ fn walk_dirs(path: &Path, directories: &mut Vec<PathBuf>) -> CheckResult<()> {
     Ok(())
 }
 
-/// The QEMU `hw/` function-axis vocabulary (ADR 0024 §3.2). A device manifest
-/// lives in exactly one of these, and its code mirrors the same directory.
-pub const HW_FUNCTION_DIRS: &[&str] = &[
-    "adc", "audio", "block", "can", "char", "display", "dma", "flash", "gpio", "i2c", "i3c", "ide",
-    "input", "intc", "mailbox", "misc", "net", "nvram", "pci", "rtc", "sd", "sensor", "ssi",
-    "timer", "usb", "virtio", "dac", "eeprom", "maxim", "memory", "wdt",
+/// The `ip` function vocabulary (ADR 0031 §4): CPU-addressed device models,
+/// QEMU's `hw/<function>/` axis. An `ip:` manifest lives in exactly one of
+/// these under `manifests/hw/ip/`, and its code mirrors the same directory
+/// under `crates/hw/src/ip/`.
+pub const IP_FUNCTION_DIRS: &[&str] = &[
+    "audio", "char", "clock", "display", "dma", "gpio", "i2c", "ide", "input", "intc", "mailbox",
+    "net", "nvram", "pci", "platform", "rtc", "sd", "spi", "timer", "usb", "virtio", "wdt",
+];
+
+/// The `part` domain vocabulary (ADR 0031 §3): fabric-mediated leaf parts,
+/// placed by what they are — never by which bus they speak. A `part:`
+/// manifest lives in exactly one of these under `manifests/hw/part/`, and
+/// its code mirrors the same directory under `crates/hw/src/part/`.
+pub const PART_DOMAIN_DIRS: &[&str] = &[
+    "adc",
+    "audio",
+    "can",
+    "dac",
+    "display",
+    "ec",
+    "expander",
+    "fan",
+    "i3c",
+    "input",
+    "instrument",
+    "led",
+    "memory",
+    "motion",
+    "mux",
+    "net",
+    "nfc",
+    "power",
+    "rtc",
+    "security",
+    "sensor",
+    "serial",
+    "storage",
 ];
 
 /// Top-level directory roots whose contents must be kebab-case. Workspace
@@ -176,12 +207,9 @@ pub fn lint_names(root: &Path, packages: &[Package]) -> CheckResult<Vec<String>>
             .collect();
         let name = parts.last().ok_or("empty directory path")?;
         let text = relative.to_string_lossy();
-        // `misc` is the one QEMU catch-all we keep, and only as a hw
-        // function directory (ADR 0024 §3.2).
-        let is_hw_function_dir =
-            (parts.len() == 4 && parts[0] == "crates" && parts[1] == "hw" && parts[2] == "src")
-                || (parts.len() == 3 && parts[0] == "manifests" && parts[1] == "hw");
-        if forbidden_name(name) || (name == "misc" && !is_hw_function_dir) {
+        // `misc` was the one QEMU catch-all ADR 0024 allowed; ADR 0031
+        // eliminates it — every model now has a real home.
+        if forbidden_name(name) || name == "misc" {
             errors.push(format!("{text}: forbidden directory name"));
         }
         // Workspace crates root their trees at crates/<root> (ADR 0028);
@@ -332,20 +360,35 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
         }
 
         if matches!(kind, "cpu" | "ip" | "part") {
-            let kind_file = match kind {
-                "cpu" => "cpu.toml",
-                "part" => "part.toml",
-                _ => "ip.toml",
+            // Two manifest forms exist (ADR 0031 §7): the `[part]` schema
+            // carries bindings + register tables for decode-level leaf
+            // parts; the `[identity]` schema carries ports + params for
+            // spawn-registered models. A `part:` ID may use either form
+            // (a USB HID keyboard is a part that owns ports), so the form
+            // picks its own validator and never the kind.
+            let has_part_section = value.get("part").is_some();
+            let kind_file = match (kind, has_part_section) {
+                ("cpu", _) => "cpu.toml",
+                ("part", true) => "part.toml",
+                (_, _) => "ip.toml",
             };
             if let Err(error) = validate_leaf_catalog_manifest(kind_file, &value, &known_origins) {
                 errors.push(format!("{}: {error}", relative.display()));
             }
         }
 
+        // The id's section follows the form, not the kind: `[part]`-form
+        // manifests read their id from `[part]`, `[identity]`-form ones
+        // from `[identity]` (both were probed above, so this only picks).
+        let id_section = ["part", "identity"]
+            .iter()
+            .find(|section| value.get(*section).is_some())
+            .copied()
+            .unwrap_or("identity");
         let (section, prefixes): (&str, &[&str]) = match kind {
             "cpu" => ("identity", &["cpu:"]),
             "ip" => ("identity", &["ip:", "ip-lib:"]),
-            "part" => ("part", &["part:"]),
+            "part" => (id_section, &["part:"]),
             "soc" => ("soc", &["soc:"]),
             _ => ("board", &["board:"]),
         };
@@ -412,16 +455,19 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
             }
         }
 
-        // Mirror rule (ADR 0024 §3.3): the manifest path mirrors the code
-        // path — a device under manifests/hw/<function>/<model>.toml is
-        // implemented by hw/src/<function>/<model>.rs (or a directory of the
-        // same name for multi-bus models), a cpu under
-        // manifests/isa/<arch>/<model>.toml by isa/<arch>/src/cpu/<model>.rs,
-        // and a machine manifest under manifests/machine/<arch>/<name>/
-        // by machine/src/<arch>/<name>/.
+        // Mirror rule (ADR 0024 §3.3, revised by ADR 0031 §7): the manifest
+        // path mirrors the code path AND the id's kind mirrors the tree:
+        // an `ip:` manifest under manifests/hw/ip/<function>/ is implemented
+        // by hw/src/ip/<function>/<model>.rs, a `part:` manifest under
+        // manifests/hw/part/<domain>/ by hw/src/part/<domain>/<model>.rs
+        // (or a directory of the same name for multi-bus models), an ip-lib
+        // under manifests/hw/modelkit/ by hw/src/modelkit/<model>.rs, a cpu
+        // under manifests/isa/<arch>/<model>.toml by isa/<arch>/src/cpu/
+        // <model>.rs, and a machine manifest under
+        // manifests/machine/<arch>/<name>/ by machine/src/<arch>/<name>/.
         let mirror_error = |expected: &str| -> String {
             format!(
-                "{}: no implementing {} for {id:?} (manifest and code must mirror, ADR 0024 §3.3)",
+                "{}: no implementing {} for {id:?} (manifest and code must mirror, ADR 0031 §7)",
                 relative.display(),
                 expected
             )
@@ -433,27 +479,73 @@ pub fn lint_catalog(root: &Path) -> CheckResult<Vec<String>> {
             .replace('\\', "/");
         let parts: Vec<&str> = rel.split('/').collect();
         let stem = file_name.strip_suffix(".toml").unwrap_or(file_name);
+        let stem_error = |expected: &str| -> String {
+            format!(
+                "{}: manifest stem {stem:?} must match the ID name {expected:?}",
+                relative.display()
+            )
+        };
         match (kind, parts.as_slice()) {
-            ("ip" | "part", ["manifests", "hw", function]) => {
-                if !HW_FUNCTION_DIRS.contains(function) {
+            ("ip", ["manifests", "hw", "ip", function]) => {
+                if !IP_FUNCTION_DIRS.contains(function) {
                     errors.push(format!(
-                        "{}: '{function}' is not a hw function directory; the vocabulary is {}",
+                        "{}: '{function}' is not an ip function directory; the vocabulary is {}",
                         relative.display(),
-                        HW_FUNCTION_DIRS.join(", ")
+                        IP_FUNCTION_DIRS.join(", ")
                     ));
                 }
                 if stem != name {
-                    errors.push(format!(
-                        "{}: manifest stem {stem:?} must match the ID name {name:?}",
-                        relative.display()
-                    ));
+                    errors.push(stem_error(name));
                 }
                 let code = root
-                    .join(format!("crates/hw/src/{function}/{}.rs", snake_case(stem)));
-                let code_dir = root.join(format!("crates/hw/src/{function}/{}", stem));
+                    .join(format!("crates/hw/src/ip/{function}/{}.rs", snake_case(stem)));
+                let code_dir = root.join(format!("crates/hw/src/ip/{function}/{}", stem));
                 if !code.is_file() && !code_dir.is_dir() {
                     errors.push(mirror_error(&code.display().to_string()));
                 }
+            }
+            ("ip", ["manifests", "hw", "modelkit"]) => {
+                // The shared-core library (ip-lib:): flat in modelkit/.
+                if stem != name {
+                    errors.push(stem_error(name));
+                }
+                let code = root.join(format!("crates/hw/src/modelkit/{}.rs", snake_case(stem)));
+                if !code.is_file() {
+                    errors.push(mirror_error(&code.display().to_string()));
+                }
+            }
+            ("part", ["manifests", "hw", "part", domain]) => {
+                if !PART_DOMAIN_DIRS.contains(domain) {
+                    errors.push(format!(
+                        "{}: '{domain}' is not a part domain directory; the vocabulary is {}",
+                        relative.display(),
+                        PART_DOMAIN_DIRS.join(", ")
+                    ));
+                }
+                if stem != name {
+                    errors.push(stem_error(name));
+                }
+                let code = root
+                    .join(format!("crates/hw/src/part/{domain}/{}.rs", snake_case(stem)));
+                let code_dir = root.join(format!("crates/hw/src/part/{domain}/{}", stem));
+                if !code.is_file() && !code_dir.is_dir() {
+                    errors.push(mirror_error(&code.display().to_string()));
+                }
+            }
+            // The responsibility split is structural (ADR 0031 §1): an
+            // ip-kind manifest on the part side of the tree (or the
+            // reverse) is a classification error, not a style choice.
+            ("ip", ["manifests", "hw", "part", _]) => {
+                errors.push(format!(
+                    "{}: ip-kind model {id:?} belongs under manifests/hw/ip/<function>/ (ADR 0031 §1)",
+                    relative.display()
+                ));
+            }
+            ("part", ["manifests", "hw", "ip", _]) => {
+                errors.push(format!(
+                    "{}: part-kind model {id:?} belongs under manifests/hw/part/<domain>/ (ADR 0031 §1)",
+                    relative.display()
+                ));
             }
             ("cpu", ["manifests", "isa", arch]) => {
                 if stem != name {
@@ -656,12 +748,15 @@ mod tests {
     }
 
     #[test]
-    fn name_lint_allows_qemu_misc_only_inside_hw() {
+    fn name_lint_rejects_misc_everywhere() {
+        // ADR 0031: the QEMU-style catch-all is gone from every tree.
         let f = Fixture::new();
-        f.write("crates/hw/src/misc/keep", "");
-        f.write("crates/hw/src/char/keep", "");
+        f.write("crates/hw/src/ip/char/keep", "");
+        f.write("crates/hw/src/part/sensor/keep", "");
+        f.write("manifests/hw/part/sensor/keep", "");
         assert!(lint_names(&f.0, &[]).unwrap().is_empty());
-        f.write("crates/machine/src/misc/keep", "");
+        f.write("crates/hw/src/ip/misc/keep", "");
+        f.write("manifests/hw/misc/keep", "");
         let errors = lint_names(&f.0, &[]).unwrap();
         assert!(errors.iter().any(|e| e.contains("forbidden directory")));
     }
@@ -689,7 +784,7 @@ mod tests {
         let fixture = Fixture::new();
         fixture.write("manifests/origins.toml", "[origins]\narm = 'Arm'\n");
         fixture.write(
-            "manifests/hw/char/pl011.toml",
+            "manifests/hw/ip/char/pl011.toml",
             "[identity]\nid='ip:arm/pl011'\nsummary='PrimeCell UART'\n",
         );
         let errors = lint_catalog(&fixture.0).unwrap();
@@ -698,10 +793,57 @@ mod tests {
             "{errors:?}"
         );
         // The mirror present: no mirror error any more.
-        fixture.write("crates/hw/src/char/pl011.rs", "");
+        fixture.write("crates/hw/src/ip/char/pl011.rs", "");
         let errors = lint_catalog(&fixture.0).unwrap();
         assert!(
             !errors.iter().any(|error| error.contains("must mirror")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn the_kind_prefix_must_match_the_side_of_the_tree() {
+        // ADR 0031 §1: an ip-kind manifest on the part side of the tree
+        // (or the reverse) is a classification error.
+        let fixture = Fixture::new();
+        fixture.write(
+            "manifests/origins.toml",
+            "[origins]\narm = 'Arm'\nbosch = 'Bosch'\n",
+        );
+        fixture.write(
+            "manifests/hw/part/sensor/pl011.toml",
+            "[identity]\nid='ip:arm/pl011'\nsummary='PrimeCell UART'\n",
+        );
+        fixture.write("crates/hw/src/part/sensor/pl011.rs", "");
+        let errors = lint_catalog(&fixture.0).unwrap();
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("belongs under manifests/hw/ip/")));
+        fixture.write(
+            "manifests/hw/ip/char/bme280.toml",
+            "[identity]\nid='part:bosch/bme280'\nsummary='sensor on the wrong side'\n",
+        );
+        fixture.write("crates/hw/src/ip/char/bme280.rs", "");
+        let errors = lint_catalog(&fixture.0).unwrap();
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("belongs under manifests/hw/part/")));
+    }
+
+    #[test]
+    fn part_manifests_may_use_the_identity_form() {
+        // ADR 0031 §7: a part that owns ports (USB HID keyboard) keeps the
+        // [identity] form with a part: id.
+        let fixture = Fixture::new();
+        fixture.write("manifests/origins.toml", "[origins]\nusb = 'USB-IF'\n");
+        fixture.write(
+            "manifests/hw/part/input/hid-keyboard.toml",
+            "[identity]\nid='part:usb/hid-keyboard'\nsummary='HID boot keyboard'\nspec=['USB HID 1.11']\nvariants=[]\n\n[tags]\nfunction=['input']\nfidelity='functional'\nverified='spec-tested'\n\n[ports]\nusb={contract='usb/device', role='endpoint'}\n\n[params]\n",
+        );
+        fixture.write("crates/hw/src/part/input/hid_keyboard.rs", "");
+        let errors = lint_catalog(&fixture.0).unwrap();
+        assert!(
+            !errors.iter().any(|error| error.contains("part")),
             "{errors:?}"
         );
     }
@@ -711,14 +853,14 @@ mod tests {
         let fixture = Fixture::new();
         fixture.write("manifests/origins.toml", "[origins]\narm = 'Arm'\n");
         fixture.write(
-            "manifests/hw/uart/pl011.toml",
+            "manifests/hw/ip/uart/pl011.toml",
             "[identity]\nid='ip:arm/pl011'\nsummary='PrimeCell UART'\n",
         );
-        fixture.write("crates/hw/src/uart/pl011.rs", "");
+        fixture.write("crates/hw/src/ip/uart/pl011.rs", "");
         let errors = lint_catalog(&fixture.0).unwrap();
         assert!(errors
             .iter()
-            .any(|error| error.contains("not a hw function directory")));
+            .any(|error| error.contains("not an ip function directory")));
     }
 
     #[test]

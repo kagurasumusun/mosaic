@@ -1,0 +1,21 @@
+//! Interrupt controller IP blocks (QEMU `hw/intc/`).
+pub mod aia;
+pub mod catalog;
+pub mod clint;
+pub mod exti_f1;
+pub mod exti_f4;
+pub mod exti_h7;
+pub mod gic_v2;
+pub mod gic_v3;
+pub mod gic_v4;
+pub mod i8259_pic;
+pub mod ioapic;
+pub mod lapic;
+pub mod nvic;
+pub mod nvic_f1;
+pub mod pic_8259;
+pub mod pl190;
+pub mod pl192;
+pub mod plic;
+pub mod rp2040_intc;
+pub mod scs;

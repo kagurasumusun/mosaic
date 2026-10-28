@@ -1,14 +1,14 @@
 //! The device model catalog: every model, registered by its own module.
 //!
 //! This is QEMU's `TypeInfo`/`MODULE_INIT` mechanism in Rust form (ADR 0025).
-//! Each function directory owns a `catalog.rs` that registers its models —
-//! a model's default instantiation is the model's own knowledge, never a
-//! board's — and this module aggregates them into one [`ModelEntry`] table:
+//! Each `ip` function directory and `part` domain owns a `catalog.rs` that
+//! registers its models — a model's default instantiation is the model's
+//! own knowledge, never a board's — and this module aggregates them into one
+//! [`ModelEntry`] table:
 //!
 //! * a **machine** builds its registry with [`device_registry`] and never
 //!   writes a factory closure: a board is its manifest (parts, edges,
-//!   regions) plus the wiring only that board knows (which UART is the
-//!   console, which pin carries the LED);
+//!   regions) plus the wiring only that board knows;
 //! * an **operator** lists the catalog with `mosaic --catalog`, one line per
 //!   model, the way `qemu-system-x86_64 -device help` lists devices;
 //! * a **lint** (`xtask lint-catalog`) cross-checks the table against the
@@ -27,22 +27,6 @@
 //!   which controller owns the bus — so boards attach them through the
 //!   `bus` fabrics in code, exactly as QEMU boards wire `i2c_bus` in C.
 //!   The models are no less reusable for it; the *fabric* is the reuse.
-//!
-//! ## The factory contract
-//!
-//! A default factory may read (ADR 0025):
-//!
-//! * `ctx.output("irq-port")` — the per-node signal the graph assigned to a
-//!   declared IRQ output edge;
-//! * `ctx.incoming` — the `irq`/`clock` edges that arrive at this node
-//!   (clock wires carry the vendor signal resolved through this entry's
-//!   [`ModelEntry::outputs`] table);
-//! * `ctx.parameters` — the manifest's model parameters;
-//! * `ctx.host_uart()` — a host console endpoint the machine harness
-//!   attached for this node.
-//!
-//! It may not invent placement (regions), addresses or IRQ numbers — those
-//! are board-unique facts and stay in the board's manifest.
 
 use mosaic_assemble::{DeviceRegistry, HostAttachments, InstantiateCtx, MaterializeError};
 use mosaic_exec::SignalId;
@@ -52,7 +36,7 @@ use mosaic_runtime::Machine;
 pub type SpawnFn = fn(&InstantiateCtx, &mut Machine) -> Result<(), MaterializeError>;
 
 /// One catalog entry: a model's identity, its vendor output table and its
-/// default instantiation. ` &'static` throughout: a model's registration is
+/// default instantiation. `&'static` throughout: a model's registration is
 /// compile-time knowledge, exactly like QEMU's `TypeInfo` tables.
 pub struct ModelEntry {
     /// The catalog ID (`ip:st/usart-f1`), the manifest `[identity] id`.
@@ -85,34 +69,51 @@ pub fn entries() -> Vec<&'static ModelEntry> {
             all.extend($module.iter());
         };
     }
-    extend!(crate::char::catalog::MODELS);
-    extend!(crate::display::catalog::MODELS);
-    extend!(crate::dma::catalog::MODELS);
-    extend!(crate::gpio::catalog::MODELS);
-    extend!(crate::i2c::catalog::MODELS);
-    extend!(crate::i3c::catalog::MODELS);
-    extend!(crate::ide::catalog::MODELS);
-    extend!(crate::input::catalog::MODELS);
-    extend!(crate::intc::catalog::MODELS);
-    extend!(crate::mailbox::catalog::MODELS);
-    extend!(crate::misc::catalog::MODELS);
-    extend!(crate::net::catalog::MODELS);
-    extend!(crate::nvram::catalog::MODELS);
-    extend!(crate::rtc::catalog::MODELS);
-    extend!(crate::sd::catalog::MODELS);
-    extend!(crate::ssi::catalog::MODELS);
-    extend!(crate::timer::catalog::MODELS);
-    extend!(crate::usb::catalog::MODELS);
-    extend!(crate::virtio::catalog::MODELS);
-    extend!(crate::audio::catalog::MODELS);
-    extend!(crate::flash::catalog::MODELS);
-    extend!(crate::pci::catalog::MODELS);
-    extend!(crate::wdt::catalog::MODELS);
-    extend!(crate::adc::catalog::MODELS);
-    extend!(crate::can::catalog::MODELS);
-    extend!(crate::dac::catalog::MODELS);
-    extend!(crate::eeprom::catalog::MODELS);
-    extend!(crate::sensor::catalog::MODELS);
+    extend!(crate::ip::audio::catalog::MODELS);
+    extend!(crate::ip::char::catalog::MODELS);
+    extend!(crate::ip::clock::catalog::MODELS);
+    extend!(crate::ip::display::catalog::MODELS);
+    extend!(crate::ip::dma::catalog::MODELS);
+    extend!(crate::ip::gpio::catalog::MODELS);
+    extend!(crate::ip::i2c::catalog::MODELS);
+    extend!(crate::ip::ide::catalog::MODELS);
+    extend!(crate::ip::input::catalog::MODELS);
+    extend!(crate::ip::intc::catalog::MODELS);
+    extend!(crate::ip::mailbox::catalog::MODELS);
+    extend!(crate::ip::net::catalog::MODELS);
+    extend!(crate::ip::nvram::catalog::MODELS);
+    extend!(crate::ip::pci::catalog::MODELS);
+    extend!(crate::ip::platform::catalog::MODELS);
+    extend!(crate::ip::rtc::catalog::MODELS);
+    extend!(crate::ip::sd::catalog::MODELS);
+    extend!(crate::ip::spi::catalog::MODELS);
+    extend!(crate::ip::timer::catalog::MODELS);
+    extend!(crate::ip::usb::catalog::MODELS);
+    extend!(crate::ip::virtio::catalog::MODELS);
+    extend!(crate::ip::wdt::catalog::MODELS);
+    extend!(crate::part::adc::catalog::MODELS);
+    extend!(crate::part::audio::catalog::MODELS);
+    extend!(crate::part::can::catalog::MODELS);
+    extend!(crate::part::dac::catalog::MODELS);
+    extend!(crate::part::display::catalog::MODELS);
+    extend!(crate::part::ec::catalog::MODELS);
+    extend!(crate::part::expander::catalog::MODELS);
+    extend!(crate::part::fan::catalog::MODELS);
+    extend!(crate::part::i3c::catalog::MODELS);
+    extend!(crate::part::input::catalog::MODELS);
+    extend!(crate::part::instrument::catalog::MODELS);
+    extend!(crate::part::led::catalog::MODELS);
+    extend!(crate::part::memory::catalog::MODELS);
+    extend!(crate::part::motion::catalog::MODELS);
+    extend!(crate::part::mux::catalog::MODELS);
+    extend!(crate::part::net::catalog::MODELS);
+    extend!(crate::part::nfc::catalog::MODELS);
+    extend!(crate::part::power::catalog::MODELS);
+    extend!(crate::part::rtc::catalog::MODELS);
+    extend!(crate::part::security::catalog::MODELS);
+    extend!(crate::part::sensor::catalog::MODELS);
+    extend!(crate::part::serial::catalog::MODELS);
+    extend!(crate::part::storage::catalog::MODELS);
     all
 }
 
@@ -149,7 +150,7 @@ pub fn device_registry() -> DeviceRegistry {
 }
 
 /// The `--catalog` listing: `id  summary`, one model per line, grouped by
-/// function directory the way `qemu -device help` groups by category.
+/// directory the way `qemu -device help` groups by category.
 pub fn catalog_listing() -> Vec<(String, &'static str, &'static str)> {
     entries()
         .into_iter()
@@ -188,15 +189,16 @@ mod tests {
         }
     }
 
-    /// Every catalog ID is a two-part namespaced identifier (`ip:vendor/model`),
-    /// the manifest vocabulary: a bare name is a naming bug.
+    /// Every catalog ID is a two-part namespaced identifier (`ip:vendor/model`
+    /// or `part:vendor/model`), the manifest vocabulary: a bare name is a
+    /// naming bug.
     #[test]
     fn catalog_ids_are_namespaced() {
         for entry in entries() {
             let parts: Vec<&str> = entry.id.split('/').collect();
             assert!(
                 parts.len() == 2 && parts[0].contains(':') && !parts[1].is_empty(),
-                "catalog id {} is not ip:<vendor>/<model>",
+                "catalog id {} is not <kind>:<vendor>/<model>",
                 entry.id
             );
         }

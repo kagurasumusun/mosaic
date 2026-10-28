@@ -9,7 +9,6 @@ pub struct PataBus {
     selected: u8,
 }
 
-
 impl PataBus {
     pub fn new() -> Self {
         Self::default()

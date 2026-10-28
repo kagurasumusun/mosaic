@@ -98,7 +98,7 @@ pub fn build_stm32f103() -> Result<Stm32Board, String> {
         .machine
         .connect(
             gpioa,
-            mosaic_hw::gpio::gpio_f1::pin_signal(PROBE_PIN),
+            mosaic_hw::ip::gpio::gpio_f1::pin_signal(PROBE_PIN),
             probe,
         )
         .map_err(|error| format!("pin wiring: {error:?}"))?;

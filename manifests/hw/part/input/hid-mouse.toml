@@ -1,0 +1,15 @@
+[identity]
+id = 'part:usb/hid-mouse'
+summary = 'USB HID boot-protocol mouse (3-byte report, stream/remote modes)'
+spec = ['USB HID Specification 1.11 Device Class Definition']
+variants = []
+
+[tags]
+function = ['input']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+usb = { contract = 'usb/device', role = 'endpoint' }
+
+[params]

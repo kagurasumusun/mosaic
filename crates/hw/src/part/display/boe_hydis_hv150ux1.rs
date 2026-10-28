@@ -1,0 +1,13 @@
+//! BOE Hydis HV150UX1-100 15" UXGA laptop panel (1600x1200, LVDS)
+//!
+//! Catalog part — manifests/hw/display/boe-hydis-hv150ux1.toml.
+//! Thin configuration over the shared LVDS panel core (ADR 0029).
+
+use crate::part::display::lvds_panel_core::LvdsPanelCore;
+
+/// boe-hydis-hv150ux1: native 1600x1200, 8 data lanes
+pub fn new() -> LvdsPanelCore {
+    LvdsPanelCore::new()
+        .with_resolution(1600, 1200)
+        .with_lanes(8)
+}

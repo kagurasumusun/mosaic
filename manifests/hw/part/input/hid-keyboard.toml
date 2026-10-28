@@ -1,0 +1,15 @@
+[identity]
+id = 'part:usb/hid-keyboard'
+summary = 'USB HID boot-protocol keyboard (8-byte input report, set-1 usage codes)'
+spec = ['USB HID Specification 1.11 Device Class Definition']
+variants = []
+
+[tags]
+function = ['input']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[ports]
+usb = { contract = 'usb/device', role = 'endpoint' }
+
+[params]
