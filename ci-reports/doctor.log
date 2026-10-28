@@ -1,4 +1,4 @@
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
 [1m[32m     Running[0m `target/debug/mosaic-xtask doctor`
 doctor: OK (19 workspace crates)
 Event/MMIO machine runtime with an opt-in Unicorn ARM MMIO binding; no complete machine.
