@@ -10,14 +10,15 @@ use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
 
 /// MediaTek UART (8250 compatible)
 pub struct MtkUart {
-    irq: SignalId,
+    /// Stored until the model raises interrupts (ADR 0025 skeleton).
+    _irq: SignalId,
     scratch: [u8; 16],
 }
 
 impl MtkUart {
     pub fn new(irq: SignalId) -> Self {
         Self {
-            irq,
+            _irq: irq,
             scratch: [0; 16],
         }
     }

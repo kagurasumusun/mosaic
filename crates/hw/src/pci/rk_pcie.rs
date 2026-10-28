@@ -10,14 +10,15 @@ use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
 
 /// Rockchip PCIe controller
 pub struct RkPcie {
-    irq: SignalId,
+    /// Stored until the model raises interrupts (ADR 0025 skeleton).
+    _irq: SignalId,
     scratch: [u8; 16],
 }
 
 impl RkPcie {
     pub fn new(irq: SignalId) -> Self {
         Self {
-            irq,
+            _irq: irq,
             scratch: [0; 16],
         }
     }

@@ -10,14 +10,15 @@ use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
 
 /// ESS ES1371 audio controller
 pub struct Es1371 {
-    irq: SignalId,
+    /// Stored until the model raises interrupts (ADR 0025 skeleton).
+    _irq: SignalId,
     scratch: [u8; 16],
 }
 
 impl Es1371 {
     pub fn new(irq: SignalId) -> Self {
         Self {
-            irq,
+            _irq: irq,
             scratch: [0; 16],
         }
     }

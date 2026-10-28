@@ -76,7 +76,62 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "IBM VGA register model + VESA Bochs DISPI (VBE) linear framebuffer",
     outputs: &[],
     spawn: spawn_vga,
-}];
+},
+    ModelEntry {
+        id: "ip:cirrus/gd5446",
+        summary: "Cirrus Logic GD5446 VGA compatible (PCI)",
+        outputs: &[],
+        spawn: spawn_gd5446,
+    },
+    ModelEntry {
+        id: "ip:qemu/stdvga",
+        summary: "QEMU stdvga (Bochs VBE)",
+        outputs: &[],
+        spawn: spawn_stdvga,
+    },
+    ModelEntry {
+        id: "ip:bochs/vbe",
+        summary: "Bochs VBE display",
+        outputs: &[],
+        spawn: spawn_vbe,
+    },
+    ModelEntry {
+        id: "ip:intel/i915",
+        summary: "Intel i915 graphics (Gen9+)",
+        outputs: &[],
+        spawn: spawn_i915,
+    },
+    ModelEntry {
+        id: "ip:st/ltdc",
+        summary: "STM32 LTDC TFT display controller",
+        outputs: &[],
+        spawn: spawn_ltdc,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/dpi",
+        summary: "Raspberry Pi DPI display output",
+        outputs: &[],
+        spawn: spawn_dpi,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/dsi",
+        summary: "Raspberry Pi DSI display output",
+        outputs: &[],
+        spawn: spawn_dsi,
+    },
+    ModelEntry {
+        id: "ip:aspeed/ast-gfx",
+        summary: "ASPEED AST2500 graphics",
+        outputs: &[],
+        spawn: spawn_ast_gfx,
+    },
+    ModelEntry {
+        id: "ip:samsung/s3c-fb",
+        summary: "Samsung S3C framebuffer",
+        outputs: &[],
+        spawn: spawn_s3c_fb,
+    },
+];
 
 /// Default spawn for gd5446: reads the irq output from the catalog
 /// output table and registers the device with the machine.

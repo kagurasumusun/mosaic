@@ -10,14 +10,15 @@ use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
 
 /// Intel I82540EM 1G Ethernet controller (PCI)
 pub struct I82540 {
-    irq: SignalId,
+    /// Stored until the model raises interrupts (ADR 0025 skeleton).
+    _irq: SignalId,
     scratch: [u8; 16],
 }
 
 impl I82540 {
     pub fn new(irq: SignalId) -> Self {
         Self {
-            irq,
+            _irq: irq,
             scratch: [0; 16],
         }
     }

@@ -22,7 +22,44 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "PCI IDE controller (command/block registers, two channels)",
     outputs: &[],
     spawn: spawn_pci_ide,
-}];
+},
+    ModelEntry {
+        id: "ip:intel/ahci",
+        summary: "Intel AHCI SATA controller",
+        outputs: &[],
+        spawn: spawn_ahci,
+    },
+    ModelEntry {
+        id: "ip:jmicron/jmb36x",
+        summary: "JMicron JMB36x SATA/IDE controller",
+        outputs: &[],
+        spawn: spawn_jmb36x,
+    },
+    ModelEntry {
+        id: "ip:via/vt6421",
+        summary: "VIA VT6421 SATA controller",
+        outputs: &[],
+        spawn: spawn_vt6421,
+    },
+    ModelEntry {
+        id: "ip:intel/piix-ide",
+        summary: "Intel PIIX3/PIIX4 IDE controller",
+        outputs: &[],
+        spawn: spawn_piix_ide,
+    },
+    ModelEntry {
+        id: "ip:intel/ich9-ide",
+        summary: "Intel ICH9 SATA IDE controller",
+        outputs: &[],
+        spawn: spawn_ich9_ide,
+    },
+    ModelEntry {
+        id: "ip:marvell/mv-sata",
+        summary: "Marvell SATA controller",
+        outputs: &[],
+        spawn: spawn_mv_sata,
+    },
+];
 
 /// Default spawn for piix-ide: reads the irq output from the catalog
 /// output table and registers the device with the machine.

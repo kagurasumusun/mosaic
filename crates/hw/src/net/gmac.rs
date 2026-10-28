@@ -10,14 +10,15 @@ use mosaic_exec::{AccessSize, Attr, BusFault, SignalId};
 
 /// Cadence Gigabit MAC (used by Atmel SAMA5)
 pub struct Gmac {
-    irq: SignalId,
+    /// Stored until the model raises interrupts (ADR 0025 skeleton).
+    _irq: SignalId,
     scratch: [u8; 16],
 }
 
 impl Gmac {
     pub fn new(irq: SignalId) -> Self {
         Self {
-            irq,
+            _irq: irq,
             scratch: [0; 16],
         }
     }

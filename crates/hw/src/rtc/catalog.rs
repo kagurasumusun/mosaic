@@ -25,7 +25,56 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "Motorola MC146818A RTC / PC CMOS RAM (MC146818-compatible)",
     outputs: &[],
     spawn: spawn_rtc_mc146818,
-}];
+},
+    ModelEntry {
+        id: "ip:st/rtc-f1",
+        summary: "STM32F1 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_f1,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-f4",
+        summary: "STM32F4 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_f4,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-h7",
+        summary: "STM32H7 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_h7,
+    },
+    ModelEntry {
+        id: "ip:st/rtc-l4",
+        summary: "STM32L4 RTC",
+        outputs: &[],
+        spawn: spawn_rtc_l4,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-rtc",
+        summary: "NXP LPC11xx RTC",
+        outputs: &[],
+        spawn: spawn_lpc11xx_rtc,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-rtc",
+        summary: "NXP LPC17xx RTC",
+        outputs: &[],
+        spawn: spawn_lpc17xx_rtc,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-rtc",
+        summary: "Raspberry Pi RP2040 RTC",
+        outputs: &[],
+        spawn: spawn_rp2040_rtc,
+    },
+    ModelEntry {
+        id: "ip:ti/am335x-rtc",
+        summary: "TI AM335x RTC",
+        outputs: &[],
+        spawn: spawn_am335x_rtc,
+    },
+];
 
 /// Default spawn for rtc-f1: reads the irq output from the catalog
 /// output table and registers the device with the machine.

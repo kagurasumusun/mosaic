@@ -10,7 +10,6 @@ members = [
     "crates/isa/x86",
     "crates/isa/riscv",
     "crates/accel/unicorn",
-    "crates/accel/armv7m",
     "crates/accel/conformance",
     "crates/hw",
     "crates/machine",

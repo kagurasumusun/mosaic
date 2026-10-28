@@ -20,7 +20,20 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "QEMU fw_cfg firmware configuration interface (DMA-less register model)",
     outputs: &[],
     spawn: spawn_fw_cfg,
-}];
+},
+    ModelEntry {
+        id: "ip:st/option-bytes-f1",
+        summary: "STM32F1 option bytes (NVRAM)",
+        outputs: &[],
+        spawn: spawn_option_bytes_f1,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-flash",
+        summary: "NXP LPC11xx flash controller",
+        outputs: &[],
+        spawn: spawn_lpc11xx_flash,
+    },
+];
 
 /// Default spawn for option-bytes-f1: reads the irq output from the catalog
 /// output table and registers the device with the machine.

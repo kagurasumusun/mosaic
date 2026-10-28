@@ -122,7 +122,152 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "SMSC LAN9118 Ethernet controller (TX/RX FIFOs, MAC, internal PHY)",
     outputs: &[],
     spawn: spawn_lan9118,
-}];
+},
+    ModelEntry {
+        id: "ip:smsc/lan9220",
+        summary: "SMSC LAN9220 10/100 Ethernet controller",
+        outputs: &[],
+        spawn: spawn_lan9220,
+    },
+    ModelEntry {
+        id: "ip:smsc/lan9250",
+        summary: "SMSC LAN9250 10/100 Ethernet controller",
+        outputs: &[],
+        spawn: spawn_lan9250,
+    },
+    ModelEntry {
+        id: "ip:realtek/rtl8139",
+        summary: "Realtek RTL8139 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_rtl8139,
+    },
+    ModelEntry {
+        id: "ip:realtek/rtl8169",
+        summary: "Realtek RTL8169 10/100/1000 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_rtl8169,
+    },
+    ModelEntry {
+        id: "ip:intel/e1000",
+        summary: "Intel E1000 1G Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_e1000,
+    },
+    ModelEntry {
+        id: "ip:intel/e1000e",
+        summary: "Intel E1000e 1G Ethernet controller (PCIe)",
+        outputs: &[],
+        spawn: spawn_e1000e,
+    },
+    ModelEntry {
+        id: "ip:intel/i82540",
+        summary: "Intel I82540EM 1G Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_i82540,
+    },
+    ModelEntry {
+        id: "ip:intel/i82551",
+        summary: "Intel I82551QM 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_i82551,
+    },
+    ModelEntry {
+        id: "ip:intel/i82557",
+        summary: "Intel I82557 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_i82557,
+    },
+    ModelEntry {
+        id: "ip:intel/i82559",
+        summary: "Intel I82559ER 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_i82559,
+    },
+    ModelEntry {
+        id: "ip:intel/i82574",
+        summary: "Intel I82574 1G Ethernet controller (PCIe)",
+        outputs: &[],
+        spawn: spawn_i82574,
+    },
+    ModelEntry {
+        id: "ip:amd/pcnet32",
+        summary: "AMD PCnet32 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_pcnet32,
+    },
+    ModelEntry {
+        id: "ip:amd/am79c970",
+        summary: "AMD Am79C970 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_am79c970,
+    },
+    ModelEntry {
+        id: "ip:amd/am79c973",
+        summary: "AMD Am79C973 10/100 Ethernet controller (PCI)",
+        outputs: &[],
+        spawn: spawn_am79c973,
+    },
+    ModelEntry {
+        id: "ip:national/dp83932",
+        summary: "National DP83932 (SONIC) Ethernet controller",
+        outputs: &[],
+        spawn: spawn_dp83932,
+    },
+    ModelEntry {
+        id: "ip:davicom/dm9000",
+        summary: "DAVICOM DM9000 10/100 Ethernet controller (mem-mapped)",
+        outputs: &[],
+        spawn: spawn_dm9000,
+    },
+    ModelEntry {
+        id: "ip:cadence/gmac",
+        summary: "Cadence Gigabit MAC (used by Atmel SAMA5)",
+        outputs: &[],
+        spawn: spawn_gmac,
+    },
+    ModelEntry {
+        id: "ip:synopsys/dwmac",
+        summary: "Synopsys DesignWare MAC (used by STM32/Allwinner/Rockchip)",
+        outputs: &[],
+        spawn: spawn_dwmac,
+    },
+    ModelEntry {
+        id: "ip:freescale/fec",
+        summary: "Freescale FEC Ethernet controller",
+        outputs: &[],
+        spawn: spawn_fec,
+    },
+    ModelEntry {
+        id: "ip:ti/cpsw",
+        summary: "TI Common Platform Ethernet Switch (CPSW)",
+        outputs: &[],
+        spawn: spawn_cpsw,
+    },
+    ModelEntry {
+        id: "ip:smsc/lan91c111",
+        summary: "SMSC LAN91C111 10/100 Ethernet controller",
+        outputs: &[],
+        spawn: spawn_lan91c111,
+    },
+    ModelEntry {
+        id: "ip:broadcom/bcmgenet",
+        summary: "Broadcom GENET Ethernet controller",
+        outputs: &[],
+        spawn: spawn_bcmgenet,
+    },
+    ModelEntry {
+        id: "ip:marvell/mv643xx",
+        summary: "Marvell MV643xx Ethernet controller",
+        outputs: &[],
+        spawn: spawn_mv643xx,
+    },
+    ModelEntry {
+        id: "ip:ti/davinci-mdio",
+        summary: "TI DaVinci MDIO bus controller",
+        outputs: &[],
+        spawn: spawn_davinci_mdio,
+    },
+];
 
 /// Default spawn for lan9220: reads the irq output from the catalog
 /// output table and registers the device with the machine.

@@ -101,7 +101,110 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "DesignWare APB I2C controller (DW_apb_i2c register model)",
     outputs: &[],
     spawn: spawn_dw_apb_i2c,
-}];
+},
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-i2c",
+        summary: "NXP LPC11xx I2C",
+        outputs: &[],
+        spawn: spawn_lpc11xx_i2c,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-i2c",
+        summary: "NXP LPC17xx I2C",
+        outputs: &[],
+        spawn: spawn_lpc17xx_i2c,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc43xx-i2c",
+        summary: "NXP LPC43xx I2C",
+        outputs: &[],
+        spawn: spawn_lpc43xx_i2c,
+    },
+    ModelEntry {
+        id: "ip:st/i2c-f1",
+        summary: "STM32F1 I2C",
+        outputs: &[],
+        spawn: spawn_i2c_f1,
+    },
+    ModelEntry {
+        id: "ip:st/i2c-f4",
+        summary: "STM32F4 I2C",
+        outputs: &[],
+        spawn: spawn_i2c_f4,
+    },
+    ModelEntry {
+        id: "ip:st/i2c-f7",
+        summary: "STM32F7 I2C",
+        outputs: &[],
+        spawn: spawn_i2c_f7,
+    },
+    ModelEntry {
+        id: "ip:st/i2c-h7",
+        summary: "STM32H7 I2C",
+        outputs: &[],
+        spawn: spawn_i2c_h7,
+    },
+    ModelEntry {
+        id: "ip:st/i2c-l4",
+        summary: "STM32L4 I2C",
+        outputs: &[],
+        spawn: spawn_i2c_l4,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-i2c",
+        summary: "Raspberry Pi RP2040 I2C",
+        outputs: &[],
+        spawn: spawn_rp2040_i2c,
+    },
+    ModelEntry {
+        id: "ip:allwinner/sunxi-i2c",
+        summary: "Allwinner Sunxi I2C",
+        outputs: &[],
+        spawn: spawn_sunxi_i2c,
+    },
+    ModelEntry {
+        id: "ip:rockchip/rk-i2c",
+        summary: "Rockchip I2C",
+        outputs: &[],
+        spawn: spawn_rk_i2c,
+    },
+    ModelEntry {
+        id: "ip:mediatek/mtk-i2c",
+        summary: "MediaTek I2C",
+        outputs: &[],
+        spawn: spawn_mtk_i2c,
+    },
+    ModelEntry {
+        id: "ip:ti/omap-i2c",
+        summary: "TI OMAP I2C",
+        outputs: &[],
+        spawn: spawn_omap_i2c,
+    },
+    ModelEntry {
+        id: "ip:ti/am335x-i2c",
+        summary: "TI AM335x I2C",
+        outputs: &[],
+        spawn: spawn_am335x_i2c,
+    },
+    ModelEntry {
+        id: "ip:microchip/pic32-i2c",
+        summary: "Microchip PIC32 I2C",
+        outputs: &[],
+        spawn: spawn_pic32_i2c,
+    },
+    ModelEntry {
+        id: "ip:espressif/esp32-i2c",
+        summary: "Espressif ESP32 I2C",
+        outputs: &[],
+        spawn: spawn_esp32_i2c,
+    },
+    ModelEntry {
+        id: "ip:silabs/efm32-i2c",
+        summary: "Silicon Labs EFM32 I2C",
+        outputs: &[],
+        spawn: spawn_efm32_i2c,
+    },
+];
 
 /// Default spawn for lpc11xx-i2c: reads the irq output from the catalog
 /// output table and registers the device with the machine.

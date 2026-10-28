@@ -24,7 +24,26 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "ARM MHU mailbox (doorbell + combined + channel registers)",
     outputs: &[],
     spawn: spawn_mhu,
-}];
+},
+    ModelEntry {
+        id: "ip:arm/smc",
+        summary: "ARM SMC mailbox",
+        outputs: &[],
+        spawn: spawn_smc,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-sio",
+        summary: "Raspberry Pi RP2040 SIO mailbox",
+        outputs: &[],
+        spawn: spawn_rp2040_sio,
+    },
+    ModelEntry {
+        id: "ip:ti/am654-mailbox",
+        summary: "TI AM654 Secure Mailbox",
+        outputs: &[],
+        spawn: spawn_am654_mailbox,
+    },
+];
 
 /// Default spawn for smc: reads the irq output from the catalog
 /// output table and registers the device with the machine.

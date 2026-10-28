@@ -40,7 +40,110 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "Intel UHCI USB 1.1 host controller (frame list, TD walk, PCI function)",
     outputs: &[],
     spawn: spawn_uhci,
-}];
+},
+    ModelEntry {
+        id: "ip:intel/ohci",
+        summary: "Intel OHCI USB 1.1 host controller (PCI)",
+        outputs: &[],
+        spawn: spawn_ohci,
+    },
+    ModelEntry {
+        id: "ip:intel/ehci",
+        summary: "Intel EHCI USB 2.0 host controller (PCI)",
+        outputs: &[],
+        spawn: spawn_ehci,
+    },
+    ModelEntry {
+        id: "ip:intel/xhci",
+        summary: "Intel xHCI USB 3.0 host controller (PCI)",
+        outputs: &[],
+        spawn: spawn_xhci,
+    },
+    ModelEntry {
+        id: "ip:synopsys/dwc2",
+        summary: "Synopsys DesignWare USB 2.0 OTG controller",
+        outputs: &[],
+        spawn: spawn_dwc2,
+    },
+    ModelEntry {
+        id: "ip:synopsys/dwc3",
+        summary: "Synopsys DesignWare USB 3.0 controller",
+        outputs: &[],
+        spawn: spawn_dwc3,
+    },
+    ModelEntry {
+        id: "ip:st/usb-f1",
+        summary: "STM32F1 USB 2.0 FS device controller",
+        outputs: &[],
+        spawn: spawn_usb_f1,
+    },
+    ModelEntry {
+        id: "ip:st/usb-f4",
+        summary: "STM32F4 USB 2.0 HS OTG controller",
+        outputs: &[],
+        spawn: spawn_usb_f4,
+    },
+    ModelEntry {
+        id: "ip:st/usb-h7",
+        summary: "STM32H7 USB 2.0 HS OTG controller",
+        outputs: &[],
+        spawn: spawn_usb_h7,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-usb",
+        summary: "NXP LPC11xx USB 2.0 device controller",
+        outputs: &[],
+        spawn: spawn_lpc11xx_usb,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-usb",
+        summary: "NXP LPC17xx USB 2.0 OTG controller",
+        outputs: &[],
+        spawn: spawn_lpc17xx_usb,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc43xx-usb",
+        summary: "NXP LPC43xx USB 2.0 controller",
+        outputs: &[],
+        spawn: spawn_lpc43xx_usb,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-usb",
+        summary: "Raspberry Pi RP2040 USB 2.0 device controller",
+        outputs: &[],
+        spawn: spawn_rp2040_usb,
+    },
+    ModelEntry {
+        id: "ip:allwinner/sunxi-musb",
+        summary: "Allwinner Sunxi Mentor Graphics USB OTG",
+        outputs: &[],
+        spawn: spawn_sunxi_musb,
+    },
+    ModelEntry {
+        id: "ip:rockchip/rk-dwc2",
+        summary: "Rockchip DWC2 USB 2.0 OTG controller",
+        outputs: &[],
+        spawn: spawn_rk_dwc2,
+    },
+    ModelEntry {
+        id: "ip:mediatek/mtk-xhci",
+        summary: "MediaTek xHCI USB 3.0 controller",
+        outputs: &[],
+        spawn: spawn_mtk_xhci,
+    },
+    ModelEntry {
+        id: "ip:ti/am335x-usb",
+        summary: "TI AM335x USB 2.0 OTG controller",
+        outputs: &[],
+        spawn: spawn_am335x_usb,
+    },
+    ModelEntry {
+        id: "ip:microchip/pic32-usb",
+        summary: "Microchip PIC32 USB 2.0 controller",
+        outputs: &[],
+        spawn: spawn_pic32_usb,
+    },
+];
 
 /// Default spawn for ohci: reads the irq output from the catalog
 /// output table and registers the device with the machine.

@@ -75,11 +75,7 @@ impl Ps2MouseCore {
         let byte0 = 0x08
             | (b & 0x01)
             | ((b & 0x02) << 1)
-            | ((b & 0x04) << 1)
-            | ((dx < 0) as u8) << 4
-            | ((dy < 0) as u8) << 5
-            | (self.overflow_x() as u8) << 6
-            | (self.overflow_y() as u8) << 7;
+            | ((b & 0x04) << 1) | (((dx < 0) as u8) << 4) | (((dy < 0) as u8) << 5) | ((self.overflow_x() as u8) << 6) | ((self.overflow_y() as u8) << 7);
         self.packet.push_back(byte0);
         self.packet.push_back(dx as i8 as u8);
         self.packet.push_back(dy as i8 as u8);

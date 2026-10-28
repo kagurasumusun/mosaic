@@ -141,6 +141,13 @@ pub fn dependency_allowed(from: &Layer, to: &Layer) -> bool {
     if from.kind == "isa" && to.kind == "contract" {
         return true;
     }
+    // The engine adapters drive the family's shared conformance fixtures
+    // through the CpuEngine contract (ADR 0030: Unicorn is the one engine,
+    // the fixtures stay its regression suite). Engines never depend on each
+    // other — this edge exists for the fixture crate only.
+    if from.kind == "accel" && to.kind == "accel" {
+        return true;
+    }
     to.level < from.level
 }
 

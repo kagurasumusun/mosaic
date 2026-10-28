@@ -22,6 +22,7 @@ mosaic-contract = { path = "../../contract" }
 unicorn-engine = { version = "=2.1.5", default-features = false, features = ["arch_arm", "arch_aarch64", "arch_x86"] }
 
 [dev-dependencies]
+mosaic-accel-conformance = { path = "../conformance" }
 mosaic-isa-arm = { path = "../../isa/arm" }
 mosaic-isa-aarch64 = { path = "../../isa/aarch64" }
 mosaic-isa-x86 = { path = "../../isa/x86" }

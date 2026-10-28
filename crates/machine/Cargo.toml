@@ -25,10 +25,8 @@ mosaic-boot = { path = "../boot" }
 mosaic-describe = { path = "../describe" }
 mosaic-assemble = { path = "../assemble" }
 mosaic-accel-unicorn = { path = "../accel/unicorn", optional = true }
-mosaic-accel-armv7m = { path = "../accel/armv7m", optional = true }
 toml = "0.8"
 
 [features]
 default = []
 unicorn = ["dep:mosaic-accel-unicorn", "mosaic-assemble/unicorn"]
-native = ["dep:mosaic-accel-armv7m"]

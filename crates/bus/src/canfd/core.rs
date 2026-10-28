@@ -2,7 +2,6 @@
 
 use mosaic_contract::canfd::{CanFdError, CanFdFrame, CanFdInitiator, CanFdTarget};
 use mosaic_contract::model::Ctx;
-use std::collections::BTreeMap;
 
 pub struct CanFdBus {
     targets: Vec<Box<dyn CanFdTarget>>,

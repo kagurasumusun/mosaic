@@ -58,7 +58,7 @@ impl SmbusInitiator for SmbusBus {
         let bytes = [cmd, (value & 0xFF) as u8, (value >> 8) as u8];
         self.tgt(addr)?.receive(ctx, &bytes)?;
         let resp = self.tgt(addr)?.respond(ctx, 2)?;
-        Ok(resp.get(0).copied().unwrap_or(0) as u16
+        Ok(resp.first().copied().unwrap_or(0) as u16
             | ((resp.get(1).copied().unwrap_or(0) as u16) << 8))
     }
 }

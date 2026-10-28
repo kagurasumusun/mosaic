@@ -20,9 +20,6 @@ pub mod manifest;
 #[cfg(feature = "unicorn")]
 pub mod unicorn_run;
 
-#[cfg(feature = "native")]
-pub mod native_run;
-
 use crate::MachineInfo;
 
 /// The catalog identity of this machine's SoC.
@@ -92,16 +89,11 @@ pub fn vector_entry(image: &[u8]) -> Result<(u64, u64), String> {
     mosaic_boot::proto::cortex_m::vector_entry(image).map_err(|detail| format!("-kernel: {detail}"))
 }
 
-/// Run the machine on the Unicorn backend (`-M stm32f103 -accel unicorn`).
+/// Run the machine on the Unicorn backend (`-M stm32f103`). ADR 0030:
+/// Unicorn is the only CPU execution engine, so this is the one path.
 #[cfg(feature = "unicorn")]
 pub fn run(image: &[u8], options: &Stm32f103Options) -> Result<Stm32F103Report, String> {
     unicorn_run::run_stm32f103(image, options)
-}
-
-/// Run the machine on the native ARMv7-M backend.
-#[cfg(all(feature = "native", not(feature = "unicorn")))]
-pub fn run(image: &[u8], options: &Stm32f103Options) -> Result<Stm32F103Report, String> {
-    native_run::run_stm32f103_native(image, options)
 }
 
 #[cfg(test)]

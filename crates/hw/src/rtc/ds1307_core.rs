@@ -24,7 +24,10 @@ mod reg {
     pub const DATE: usize = 0x04;
     pub const MONTH: usize = 0x05;
     pub const YEAR: usize = 0x06;
+    // Names the data-sheet offset; decoding is pending (ADR 0025).
+    #[allow(dead_code)]
     pub const CONTROL: usize = 0x07;
+    #[allow(dead_code)]
     pub const RAM_BASE: usize = 0x08;
     pub const SIZE: usize = 0x40;
 }

@@ -25,7 +25,7 @@ impl OneWireRom {
 }
 
 /// CRC8 of the 56-bit (family+serial) portion, polynomial 0x81 (reflected).
-pub fn onewire_crc8(mut bits: u64) -> u8 {
+pub fn onewire_crc8(bits: u64) -> u8 {
     let mut crc: u8 = 0;
     for i in 0..56 {
         let mix = (crc ^ ((bits >> i) as u8 & 1)) & 1;
@@ -44,7 +44,7 @@ mod tests {
     /// The Maxim AN27 worked example: ROM 02 1C B8 01 00 00 00 with CRC A2.
     #[test]
     fn an27_rom_vector_validates() {
-        let rom = OneWireRom(0x02 | 0x1C << 8 | 0xB8 << 16 | 0x01 << 24 | 0xA2 << 56);
+        let rom = OneWireRom(0x02 | (0x1C << 8) | (0xB8 << 16) | (0x01 << 24) | (0xA2 << 56));
         assert_eq!(rom.family(), 0x02);
         assert_eq!(rom.serial(), 0x0000_0001_B81C);
         assert_eq!(rom.crc8(), 0xA2);
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn a_corrupted_crc_is_rejected() {
-        let rom = OneWireRom(0x02 | 0x1C << 8 | 0xB8 << 16 | 0x01 << 24 | 0xA3 << 56);
+        let rom = OneWireRom(0x02 | (0x1C << 8) | (0xB8 << 16) | (0x01 << 24) | (0xA3 << 56));
         assert!(!rom.crc_ok());
     }
 }

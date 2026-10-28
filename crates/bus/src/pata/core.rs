@@ -3,19 +3,12 @@
 use mosaic_contract::model::Ctx;
 use mosaic_contract::pata::{PataError, PataInitiator, PataTarget};
 
+#[derive(Default)]
 pub struct PataBus {
     devices: [Option<Box<dyn PataTarget>>; 2],
     selected: u8,
 }
 
-impl Default for PataBus {
-    fn default() -> Self {
-        Self {
-            devices: [None, None],
-            selected: 0,
-        }
-    }
-}
 
 impl PataBus {
     pub fn new() -> Self {

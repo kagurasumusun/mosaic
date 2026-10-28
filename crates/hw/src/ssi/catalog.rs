@@ -85,7 +85,98 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "ARM PrimeCell SSP (PL022) SPI controller register model",
     outputs: &[],
     spawn: spawn_pl022,
-}];
+},
+    ModelEntry {
+        id: "ip:st/spi-f1",
+        summary: "STM32F1 SPI",
+        outputs: &[],
+        spawn: spawn_spi_f1,
+    },
+    ModelEntry {
+        id: "ip:st/spi-f4",
+        summary: "STM32F4 SPI",
+        outputs: &[],
+        spawn: spawn_spi_f4,
+    },
+    ModelEntry {
+        id: "ip:st/spi-h7",
+        summary: "STM32H7 SPI",
+        outputs: &[],
+        spawn: spawn_spi_h7,
+    },
+    ModelEntry {
+        id: "ip:st/spi-l4",
+        summary: "STM32L4 SPI",
+        outputs: &[],
+        spawn: spawn_spi_l4,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-spi",
+        summary: "NXP LPC11xx SPI",
+        outputs: &[],
+        spawn: spawn_lpc11xx_spi,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-spi",
+        summary: "NXP LPC17xx SSP/SPI",
+        outputs: &[],
+        spawn: spawn_lpc17xx_spi,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc43xx-spi",
+        summary: "NXP LPC43xx SPI",
+        outputs: &[],
+        spawn: spawn_lpc43xx_spi,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-spi",
+        summary: "Raspberry Pi RP2040 SPI",
+        outputs: &[],
+        spawn: spawn_rp2040_spi,
+    },
+    ModelEntry {
+        id: "ip:allwinner/sunxi-spi",
+        summary: "Allwinner Sunxi SPI",
+        outputs: &[],
+        spawn: spawn_sunxi_spi,
+    },
+    ModelEntry {
+        id: "ip:rockchip/rk-spi",
+        summary: "Rockchip SPI",
+        outputs: &[],
+        spawn: spawn_rk_spi,
+    },
+    ModelEntry {
+        id: "ip:mediatek/mtk-spi",
+        summary: "MediaTek SPI",
+        outputs: &[],
+        spawn: spawn_mtk_spi,
+    },
+    ModelEntry {
+        id: "ip:ti/am335x-spi",
+        summary: "TI AM335x MCSPI",
+        outputs: &[],
+        spawn: spawn_am335x_spi,
+    },
+    ModelEntry {
+        id: "ip:microchip/pic32-spi",
+        summary: "Microchip PIC32 SPI",
+        outputs: &[],
+        spawn: spawn_pic32_spi,
+    },
+    ModelEntry {
+        id: "ip:espressif/esp32-spi",
+        summary: "Espressif ESP32 SPI",
+        outputs: &[],
+        spawn: spawn_esp32_spi,
+    },
+    ModelEntry {
+        id: "ip:silabs/efm32-usart-spi",
+        summary: "Silicon Labs EFM32 USART in SPI mode",
+        outputs: &[],
+        spawn: spawn_efm32_usart_spi,
+    },
+];
 
 /// Default spawn for spi-f1: reads the irq output from the catalog
 /// output table and registers the device with the machine.

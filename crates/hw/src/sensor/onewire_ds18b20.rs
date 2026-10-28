@@ -67,7 +67,7 @@ impl Ds18b20Core {
     fn build_rom(&self, family: u8, serial: u64) -> OneWireRom {
         let low = family as u64 | (serial << 8);
         let crc = mosaic_contract::onewire::onewire_crc8(low);
-        OneWireRom(low | (crc as u64) << 56)
+        OneWireRom(low | ((crc as u64) << 56))
     }
 
     /// The 64-bit ROM address.

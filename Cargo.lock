@@ -187,15 +187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mosaic-accel-armv7m"
-version = "0.1.0"
-dependencies = [
- "mosaic-contract",
- "mosaic-exec",
- "mosaic-isa-arm",
-]
-
-[[package]]
 name = "mosaic-accel-conformance"
 version = "0.1.0"
 dependencies = [
@@ -208,6 +199,7 @@ dependencies = [
 name = "mosaic-accel-unicorn"
 version = "0.1.0"
 dependencies = [
+ "mosaic-accel-conformance",
  "mosaic-contract",
  "mosaic-exec",
  "mosaic-isa-aarch64",
@@ -311,7 +303,6 @@ dependencies = [
 name = "mosaic-machine"
 version = "0.1.0"
 dependencies = [
- "mosaic-accel-armv7m",
  "mosaic-accel-unicorn",
  "mosaic-assemble",
  "mosaic-boot",

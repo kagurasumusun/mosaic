@@ -31,7 +31,86 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "Intel 8237A DMA controller, cascaded master+slave (PC/AT 8 channels)",
     outputs: &[],
     spawn: spawn_i8237,
-}];
+},
+    ModelEntry {
+        id: "ip:arm/pl080",
+        summary: "ARM PL080 DMA controller",
+        outputs: &[],
+        spawn: spawn_pl080,
+    },
+    ModelEntry {
+        id: "ip:arm/pl081",
+        summary: "ARM PL081 DMA controller",
+        outputs: &[],
+        spawn: spawn_pl081,
+    },
+    ModelEntry {
+        id: "ip:intel/ioapic-dma",
+        summary: "Intel I/O APIC DMA extension",
+        outputs: &[],
+        spawn: spawn_ioapic_dma,
+    },
+    ModelEntry {
+        id: "ip:arm/dma-330",
+        summary: "ARM DMA-330 DMA controller",
+        outputs: &[],
+        spawn: spawn_dma_330,
+    },
+    ModelEntry {
+        id: "ip:st/dma-f1",
+        summary: "STM32F1 DMA",
+        outputs: &[],
+        spawn: spawn_dma_f1,
+    },
+    ModelEntry {
+        id: "ip:st/dma-f4",
+        summary: "STM32F4 DMA",
+        outputs: &[],
+        spawn: spawn_dma_f4,
+    },
+    ModelEntry {
+        id: "ip:st/dma-h7",
+        summary: "STM32H7 DMA",
+        outputs: &[],
+        spawn: spawn_dma_h7,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-dma",
+        summary: "NXP LPC11xx GPDMA",
+        outputs: &[],
+        spawn: spawn_lpc11xx_dma,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc17xx-dma",
+        summary: "NXP LPC17xx GPDMA",
+        outputs: &[],
+        spawn: spawn_lpc17xx_dma,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc43xx-dma",
+        summary: "NXP LPC43xx SCT/DMA",
+        outputs: &[],
+        spawn: spawn_lpc43xx_dma,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-dma",
+        summary: "Raspberry Pi RP2040 DMA",
+        outputs: &[],
+        spawn: spawn_rp2040_dma,
+    },
+    ModelEntry {
+        id: "ip:allwinner/sunxi-dma",
+        summary: "Allwinner Sunxi DMA",
+        outputs: &[],
+        spawn: spawn_sunxi_dma,
+    },
+    ModelEntry {
+        id: "ip:rockchip/rk-dma",
+        summary: "Rockchip DMA",
+        outputs: &[],
+        spawn: spawn_rk_dma,
+    },
+];
 
 /// Default spawn for ioapic-dma: reads the irq output from the catalog
 /// output table and registers the device with the machine.

@@ -37,7 +37,7 @@ impl PmbusInitiator for PmbusBus {
     fn read_word(&mut self, ctx: &mut dyn Ctx, addr: u8, cmd: u8) -> Result<u16, PmbusError> {
         let mut buf = Vec::new();
         self.tgt(addr)?.command(ctx, cmd, false, &mut buf)?;
-        Ok(buf.get(0).copied().unwrap_or(0) as u16
+        Ok(buf.first().copied().unwrap_or(0) as u16
             | ((buf.get(1).copied().unwrap_or(0) as u16) << 8))
     }
     fn read_block(&mut self, ctx: &mut dyn Ctx, addr: u8, cmd: u8) -> Result<Vec<u8>, PmbusError> {

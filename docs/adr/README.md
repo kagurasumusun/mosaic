@@ -22,8 +22,8 @@
 | [0014](0014-multicore-time-semantics.md) | マルチコア時間モデルの保証範囲 | 暫定採用、serial-slice と lockstep を区別 |
 | [0015](0015-checkpoint-identity.md) | checkpoint identity、clock dynamics、catalog State | 暫定採用、永続 codec と CPU context は未対応 |
 | [0016](0016-machine-materialization.md) | MachineGraph の実体化と CPU 宣言の境界 | 初期実装、未対応エッジは deferred |
-| [0017](0017-native-armv7m-engine.md) | ARMv7-M 自前エンジン（Thumb、精密例外、幅を保つ MMIO） | 初期実装、全命令は未対応 |
-| [0018](0018-ia32-backends.md) | IA-32 の 16/32 ビットバックエンド、ポート I/O、割り込み入口 | 初期実装、例外とページングは未対応 |
+| [0017](0017-native-armv7m-engine.md) | ARMv7-M 自前エンジン（Thumb、精密例外、幅を保つ MMIO） | 破棄 — 0030 で置換 |
+| [0018](0018-ia32-backends.md) | IA-32 の 16/32 ビットバックエンド、ポート I/O、割り込み入口 | 初期実装、例外とページングは未対応（エンジンは Unicorn 1 本に、0030） |
 | [0019](0019-software-interrupt-services.md) | ソフトウェア割り込みのサービス化と PC ファームウェア暫定 | 暫定採用、カーネル起動は未到達 |
 | [0020](0020-x86-boot-core-resumability.md) | x86 ブートコアと再開可能性の限界 | 暫定採用、例外配送は実装済み・コンソールは未対応 |
 | [0021](0021-system-front-end.md) | システムフロントエンド（QEMU 型 CLI、`mosaic-system`、`-cpu` モデル） | 採用 |
@@ -35,3 +35,5 @@
 | [0027](0027-fabric-expansion-step3-video-audio-input.md) | ファブリック拡張 step 3 — ビデオ/オーディオ/入力の接続方式 12 種 (HDMI/DP/DSI/CSI/PS2/S/PDIF/eSPI/SoundWire/SLIMbus/FireWire/MIDI/GamePort) + 178 件の新モデル | 採用 |
 | [0028](0028-workspace-crates-directory.md) | リポジトリルート整理 — ワークスペースクレートを `crates/` へ集約 (ルートはデータ木と設定のみ) | 採用 |
 | [0029](0029-fabric-expansion-step4-display-wireless-power-storage.md) | ファブリック拡張 step 4 — 表示/無線/音声/電力/ストレージ/計測の 12 種 (VGA/DVI/LVDS/SDIO/PDM/PWM/NAND/ISA/PCMCIA/UFS/HyperBus/GPIB) + 123 件の新モデル | 採用 |
+| [0030](0030-unicorn-only-cpu-execution.md) | CPU エミュレーションは Unicorn Engine に一本化（自前 armv7m を削除、契約は不変） | 採用 |
+| [0031](0031-hw-responsibility-taxonomy.md) | ハードウェアモデルの責務別分類 — `hw` を `ip / part / core` へ再編（ファブリック軸の排除、misc 廃止、重複統合、manifest ミラー強化） | 採用 |

@@ -94,7 +94,98 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "STM32F1 reset and clock control (RM0008): clock tree, CIR, 43 gate outputs",
     outputs: RCC_F1_GATES,
     spawn: spawn_rcc_f1,
-}];
+},
+    ModelEntry {
+        id: "ip:ibm/pcspk",
+        summary: "IBM PC speaker (PIT channel 2)",
+        outputs: &[],
+        spawn: spawn_pcspk,
+    },
+    ModelEntry {
+        id: "ip:intel/pmc",
+        summary: "Intel Power Management Controller (PMC)",
+        outputs: &[],
+        spawn: spawn_pmc,
+    },
+    ModelEntry {
+        id: "ip:intel/pmt",
+        summary: "Intel Platform Monitoring Technology (PMT)",
+        outputs: &[],
+        spawn: spawn_pmt,
+    },
+    ModelEntry {
+        id: "ip:intel/p2sb",
+        summary: "Intel Primary-to-Sideband Bridge (P2SB)",
+        outputs: &[],
+        spawn: spawn_p2sb,
+    },
+    ModelEntry {
+        id: "ip:intel/ish",
+        summary: "Intel Integrated Sensor Hub (ISH)",
+        outputs: &[],
+        spawn: spawn_ish,
+    },
+    ModelEntry {
+        id: "ip:intel/csme",
+        summary: "Intel Converged Security and Management Engine (CSME)",
+        outputs: &[],
+        spawn: spawn_csme,
+    },
+    ModelEntry {
+        id: "ip:st/rcc-f4",
+        summary: "STM32F4 Reset and Clock Control (RCC)",
+        outputs: &[],
+        spawn: spawn_rcc_f4,
+    },
+    ModelEntry {
+        id: "ip:st/rcc-h7",
+        summary: "STM32H7 Reset and Clock Control (RCC)",
+        outputs: &[],
+        spawn: spawn_rcc_h7,
+    },
+    ModelEntry {
+        id: "ip:nxp/lpc11xx-cgu",
+        summary: "NXP LPC11xx Clock Generation Unit",
+        outputs: &[],
+        spawn: spawn_lpc11xx_cgu,
+    },
+    ModelEntry {
+        id: "ip:raspberrypi/rp2040-clocks",
+        summary: "Raspberry Pi RP2040 clock controller",
+        outputs: &[],
+        spawn: spawn_rp2040_clocks,
+    },
+    ModelEntry {
+        id: "ip:ti/cm-am335x",
+        summary: "TI AM335x Clock Manager (CM)",
+        outputs: &[],
+        spawn: spawn_cm_am335x,
+    },
+    ModelEntry {
+        id: "ip:ibm/pc-testdev",
+        summary: "IBM PC test device",
+        outputs: &[],
+        spawn: spawn_pc_testdev,
+    },
+    ModelEntry {
+        id: "ip:aspeed/ast-lpc",
+        summary: "ASPEED AST2500 LPC controller",
+        outputs: &[],
+        spawn: spawn_ast_lpc,
+    },
+    ModelEntry {
+        id: "ip:nuvoton/npcm-lpc",
+        summary: "Nuvoton NPCM7xx LPC controller",
+        outputs: &[],
+        spawn: spawn_npcm_lpc,
+    },
+    ModelEntry {
+        id: "ip:arm/arm-smc-mailbox",
+        summary: "ARM Secure Monitor Call (SMC) mailbox",
+        outputs: &[],
+        spawn: spawn_arm_smc_mailbox,
+    },
+];
 
 /// Default spawn for rcc-f4: reads the irq output from the catalog
 /// output table and registers the device with the machine.

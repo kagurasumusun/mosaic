@@ -1120,3 +1120,22 @@ mod riscv32 {
         }
     }
 }
+
+// ADR 0030: Unicorn is the only CPU execution engine. The backend-independent
+// conformance fixtures (accel/conformance) stay the regression suite for the
+// one engine that remains, so the contract keeps being tested by something
+// that did not grow out of the adapter itself.
+#[test]
+fn conformance_arm32_arithmetic_fixture_passes_on_unicorn() {
+    let mut engine = UnicornArm::new().unwrap();
+    mosaic_accel_conformance::arm32_arithmetic(&mut engine)
+        .expect("A32 arithmetic fixture must pass on the Unicorn backend");
+}
+
+#[test]
+fn conformance_arm32_partitioned_budget_matches_whole_budget() {
+    let mut whole = UnicornArm::new().unwrap();
+    let mut partitioned = UnicornArm::new().unwrap();
+    mosaic_accel_conformance::arm32_partition(&mut whole, &mut partitioned)
+        .expect("partitioned instruction budgets must reach the same state");
+}

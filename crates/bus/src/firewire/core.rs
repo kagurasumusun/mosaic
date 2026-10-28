@@ -64,7 +64,7 @@ mod tests {
     }
 
     struct Node {
-        id: u16,
+        _id: u16,
         data: Vec<u8>,
     }
     impl FireWireNode for Node {
@@ -83,14 +83,14 @@ mod tests {
         bus.attach(
             0xFFC0,
             Box::new(Node {
-                id: 0xFFC0,
+                _id: 0xFFC0,
                 data: vec![0xDE, 0xAD],
             }),
         );
         bus.attach(
             0xFFC1,
             Box::new(Node {
-                id: 0xFFC1,
+                _id: 0xFFC1,
                 data: vec![0xBE, 0xEF],
             }),
         );

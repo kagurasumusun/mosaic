@@ -96,7 +96,7 @@ mod tests {
             if write {
                 Ok(data)
             } else {
-                Ok((function as u8) | 0x80)
+                Ok(function | 0x80)
             }
         }
     }

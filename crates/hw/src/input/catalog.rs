@@ -21,7 +21,20 @@ pub const MODELS: &[ModelEntry] = &[ModelEntry {
     summary: "Intel 8042 PS/2 keyboard/mouse controller (A20 gate, reset line)",
     outputs: &[],
     spawn: spawn_i8042,
-}];
+},
+    ModelEntry {
+        id: "ip:synaptics/ps2-touchpad",
+        summary: "Synaptics PS/2 touchpad",
+        outputs: &[],
+        spawn: spawn_ps2_touchpad,
+    },
+    ModelEntry {
+        id: "ip:logitech/ps2-mouse",
+        summary: "Logitech PS/2 mouse",
+        outputs: &[],
+        spawn: spawn_ps2_mouse,
+    },
+];
 
 /// Default spawn for ps2-touchpad: reads the irq output from the catalog
 /// output table and registers the device with the machine.

@@ -1,6 +1,6 @@
 //! `mipi_csi` bus entity (ADR 0025 step 3): MIPI CSI-2.
 
-use mosaic_contract::mipi_csi::{CsiError, CsiPacket, CsiReceiver, CsiSource};
+use mosaic_contract::mipi_csi::{CsiError, CsiReceiver, CsiSource};
 use mosaic_contract::model::Ctx;
 
 pub struct CsiBus {

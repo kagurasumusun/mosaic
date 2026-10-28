@@ -62,7 +62,7 @@ impl PointerSensor {
     pub fn register(&self, register: u8) -> u16 {
         let index = (register & self.mask) as usize;
         if index < self.reg_count {
-            (self.regs[index * 2] as u16) << 8 | self.regs[index * 2 + 1] as u16
+            ((self.regs[index * 2] as u16) << 8) | self.regs[index * 2 + 1] as u16
         } else {
             0
         }

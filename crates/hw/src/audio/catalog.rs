@@ -1,7 +1,6 @@
 //! Catalog entries for `audio` devices (ADR 0025).
 
 use mosaic_assemble::{InstantiateCtx, MaterializeError};
-use mosaic_exec::SignalId;
 use mosaic_runtime::Machine;
 
 use crate::audio::ac97::Ac97;

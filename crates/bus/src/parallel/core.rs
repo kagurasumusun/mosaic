@@ -1,7 +1,7 @@
 //! `parallel` bus entity (ADR 0025): IEEE 1284 parallel port (SPP/EPP/ECP modes).
 
 use mosaic_contract::model::Ctx;
-use mosaic_contract::parallel::{ParallelError, ParallelInitiator, ParallelMode, ParallelTarget};
+use mosaic_contract::parallel::{ParallelError, ParallelInitiator, ParallelTarget};
 
 pub struct ParallelBus {
     target: Option<Box<dyn ParallelTarget>>,
