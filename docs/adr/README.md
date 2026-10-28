@@ -38,3 +38,4 @@
 | [0030](0030-unicorn-only-cpu-execution.md) | CPU エミュレーションは Unicorn Engine に一本化（自前 armv7m を削除、契約は不変） | 採用 |
 | [0031](0031-hw-responsibility-taxonomy.md) | ハードウェアモデルの責務別分類 — `hw` を `ip / part / core` へ再編（ファブリック軸の排除、misc 廃止、重複統合、manifest ミラー強化） | 採用 |
 | [0032](0032-multi-face-model-ports.md) | 多面モデルのポート面 — ip/part を貫く統一接続面（`[[part.face]]` 多面配線、部品 spawn、face 結合パス、RM0008 i2c-f1 の実装による実証） | 採用 |
+| [0033](0033-qemu-parity-coverage.md) | QEMU と同等のカバー範囲への拡張方式 — virtio 3 層 (vqueue/port/transport)、`contract::block` ブロックイメージ基盤、機械アーキ軸 (virt64/virt)、実イメージ検証規律の維持 | 採用 |
