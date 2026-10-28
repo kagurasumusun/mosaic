@@ -43,10 +43,21 @@ index 297ebc4..6ac8dfd 100644
      };
      Ok(RegionDescriptor {
 diff --git a/crates/mosaic/src/lib.rs b/crates/mosaic/src/lib.rs
-index b19dd4c..f307943 100644
+index 3c5e4de..399a40b 100644
 --- a/crates/mosaic/src/lib.rs
 +++ b/crates/mosaic/src/lib.rs
-@@ -463,9 +463,7 @@ fn run_virt64(config: &SystemConfig) -> Result<SystemReport, String> {
+@@ -23,9 +23,9 @@ pub use mosaic_machine::arm::stm32f103::Stm32F103Report;
+ pub use mosaic_machine::arm::virt64::Virt64Report;
+ #[cfg(feature = "unicorn")]
+ pub use mosaic_machine::i386::pc::{run_pc_machine, PcBootOptions, PcBootReport, PcMachineConfig};
+-pub use mosaic_machine::MachineInfo;
+ #[cfg(feature = "arch-riscv")]
+ pub use mosaic_machine::riscv::virt::VirtReport as RiscvVirtReport;
++pub use mosaic_machine::MachineInfo;
+ 
+ /// A kernel the operator asked the machine to boot directly, bypassing every
+ /// loader in the attached images (QEMU's `-kernel`/`-initrd`/`-append`).
+@@ -507,9 +507,7 @@ fn run_virt64(config: &SystemConfig) -> Result<SystemReport, String> {
          }
          let kernel = match &config.boot {
              BootSource::DirectKernel(kernel) => kernel,
