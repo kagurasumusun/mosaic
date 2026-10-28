@@ -7,8 +7,8 @@
 [1m[32m   Compiling[0m mosaic-boot v0.1.0 (/home/runner/work/mosaic/mosaic/crates/boot)
 [1m[32m   Compiling[0m mosaic-isa-aarch64 v0.1.0 (/home/runner/work/mosaic/mosaic/crates/isa/aarch64)
 [1m[32m   Compiling[0m mosaic-runtime v0.1.0 (/home/runner/work/mosaic/mosaic/crates/runtime)
-[1m[32m   Compiling[0m mosaic-bus v0.1.0 (/home/runner/work/mosaic/mosaic/crates/bus)
 [1m[32m   Compiling[0m mosaic-isa-arm v0.1.0 (/home/runner/work/mosaic/mosaic/crates/isa/arm)
+[1m[32m   Compiling[0m mosaic-bus v0.1.0 (/home/runner/work/mosaic/mosaic/crates/bus)
 [1m[32m   Compiling[0m mosaic-isa-riscv v0.1.0 (/home/runner/work/mosaic/mosaic/crates/isa/riscv)
 [1m[32m   Compiling[0m cexpr v0.6.0
 [1m[32m   Compiling[0m mosaic-accel-conformance v0.1.0 (/home/runner/work/mosaic/mosaic/crates/accel/conformance)
@@ -22,4 +22,4 @@
 [1m[32m   Compiling[0m mosaic-machine v0.1.0 (/home/runner/work/mosaic/mosaic/crates/machine)
 [1m[32m   Compiling[0m mosaic v0.1.0 (/home/runner/work/mosaic/mosaic/crates/mosaic)
 [1m[32m   Compiling[0m mosaic-tests-boot v0.1.0 (/home/runner/work/mosaic/mosaic/crates/tests)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 41.91s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 33.74s
