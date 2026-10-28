@@ -21,5 +21,9 @@ pub struct MachineInfo {
 
 /// The `-M help` listing, in print order.
 pub fn machines() -> Vec<MachineInfo> {
-    vec![i386::pc::info(), arm::stm32f103::info()]
+    vec![
+        i386::pc::info(),
+        arm::stm32f103::info(),
+        arm::virt64::info(),
+    ]
 }

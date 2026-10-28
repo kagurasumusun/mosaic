@@ -94,7 +94,9 @@ fn spawn_lapic(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Materi
 /// Default spawn for gic-v3: parameters select the SPI and redistributor
 /// counts; `irq` (if wired) is cpu 0's Group-1 output and `fiq` cpu 0's
 /// Group-0 output. Device IRQ outputs route into the GIC by INTID through
-/// signals.
+/// signals: each `inputs:<intid>` wire from a device is registered with
+/// [`GicV3::bind_spi_input`], so the model's `on_signal` can map the
+/// (source, signal) pair back to the INTID.
 fn spawn_gic_v3(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
     let params = crate::ip::intc::gic_v3::GicV3Params {
         spis: ctx.parameter_int("spis").unwrap_or(224) as u32,
@@ -106,6 +108,17 @@ fn spawn_gic_v3(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Mater
     }
     if let Ok(signal) = ctx.output("fiq") {
         device.bind_fiq_output(0, signal);
+    }
+    for wire in ctx.incoming {
+        // `inputs:<intid>` is the SPI wiring convention; the intid is the
+        // numeric suffix. Other port names are not part of the GIC's input
+        // vocabulary and are silently ignored (so a board that wires the
+        // GIC's `irq` output back into itself by mistake does not crash).
+        if let Some(intid) = wire.index() {
+            if let Ok(intid) = u32::try_from(intid) {
+                device.bind_spi_input(intid, wire.source, wire.signal);
+            }
+        }
     }
     machine.register_snapshot_device(ctx.node, device)?;
     Ok(())
@@ -136,7 +149,10 @@ fn spawn_pl192(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Materi
 }
 /// Default spawn for plic: parameters select the source/context counts;
 /// the output table's `irq` entry (source-ID-addressed lines come through
-/// signals) wires context 0's external-interrupt line.
+/// signals) wires context 0's external-interrupt line. Device IRQ outputs
+/// route into the PLIC by source ID: each `inputs:<source_id>` wire from a
+/// device is registered with [`Plic::bind_source_input`], so the model's
+/// `on_signal` can map the (source, signal) pair back to the source ID.
 fn spawn_plic(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
     let params = crate::ip::intc::plic::PlicParams {
         sources: ctx.parameter_int("sources").unwrap_or(96) as u32,
@@ -145,6 +161,13 @@ fn spawn_plic(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), Materia
     let mut device = Plic::new(params);
     if let Ok(signal) = ctx.output("irq") {
         device.bind_output(0, signal);
+    }
+    for wire in ctx.incoming {
+        if let Some(source_id) = wire.index() {
+            if let Ok(source_id) = u32::try_from(source_id) {
+                device.bind_source_input(source_id, wire.source, wire.signal);
+            }
+        }
     }
     machine.register_snapshot_device(ctx.node, device)?;
     Ok(())

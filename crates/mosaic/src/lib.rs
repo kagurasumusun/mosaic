@@ -20,6 +20,7 @@
 pub mod report_json;
 
 pub use mosaic_machine::arm::stm32f103::Stm32F103Report;
+pub use mosaic_machine::arm::virt64::Virt64Report;
 #[cfg(feature = "unicorn")]
 pub use mosaic_machine::i386::pc::{run_pc_machine, PcBootOptions, PcBootReport, PcMachineConfig};
 pub use mosaic_machine::MachineInfo;
@@ -51,6 +52,10 @@ pub enum MachineKind {
     /// `-kernel` loads a raw image and boots it through its own vector
     /// table; the machine has no drives and one fixed CPU.
     Stm32f103,
+    /// `soc:arm/virt64`: the AArch64 `virt` map on a Cortex-A53 core.
+    /// `-kernel` loads an arm64 `Image` and boots it through the AArch64
+    /// boot protocol; GICv3, PL011 and virtio-mmio are wired.
+    Virt64,
 }
 
 impl MachineKind {
@@ -59,6 +64,7 @@ impl MachineKind {
         match self {
             MachineKind::Pc => mosaic_machine::i386::pc::MACHINE_NAME,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::MACHINE_NAME,
+            MachineKind::Virt64 => mosaic_machine::arm::virt64::MACHINE_NAME,
         }
     }
 
@@ -67,6 +73,7 @@ impl MachineKind {
         match self {
             MachineKind::Pc => mosaic_machine::i386::pc::MACHINE_SUMMARY,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::MACHINE_SUMMARY,
+            MachineKind::Virt64 => mosaic_machine::arm::virt64::MACHINE_SUMMARY,
         }
     }
 
@@ -75,6 +82,7 @@ impl MachineKind {
         match self {
             MachineKind::Pc => mosaic_machine::i386::pc::ARCHITECTURES,
             MachineKind::Stm32f103 => mosaic_machine::arm::stm32f103::ARCHITECTURES,
+            MachineKind::Virt64 => mosaic_machine::arm::virt64::ARCHITECTURES,
         }
     }
 
@@ -82,6 +90,7 @@ impl MachineKind {
         match name {
             "pc" => Some(MachineKind::Pc),
             "stm32f103" => Some(MachineKind::Stm32f103),
+            "virt64" => Some(MachineKind::Virt64),
             _ => None,
         }
     }
@@ -90,7 +99,7 @@ impl MachineKind {
 /// All machines, in `-M help` order. A test pins this against the machine
 /// crate's registry so the listing cannot drift from the real catalogue.
 pub fn machines() -> Vec<MachineKind> {
-    vec![MachineKind::Pc, MachineKind::Stm32f103]
+    vec![MachineKind::Pc, MachineKind::Stm32f103, MachineKind::Virt64]
 }
 
 /// The machine registry's own listing (`-M help` data, QEMU's `MODULE_INFO`
@@ -214,6 +223,7 @@ pub enum MachineReport {
     #[cfg(feature = "unicorn")]
     Pc(PcBootReport),
     Stm32f103(Stm32F103Report),
+    Virt64(Virt64Report),
 }
 
 impl MachineReport {
@@ -221,9 +231,9 @@ impl MachineReport {
     pub fn serial(&self) -> &[u8] {
         match self {
             #[cfg(feature = "unicorn")]
-            #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => &report.serial,
             MachineReport::Stm32f103(report) => &report.output,
+            MachineReport::Virt64(report) => &report.output,
         }
     }
 
@@ -233,6 +243,7 @@ impl MachineReport {
             #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.screen.clone(),
             MachineReport::Stm32f103(_) => Vec::new(),
+            MachineReport::Virt64(_) => Vec::new(),
         }
     }
 
@@ -243,6 +254,13 @@ impl MachineReport {
             #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.text(),
             MachineReport::Stm32f103(report) => {
+                let mut text = String::from_utf8_lossy(&report.output).into_owned();
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text
+            }
+            MachineReport::Virt64(report) => {
                 let mut text = String::from_utf8_lossy(&report.output).into_owned();
                 if !text.is_empty() && !text.ends_with('\n') {
                     text.push('\n');
@@ -264,6 +282,7 @@ impl MachineReport {
                     "instruction budget exhausted".into()
                 }
             }
+            MachineReport::Virt64(report) => report.stop_reason.clone(),
         }
     }
 
@@ -273,6 +292,7 @@ impl MachineReport {
             #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => report.instructions,
             MachineReport::Stm32f103(report) => report.instructions,
+            MachineReport::Virt64(report) => report.instructions,
         }
     }
 
@@ -289,6 +309,10 @@ impl MachineReport {
                 "{} instructions, {} events, pin edges {:?}",
                 report.instructions, report.events, report.pin_edges
             ),
+            MachineReport::Virt64(report) => format!(
+                "{} instructions, {} events, stop reason {}",
+                report.instructions, report.events, report.stop_reason
+            ),
         }
     }
 
@@ -303,6 +327,7 @@ impl MachineReport {
                     || report.unclaimed_interrupt.is_some()
             }
             MachineReport::Stm32f103(_) => false,
+            MachineReport::Virt64(report) => report.stop_reason == "fault",
         }
     }
 }
@@ -327,6 +352,7 @@ impl SystemReport {
             #[cfg(feature = "unicorn")]
             MachineReport::Pc(report) => &report.screen,
             MachineReport::Stm32f103(_) => &[],
+            MachineReport::Virt64(_) => &[],
         }
     }
 
@@ -373,6 +399,7 @@ pub fn run(config: &SystemConfig) -> Result<SystemReport, String> {
     match config.machine {
         MachineKind::Pc => run_pc(config),
         MachineKind::Stm32f103 => run_stm32f103(config),
+        MachineKind::Virt64 => run_virt64(config),
     }
 }
 
@@ -425,6 +452,39 @@ fn run_stm32f103(config: &SystemConfig) -> Result<SystemReport, String> {
             "rebuild with --features unicorn: the stm32f103 machine needs the Unicorn engine"
                 .into(),
         )
+    }
+}
+
+fn run_virt64(config: &SystemConfig) -> Result<SystemReport, String> {
+    #[cfg(feature = "unicorn")]
+    {
+        if !config.drives.is_empty() {
+            return Err("the virt64 machine has no drives yet; boot it with -kernel".into());
+        }
+        let kernel = match &config.boot {
+            BootSource::DirectKernel(kernel) => kernel,
+            BootSource::Order(_) => {
+                return Err("the virt64 machine boots with -kernel only".into())
+            }
+        };
+        if kernel.initrd.is_some() {
+            return Err("the virt64 machine has no initramfs concept yet".into());
+        }
+        let options = mosaic_machine::arm::virt64::Virt64Options {
+            instruction_limit: config.options.instruction_limit,
+            quantum: config.options.quantum,
+            ram_bytes: config.ram_kib * 1024,
+        };
+        let report = mosaic_machine::arm::virt64::run(&kernel.image, &options)?;
+        Ok(SystemReport {
+            machine: config.machine.name(),
+            detail: MachineReport::Virt64(report),
+        })
+    }
+    #[cfg(not(feature = "unicorn"))]
+    {
+        let _ = config;
+        Err("rebuild with --features unicorn: the virt64 machine needs the Unicorn engine".into())
     }
 }
 

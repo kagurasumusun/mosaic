@@ -93,6 +93,13 @@ pub struct Plic {
     /// The external-interrupt output per context (machine glue wires the
     /// hart's `meip` input).
     outputs: Vec<Option<SignalId>>,
+    /// Source-ID bindings: `(source node, source signal) → PLIC source
+    /// ID`. Boards that wire device IRQ outputs into the PLIC through
+    /// `inputs:<source_id>` register each wire here; `on_signal` looks
+    /// the source ID up. Without a binding, `on_signal` falls back to
+    /// `signal.0` as the source ID — the legacy convention a few unit
+    /// tests still use.
+    source_inputs: std::collections::HashMap<(mosaic_exec::NodeId, SignalId), u32>,
 }
 
 impl Plic {
@@ -112,6 +119,7 @@ impl Plic {
             },
             params,
             outputs: vec![None; contexts as usize],
+            source_inputs: std::collections::HashMap::new(),
         }
     }
 
@@ -120,6 +128,21 @@ impl Plic {
         if let Some(slot) = self.outputs.get_mut(context) {
             *slot = Some(signal);
         }
+    }
+
+    /// Bind one device's IRQ output to PLIC source `source_id`. The
+    /// catalog spawn iterates `ctx.incoming` and registers each
+    /// `inputs:<source_id>` wire here; `on_signal` then maps the
+    /// (source, signal) pair back to the source ID. Without this binding,
+    /// `on_signal` falls back to `signal.0` as the source ID (the legacy
+    /// convention).
+    pub fn bind_source_input(
+        &mut self,
+        source_id: u32,
+        source: mosaic_exec::NodeId,
+        signal: SignalId,
+    ) {
+        self.source_inputs.insert((source, signal), source_id);
     }
 
     fn words(&self) -> usize {
@@ -342,12 +365,20 @@ impl EventTarget for Plic {
     fn on_signal(
         &mut self,
         ctx: &mut dyn Ctx,
-        _source: mosaic_exec::NodeId,
+        source: mosaic_exec::NodeId,
         signal: SignalId,
         high: bool,
     ) -> Result<(), ContextError> {
-        // Signal number = source ID (the machine's fabric input).
-        self.set_source_level(ctx, signal.0, high);
+        // Source ID is looked up from the catalog-registered binding (the
+        // `inputs:<source_id>` wiring); without a binding, the legacy
+        // convention is `signal.0 == source_id` (used by self-tests that
+        // drive the model directly).
+        let source_id = self
+            .source_inputs
+            .get(&(source, signal))
+            .copied()
+            .unwrap_or(signal.0);
+        self.set_source_level(ctx, source_id, high);
         Ok(())
     }
 }

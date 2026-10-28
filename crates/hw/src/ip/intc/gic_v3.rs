@@ -129,6 +129,12 @@ pub struct GicV3 {
     irq_outputs: Vec<Option<SignalId>>,
     /// Group-0 (FIQ) output line per CPU.
     fiq_outputs: Vec<Option<SignalId>>,
+    /// SPI input bindings: `(source node, source signal) → INTID`. Boards
+    /// that wire device IRQ outputs into the GIC through `inputs:<intid>`
+    /// register each wire here; `on_signal` looks the INTID up. Without a
+    /// binding, `on_signal` falls back to `signal.0` as the INTID — the
+    /// legacy convention a few unit tests still use.
+    spi_inputs: std::collections::HashMap<(mosaic_exec::NodeId, SignalId), u32>,
 }
 
 impl GicV3 {
@@ -169,6 +175,7 @@ impl GicV3 {
             params,
             irq_outputs: vec![None; cpus],
             fiq_outputs: vec![None; cpus],
+            spi_inputs: std::collections::HashMap::new(),
         }
     }
 
@@ -184,6 +191,20 @@ impl GicV3 {
         if let Some(slot) = self.fiq_outputs.get_mut(cpu) {
             *slot = Some(signal);
         }
+    }
+
+    /// Bind one device's IRQ output to SPI `intid`. The catalog spawn
+    /// iterates `ctx.incoming` and registers each `inputs:<intid>` wire
+    /// here; `on_signal` then maps the (source, signal) pair back to the
+    /// INTID. Without this binding, `on_signal` falls back to `signal.0`
+    /// as the INTID (the legacy convention).
+    pub fn bind_spi_input(
+        &mut self,
+        intid: u32,
+        source: mosaic_exec::NodeId,
+        signal: SignalId,
+    ) {
+        self.spi_inputs.insert((source, signal), intid);
     }
 
     fn cpus(&self) -> usize {
@@ -802,13 +823,21 @@ impl EventTarget for GicV3 {
     fn on_signal(
         &mut self,
         ctx: &mut dyn Ctx,
-        _source: mosaic_exec::NodeId,
+        source: mosaic_exec::NodeId,
         signal: SignalId,
         high: bool,
     ) -> Result<(), ContextError> {
         // The fabric-facing input: a device's IRQ output arrives as a
-        // signal whose number is the INTID (SPIs).
-        self.set_irq_level(ctx, signal.0, high);
+        // signal. The INTID is looked up from the catalog-registered
+        // binding (the `inputs:<intid>` wiring); without a binding, the
+        // legacy convention is `signal.0 == INTID` (used by self-tests
+        // that drive the model directly).
+        let intid = self
+            .spi_inputs
+            .get(&(source, signal))
+            .copied()
+            .unwrap_or(signal.0);
+        self.set_irq_level(ctx, intid, high);
         Ok(())
     }
 }

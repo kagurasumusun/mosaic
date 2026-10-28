@@ -11,6 +11,12 @@ verified = 'spec-tested'
 
 [ports]
 mmio = { role = 'target', size = 0x201000 }
+# Source inputs: each wire `inputs:<source_id>` from a device's IRQ output
+# is registered with `Plic::bind_source_input(source_id, source, signal)`
+# so the model's `on_signal` can map the (source, signal) pair back to the
+# source ID. The `count` is the source range; individual wires name their
+# source ID in the suffix.
+inputs = { contract = 'model/signal', role = 'endpoint', count = 96 }
 irq = { role = 'source', pins = ['irq'] }
 
 [params]

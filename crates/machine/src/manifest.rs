@@ -1,9 +1,11 @@
-//! Board-manifest parsing shared by the machine models (ADR 0032).
+//! Board-manifest parsing shared by the machine models (ADR 0032) and the
+//! SoC-manifest parser every machine reuses (ADR 0033 wave 3).
 //!
-//! The SoC parser lives next to each SoC (`arm/stm32f103/manifest.rs`); a
-//! board's grammar — `[[part]]` with its `[[part.face]]` wiring — is the
-//! same for every machine, so the parser lives here. `mosaic-describe`
-//! stays TOML-free (design §7.1): the file format is this crate's concern.
+//! A board's grammar — `[[part]]` with its `[[part.face]]` wiring — is the
+//! same for every machine, and so is the SoC grammar (`[soc]`, `[[cpu]]`,
+//! `[[block]]`, `[[view]]` + `[[view.region]]`). Both live here so
+//! `mosaic-describe` stays TOML-free (design §7.1) and so adding a new
+//! machine pulls in zero parser code (ADR 0024).
 
 use std::collections::BTreeMap;
 
@@ -174,6 +176,205 @@ fn string(table: &toml::Table, key: &str) -> Result<String, String> {
         .and_then(toml::Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| format!("{key}: expected a string"))
+}
+
+// ---------------------------------------------------------------------------
+// SoC manifest parser (ADR 0033 wave 3: shared by every machine).
+// ---------------------------------------------------------------------------
+
+use mosaic_describe::{
+    AddressSpaceView, BlockInstance, CpuInstance, IrqRoute, Placement, RegionDescriptor,
+    RegionKind, SocIdentity, SocManifest,
+};
+
+/// Parse and validate a SoC manifest (`soc.toml` shape). Each machine
+/// module calls this with its own `include_str!`, so the SoC grammar
+/// stays in one place while the manifest text stays next to the machine.
+pub fn parse_soc(text: &str) -> Result<SocManifest, String> {
+    let value: toml::Value = toml::from_str(text).map_err(|error| error.to_string())?;
+    parse_soc_value(&value)
+}
+
+fn parse_soc_value(value: &toml::Value) -> Result<SocManifest, String> {
+    let root = value.as_table().ok_or("soc.toml: expected a table")?;
+    reject_unknown(root, &["soc", "cpu", "block", "view"])?;
+    let soc = table(root, "soc")?;
+    reject_unknown(soc, &["id", "summary"])?;
+    let cpu = root
+        .get("cpu")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "cpu: expected an array".to_owned())?
+        .iter()
+        .map(|item| {
+            let item = item.as_table().ok_or("cpu: expected a table")?;
+            reject_unknown(item, &["name", "use", "view"])?;
+            Ok(CpuInstance {
+                name: string(item, "name")?,
+                use_id: string(item, "use")?,
+                view: string(item, "view")?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let block = root
+        .get("block")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "block: expected an array".to_owned())?
+        .iter()
+        .map(parse_block)
+        .collect::<Result<Vec<_>, String>>()?;
+    let view = root
+        .get("view")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "view: expected an array".to_owned())?
+        .iter()
+        .map(|item| {
+            let item = item.as_table().ok_or("view: expected a table")?;
+            reject_unknown(item, &["name", "region"])?;
+            let region = item
+                .get("region")
+                .and_then(toml::Value::as_array)
+                .ok_or_else(|| "view.region: expected an array".to_owned())?
+                .iter()
+                .map(parse_region)
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(AddressSpaceView {
+                name: string(item, "name")?,
+                region,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let manifest = SocManifest {
+        soc: SocIdentity {
+            id: string(soc, "id")?,
+            summary: string(soc, "summary")?,
+        },
+        cpu,
+        block,
+        view,
+    };
+    manifest.validate().map_err(|error| error.to_string())?;
+    Ok(manifest)
+}
+
+fn parse_block(value: &toml::Value) -> Result<BlockInstance, String> {
+    let item = value.as_table().ok_or("block: expected a table")?;
+    reject_unknown(item, &["name", "use", "at", "irq", "clk"])?;
+    let at = match item.get("at") {
+        None => None,
+        Some(value) => {
+            let at = value.as_table().ok_or("block.at: expected a table")?;
+            reject_unknown(at, &["space", "base"])?;
+            Some(Placement {
+                space: string(at, "space")?,
+                base: unsigned(at, "base")?,
+            })
+        }
+    };
+    let irq = match item.get("irq") {
+        None => Vec::new(),
+        Some(value) => {
+            let routes = if value.as_table().is_some() {
+                vec![value]
+            } else {
+                value
+                    .as_array()
+                    .ok_or("block.irq: expected a table or array")?
+                    .iter()
+                    .collect()
+            };
+            routes
+                .into_iter()
+                .map(|value| {
+                    let route = value.as_table().ok_or("irq: expected a table")?;
+                    reject_unknown(route, &["pin", "to"])?;
+                    let to = route
+                        .get("to")
+                        .and_then(toml::Value::as_array)
+                        .ok_or("irq.to: expected an array")?
+                        .iter()
+                        .map(|value| {
+                            value
+                                .as_str()
+                                .map(str::to_owned)
+                                .ok_or_else(|| "irq.to: expected a string".to_owned())
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(IrqRoute {
+                        pin: string(route, "pin")?,
+                        to,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?
+        }
+    };
+    let clk = match item.get("clk") {
+        None => BTreeMap::new(),
+        Some(value) => {
+            let table = value
+                .as_table()
+                .ok_or("block.clk: expected a table of input = source")?;
+            let mut map = BTreeMap::new();
+            for (input, source) in table {
+                let source = source.as_str().ok_or(
+                    "block.clk: clock source must be a string (a clock net or a block.port reference)",
+                )?;
+                map.insert(
+                    input.clone(),
+                    ConfigValue::String(source.to_owned()),
+                );
+            }
+            map
+        }
+    };
+    Ok(BlockInstance {
+        name: string(item, "name")?,
+        use_id: string(item, "use")?,
+        at,
+        irq,
+        clk,
+    })
+}
+
+fn parse_region(value: &toml::Value) -> Result<RegionDescriptor, String> {
+    let region = value.as_table().ok_or("region: expected a table")?;
+    reject_unknown(
+        region,
+        &["name", "target", "base", "size", "kind", "priority"],
+    )?;
+    let kind = match string(region, "kind")?.as_str() {
+        "ram" => RegionKind::Ram,
+        "rom" => RegionKind::Rom,
+        "mmio" => RegionKind::Mmio,
+        other => return Err(format!("unknown region kind {other:?}")),
+    };
+    let priority = match region.get("priority") {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_integer()
+                .ok_or("region.priority: expected an integer")?
+                as i32,
+        ),
+    };
+    Ok(RegionDescriptor {
+        name: string(region, "name")?,
+        target: string(region, "target")?,
+        base: unsigned(region, "base")?,
+        size: unsigned(region, "size")?,
+        kind,
+        priority,
+    })
+}
+
+fn unsigned(table: &toml::Table, key: &str) -> Result<u64, String> {
+    let value = table
+        .get(key)
+        .and_then(toml::Value::as_integer)
+        .ok_or_else(|| format!("{key}: expected an integer"))?;
+    if value < 0 {
+        return Err(format!("{key}: expected an unsigned integer"));
+    }
+    Ok(value as u64)
 }
 
 #[cfg(test)]

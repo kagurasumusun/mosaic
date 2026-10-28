@@ -1,0 +1,117 @@
+# AArch64 `virt` machine — QEMU's `hw/arm/virt.c` map for the Cortex-A53
+# class. The map is the architectural one (QEMU's `VIRT_MEMMAP`): RAM at
+# 0x40000000, PL011 UART at 0x09000000, GICv3 distributor at 0x08000000
+# with redistributors immediately above, virtio-mmio transports starting
+# at 0x0a000000, and PCIe ECAM at 0x3f000000. A bare-metal `-kernel`
+# image lands at the AArch64 Image header's placement (text_offset above
+# a 2 MiB-aligned base within the first 512 MiB of RAM).
+#
+# QEMU's `virt` is the AArch64 reference board: Linux and FreeBSD mainline
+# boot on it without port-specific patches, which is why it is the second
+# machine Mosaic targets (ADR 0033 wave 3). Unicorn 2.1.x has no
+# external-interrupt injection for AArch64 (ADR 0009), so a real OS's
+# interrupt-driven path is machine-pending — the bring-up ledger records
+# this — but the map, the GICv3 register model and the virtio-mmio
+# transports are all in place.
+[soc]
+id = 'soc:arm/virt64'
+summary = 'AArch64 virt-class machine: Cortex-A53, GICv3, PL011, virtio-mmio, PCIe ECAM slot'
+
+[[cpu]]
+name = 'core0'
+use = 'cpu:arm/cortex-a53'
+view = 'sysbus'
+
+# GICv3 distributor + redistributor frames. QEMU's `virt` places the
+# distributor at 0x08000000 and the redistributors at 0x080a0000 (one
+# 0x20000 stride per CPU); the model decodes both as one window of size
+# 0x30000 (GICD_FRAME + cpus * GICR_STRIDE). SPI outputs of devices wire
+# into the GIC by INTID; the GIC's `irq`/`fiq` outputs reach the core.
+[[block]]
+name = 'gic'
+use = 'ip:arm/gic-v3'
+at = { space = 'sysbus', base = 0x08000000 }
+# One CPU's Group-1 (irq) and Group-0 (fiq) outputs.
+irq = [
+    { pin = 'irq', to = ['core0.irq'] },
+    { pin = 'fiq', to = ['core0.fiq'] },
+]
+
+# PL011 UART at 0x09000000 — the console every virt-class guest probes
+# first. The combined IRQ is SPI 1 (QEMU's `VIRT_UART` wiring).
+[[block]]
+name = 'uart0'
+use = 'ip:arm/pl011'
+at = { space = 'sysbus', base = 0x09000000 }
+irq = [{ pin = 'combined', to = ['gic.inputs:1'] }]
+
+# virtio-mmio transports at 0x0a000000, 0x0a000200, ... — QEMU's
+# `VIRT_MMIO` window. Each transport gets its own SPI, starting at SPI 16
+# (the QEMU `virt` convention). The function-specific catalog IDs each
+# bundle the device + transport, so the manifest stays declarative.
+[[block]]
+name = 'virtio0'
+use = 'ip:virtio/virtio-rng'
+at = { space = 'sysbus', base = 0x0a000000 }
+irq = [{ pin = 'irq', to = ['gic.inputs:16'] }]
+
+[[block]]
+name = 'virtio1'
+use = 'ip:virtio/virtio-blk'
+at = { space = 'sysbus', base = 0x0a000200 }
+irq = [{ pin = 'irq', to = ['gic.inputs:17'] }]
+
+[[block]]
+name = 'virtio2'
+use = 'ip:virtio/virtio-console'
+at = { space = 'sysbus', base = 0x0a000400 }
+irq = [{ pin = 'irq', to = ['gic.inputs:18'] }]
+
+[[view]]
+name = 'sysbus'
+
+# RAM: 128 MiB default, matching QEMU's `virt` `-m 128` for bring-up.
+# A real `-m` override resizes this region in the board glue (the SoC
+# declaration carries the canonical base; the loader honours the runtime
+# size).
+[[view.region]]
+name = 'ram'
+target = 'ram'
+base = 0x40000000
+size = 0x08000000
+kind = 'ram'
+
+[[view.region]]
+name = 'gic-mmio'
+target = 'gic'
+base = 0x08000000
+size = 0x30000
+kind = 'mmio'
+
+[[view.region]]
+name = 'uart0-mmio'
+target = 'uart0'
+base = 0x09000000
+size = 0x1000
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio0-mmio'
+target = 'virtio0'
+base = 0x0a000000
+size = 0x200
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio1-mmio'
+target = 'virtio1'
+base = 0x0a000200
+size = 0x200
+kind = 'mmio'
+
+[[view.region]]
+name = 'virtio2-mmio'
+target = 'virtio2'
+base = 0x0a000400
+size = 0x200
+kind = 'mmio'

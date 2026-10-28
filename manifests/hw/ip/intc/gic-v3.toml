@@ -11,6 +11,12 @@ verified = 'spec-tested'
 
 [ports]
 mmio = { role = 'target', size = 0x30000 }
+# SPI inputs: each wire `inputs:<intid>` from a device's IRQ output is
+# registered with `GicV3::bind_spi_input(intid, source, signal)` so the
+# model's `on_signal` can map the (source, signal) pair back to the INTID.
+# The `count` is the SPI range (32..=255 → 224); individual wires name
+# their INTID in the suffix.
+inputs = { contract = 'model/signal', role = 'endpoint', count = 224 }
 irq = { role = 'source', pins = ['irq'] }
 fiq = { role = 'source', pins = ['fiq'] }
 

@@ -312,6 +312,7 @@ dependencies = [
  "mosaic-describe",
  "mosaic-exec",
  "mosaic-hw",
+ "mosaic-isa-aarch64",
  "mosaic-isa-arm",
  "mosaic-isa-x86",
  "mosaic-runtime",

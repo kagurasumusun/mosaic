@@ -18,6 +18,7 @@ mosaic-exec = { path = "../exec" }
 mosaic-contract = { path = "../contract" }
 mosaic-runtime = { path = "../runtime" }
 mosaic-isa-arm = { path = "../isa/arm" }
+mosaic-isa-aarch64 = { path = "../isa/aarch64" }
 mosaic-isa-x86 = { path = "../isa/x86" }
 mosaic-hw = { path = "../hw" }
 mosaic-bus = { path = "../bus" }
