@@ -1,0 +1,27 @@
+[identity]
+id = 'cpu:arm/cortex-a53'
+summary = 'ARM Cortex-A53 core declaration (AArch64, ARMv8-A)'
+spec = ['ARM DDI 0500', 'ARMv8-A ARM']
+variants = ['r0p0', 'r0p1', 'r0p2', 'r0p3', 'r0p4']
+
+[tags]
+function = ['cpu-core']
+fidelity = 'functional'
+verified = 'spec-tested'
+
+[engine]
+arch = 'aarch64-le'
+model = 'cortex-a53'
+
+[ports]
+# The core's own physical interrupt inputs. The GIC CPU interface is a
+# system-register interface (ICC_*_EL1) Unicorn 2.1.x does not expose, so
+# the GIC model drives these lines and the engine records their level
+# without injecting an exception (ADR 0009). The machine harness reports
+# pending-but-undelivered interrupts in its stop reason.
+irq = { role = 'sink', pins = ['irq', 'fiq'] }
+reset = { role = 'sink' }
+
+# No tunable parameters. The table is required so a missing section cannot be
+# confused with a parser skip.
+[params]

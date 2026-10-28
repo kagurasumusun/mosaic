@@ -273,6 +273,7 @@ dependencies = [
 name = "mosaic-isa-aarch64"
 version = "0.1.0"
 dependencies = [
+ "mosaic-contract",
  "mosaic-exec",
 ]
 

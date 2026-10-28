@@ -1,0 +1,26 @@
+[identity]
+id = 'cpu:sifive/u54'
+summary = 'SiFive U54 RISC-V core declaration (RV64GC, Freedom U540 class)'
+spec = ['SiFive FU540-C000 manual (U54 core complex)', 'RISC-V RV64GC']
+variants = ['rv64gc']
+
+[tags]
+function = ['cpu-core']
+fidelity = 'functional'
+verified = 'experimental'
+
+[engine]
+arch = 'riscv64-le'
+model = 'sifive-u54'
+
+[ports]
+# Machine-mode interrupt inputs. The PLIC's meip (line 0), the CLINT's
+# mtip (line 1) and the CLINT's msip (line 2) drive these. Unicorn 2.1.x
+# has no public injection API for RISC-V, so the engine records the levels
+# without taking an exception (ADR 0009).
+irq = { role = 'sink', pins = ['mext', 'mtimer', 'msoft'] }
+reset = { role = 'sink' }
+
+# No tunable parameters. The table is required so a missing section cannot be
+# confused with a parser skip.
+[params]

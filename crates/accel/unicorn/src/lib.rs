@@ -181,6 +181,10 @@ enum Backend {
     X86Boot,
     #[cfg(feature = "arch-riscv")]
     RiscV32,
+    /// RISC-V RV64 — same register vocabulary as RV32, but 64-bit XLEN.
+    /// Added by ADR 0033 wave 3 for `machine/riscv/virt`.
+    #[cfg(feature = "arch-riscv")]
+    RiscV64,
 }
 
 /// uc_riscv_reg lists X0..X31 contiguously; the table makes the mapping
@@ -273,6 +277,8 @@ impl Common {
             }
             #[cfg(feature = "arch-riscv")]
             Backend::RiscV32 => (Arch::RISCV, Mode::MODE_32 | Mode::LITTLE_ENDIAN),
+            #[cfg(feature = "arch-riscv")]
+            Backend::RiscV64 => (Arch::RISCV, Mode::MODE_64 | Mode::LITTLE_ENDIAN),
         };
         let mut uc = Unicorn::new_with_data(arch, mode, EngineData::default())
             .map_err(|_| EngineError::Backend)?;
@@ -758,7 +764,7 @@ impl Common {
                 _ => Err(EngineError::InvalidRegister),
             },
             #[cfg(feature = "arch-riscv")]
-            Backend::RiscV32 => match reg.0 {
+            Backend::RiscV32 | Backend::RiscV64 => match reg.0 {
                 // The arm covers X0..X31; the index is in bounds by the arm.
                 0..=31 => Ok(RISCV_GENERAL[reg.0 as usize] as i32),
                 32 => Ok(RegisterRISCV::PC as i32),
@@ -856,7 +862,7 @@ impl Common {
                 }
             }
             #[cfg(feature = "arch-riscv")]
-            Backend::RiscV32 => {
+            Backend::RiscV32 | Backend::RiscV64 => {
                 let Ok(pc) = self.inner.0.reg_read(RegisterRISCV::PC) else {
                     return outcome(StopReason::Fault, 0);
                 };
@@ -919,7 +925,7 @@ impl Common {
             Backend::Arm64 => 32,
             Backend::X86_64 => 16,
             #[cfg(feature = "arch-riscv")]
-            Backend::RiscV32 => 32,
+            Backend::RiscV32 | Backend::RiscV64 => 32,
             Backend::X86Real | Backend::X86Protected | Backend::X86Boot => 8,
         };
         if reg.0 == pc_id {
@@ -928,7 +934,7 @@ impl Common {
                 Backend::ArmMClass => value % 2 == 0,
                 Backend::X86_64 => true, // x86 instructions are byte aligned
                 #[cfg(feature = "arch-riscv")]
-                Backend::RiscV32 => value % 4 == 0,
+                Backend::RiscV32 | Backend::RiscV64 => value % 4 == 0,
                 // x86 instructions are variable length; any EIP is legal.
                 Backend::X86Real | Backend::X86Protected | Backend::X86Boot => true,
             };
@@ -1020,7 +1026,7 @@ impl Common {
             // through `queue_interrupt` (ADR 0018).
             Backend::X86Real | Backend::X86Protected | Backend::X86Boot => line.0 == 0,
             #[cfg(feature = "arch-riscv")]
-            Backend::RiscV32 => line.0 == 0,
+            Backend::RiscV32 | Backend::RiscV64 => line.0 == 0,
         };
         if !supported {
             return Err(EngineError::LineNotSupported);
@@ -2312,6 +2318,15 @@ unicorn_wrapper! {
     /// the base integer subset; the compressed extension is unused by the
     /// catalog firmware, and PC writes must be 4-byte aligned).
     UnicornRiscV32 => Backend::RiscV32
+}
+
+#[cfg(feature = "arch-riscv")]
+unicorn_wrapper! {
+    /// RISC-V RV64I little-endian core adapter (SiFive U54 / virt-class harts).
+    /// Added by ADR 0033 wave 3 for `machine/riscv/virt`. The register
+    /// vocabulary is shared with RV32; XLEN only widens the X registers and
+    /// the CSR set the model does not yet decode.
+    UnicornRiscV64 => Backend::RiscV64
 }
 
 /// MMIO read at an absolute guest address. All state lives in the engine-owned

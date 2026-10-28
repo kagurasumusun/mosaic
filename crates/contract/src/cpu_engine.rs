@@ -82,8 +82,14 @@ pub enum EngineArch {
     /// ARM Thumb-2 / ARMv7-M little-endian (Cortex-M3 class cores).
     /// The M-class engine configuration is ADR 0012; this variant only names it.
     ArmV7mLe,
+    /// AArch64 (ARMv8-A little-endian, Cortex-A53/A57 class cores).
+    /// Added by ADR 0033 wave 3 for `machine/arm/virt64`.
+    AArch64Le,
     /// RISC-V RV32 base integer ISA, little-endian.
     RiscV32Le,
+    /// RISC-V RV64 base integer ISA, little-endian (SiFive U54 / virt-class
+    /// harts). Added by ADR 0033 wave 3 for `machine/riscv/virt`.
+    RiscV64Le,
 }
 
 /// Catalog declaration of one processor core's execution configuration
