@@ -1,0 +1,5 @@
+290:test guest_mem::tests::window_round_trip_and_bounds ... FAILED
+292:failures:
+296:thread 'guest_mem::tests::window_round_trip_and_bounds' panicked at crates/contract/src/guest_mem.rs:69:21:
+318:failures:
+321:test result: FAILED. 26 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

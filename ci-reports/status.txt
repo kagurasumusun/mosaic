@@ -1,15 +1,15 @@
-run: https://github.com/kagurasumusun/mosaic/actions/runs/40649019780
-commit: 520add63b8488a7b5e90aedfa0924344e07bb994
+run: https://github.com/kagurasumusun/mosaic/actions/runs/40652188248
+commit: d0e43e5d298be784379ee6c455914e1b5a656ce2
 ref: refs/heads/master
-started: 2026-10-28T07:17:06Z
+started: 2026-10-28T07:46:25Z
 formatting: ok
 xtask: ok
-clippy: ok
+clippy: fail (code=101)
 build: ok
-test: ok
+test: fail (code=101)
 runtime-events: ok
 runtime-machine: ok
 runtime-snapshot: ok
 front-end: ok
 doctor: ok
-finished: 2026-10-28T07:25:00Z
+finished: 2026-10-28T07:53:30Z
