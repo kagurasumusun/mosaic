@@ -65,7 +65,7 @@ crates/hw/src/
 │   └── <function>/    # 機能: char, i2c, spi, gpio, intc, timer, ...
 ├── part/      # ファブリック経由でしか到達できないチップモデル
 │   └── <domain>/      # 部品としての正体: sensor, memory, mux, ...
-└── core/      # 複数ドメインから使われる共有機能コアとモデル作者の道具
+└── modelkit/  # 複数ドメインから使われる共有機能コアとモデル作者の道具
 ```
 
 * **`ip` (device)**: ボードの `at` でアドレス空間に置かれ、CPU が直接
@@ -157,14 +157,14 @@ platform`。
 
 ### 6. `core` の語彙
 
-* `core/primecell_id.rs` (旧 `misc/primecell_id.rs`) — PrimeCell 周辺
+* `modelkit/primecell_id.rs` (旧 `misc/primecell_id.rs`) — PrimeCell 周辺
   ID 規約。PL011/PL061/PL190/PL022/SP804 が使用。
-* `core/unmapped_policy.rs` — 未対応オフセットのポリシー。旧
+* `modelkit/unmapped_policy.rs` — 未対応オフセットのポリシー。旧
   `char/pl011.rs` 内の `UnmappedPolicy` (PL011 以外の 6 モデルが
   参照していたので共有物に昇格)。
-* `core/i2c_pointer.rs` (旧 `sensor/i2c_pointer.rs`) — ポインタレジスタ
+* `modelkit/i2c_pointer.rs` (旧 `sensor/i2c_pointer.rs`) — ポインタレジスタ
   形式のコア。sensor/adc/power の 3 ドメインから使用。
-* `core/pwm_device.rs` (旧 `misc/pwm_device_core.rs`) — PWM 駆動部品の
+* `modelkit/pwm_device_core.rs` (旧 `misc/pwm_device_core.rs`) — PWM 駆動部品の
   コア。fan と motion の 2 ドメインから使用。
 * 単一ドメインのファミリコア (`ds1307_core`, `vga_monitor_core`,
   `ps2_keyboard_core`, `nand_flash_core`, `gpib_instrument_core`) は
@@ -197,7 +197,7 @@ util(L0) ← exec(L1) ← contract(L2) ← bus(L3) ← runtime(L4)
            front(mosaic, L9) は machine + boot のみ
 ```
 
-`hw` の中の `ip` / `part` / `core` は層ではなく **同一層内の居場所分け**
+`hw` の中の `ip` / `part` / `modelkit` は層ではなく **同一層内の居場所分け**
 である。依存方向は従来どおり下位層のみ (`contract`, `exec`, `util`,
 `bus`, `runtime`, `assemble`)、`machine` への依存は禁止。
 

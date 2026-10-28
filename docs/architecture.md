@@ -1,6 +1,6 @@
 # 大規模仮想マシン 構成設計書
 
-ドラフト v0.2 ／ 2026-10-27 改訂 ／ 前提: Rust 主体(C/C++ 併用)。CPU 実行は初期 Unicorn Engine、最終的に自前実装へ置換。
+ドラフト v0.5 ／ 2026-10-28 改訂 ／ 前提: Rust 主体(C/C++ 併用)。CPU 実行は Unicorn Engine のみ(ADR 0030 で一本化、自前実装への置換前提は撤回)。
 
 > **v0.2 の改訂(ADR 0024)**: ディレクトリの軸を「種別 → 出自」から
 > **QEMU 型(領域 → 機能/アーキ)**へ置換した。§1・§5・§6・§8・§9・§15・§25 を
@@ -22,6 +22,14 @@
 > ffi)。ルートに残るのは非クレート (manifests/firmware/third_party/docs/
 > ci-reports と設定ファイル) だけ。§5 の「領域」語彙は `crates/<領域>` と
 > 読み替える。分類軸 (§1) は不変。
+>
+> **v0.5 の改訂(ADR 0030/0031)**: CPU 実行は Unicorn Engine に一本化し
+> 「最終的に自前実装へ置換」の前提を撤回した。`hw` の中を責務別の
+> 3 軸 (`ip/<function>` = CPU がアドレス空間経由で直接叩くモデル、
+> `part/<domain>` = ファブリック経由でしか到達できない部品、
+> `modelkit` = 2 ドメイン以上から使う共有コア) に再編した。ファブリック
+> 名による部品の分類と `misc` 受け皿を廃止し、同一チップの重複登録を
+> 禁止した。§6・§10・§15 の該当行は ADR 0031 の語彙に読み替える。
 
 > **凡例** 【確認済】今回の調査で一次情報を確認した事実 ／ 【既知】筆者の既存知識(今回は再確認していない) ／ 【要検証】設計上の仮定で、実装前に小さな実験で確かめること。プロジェクト名は未定のため `<proj>` と表記する。
 
@@ -268,7 +276,7 @@ describe(依存なし)   isa ─► contract(※), exec
 ## 9. 命名規則
 
 - **N1 実世界の名前で呼ぶ**: 型番・規格名・公式の IP 名(`pl011`, `bme280`, `dw-apb-i2c`)。用途名(`uart`, `temp-sensor`)や自作の愛称は使わない。用途は manifest のタグが担う。
-- **N2 禁止語**: `common` `utils` `generic` `base` `helper` `manager` `handler` `impl` `shared` `new` `old` `stuff` をディレクトリ名・クレート名に使わない(`xtask lint-names` で検出)。受け皿が必要に見えたら、それは概念の切り出しが足りないサイン。**例外**: `misc` は QEMU の `hw/misc` と同じく `hw/src/misc`(とその manifest ミラー)に限り許可(ADR 0024)。
+- **N2 禁止語**: `common` `utils` `generic` `base` `helper` `manager` `handler` `impl` `shared` `new` `old` `stuff` に加えて **`misc` も禁止**(`xtask lint-names` で検出)。受け皿が必要に見えたら、それは概念の切り出しが足りないサイン。QEMU が許す `hw/misc` 相当の受け皿は ADR 0024 で許していたが ADR 0031 で撤回した(210 件への肥大が実証した通り、受け皿は分類の先送りを生む)。
 - **N3 表記**: kebab-case。出自は `origins.toml` の正規名のみ(例 `arm`, `st`, `nxp`, `ti`, `bosch`, `synopsys`, `riscv`)。
 - **N4 クレート名**: ディレクトリ階層をそのまま写す(`<proj>-hw`, `<proj>-machine`, `<proj>-accel-unicorn`, `<proj>-isa-arm`, …)。入り口バイナリは `<proj>` のみ。
 - **N5 変種は公式の呼称**: `@r1p5`(ARM の版表記)、`@v2`(ベンダーの IP 版)。SoC 名を変種名にしない。
@@ -623,14 +631,14 @@ add     = [ { region = 'rpu-tcm', at = 0x0, size = 0x10000 } ]   # RPU の専用
 
 | 足したいもの | 置き場所 | 補足 |
 | --- | --- | --- |
-| 新しいバスプロトコル(例 I3C) | `contract/src/i3c.rs` + `hw/src/i2c` 隣接の機能ディレクトリ + conformance | 契約・実体・適合テストを 1 セットで追加 |
+| 新しいバスプロトコル(例 I3C) | `contract/src/i3c.rs` + `bus/src/<fabric>` + その部品は `hw/src/part/<domain>` + conformance | 契約・実体・適合テストを 1 セットで追加 |
 | 新しい ISA | `isa/<name>` + `accel/<name>`(自前)または accel/unicorn の arch feature | QEMU の target/<arch> に同じ |
 | 新しい CPU コア | `isa/<arch>/src/cpu/<core>.rs` + `manifests/isa/<arch>/<core>.toml` | QEMU の target/<arch> 内の CPU モデルと同じ居場所 |
 | CPU クラスタ(コア × N + L2 + GIC) | `catalog/subsys/<origin>/<name>` | 宣言が主 |
-| SoC 内蔵の周辺 IP | `hw/src/<function>/<ip>.rs` + `manifests/hw/<function>/<ip>.toml` | 版差は variant、SoC 差は params |
+| SoC 内蔵の周辺 IP | `hw/src/ip/<function>/<ip>.rs` + `manifests/hw/ip/<function>/<ip>.toml` | 版差は variant、SoC 差は params |
 | その SoC だけの専用ブロック | `catalog/soc/.../local/<chip>-<block>` | 2 つ目の利用者が出たら ip へ昇格 |
-| 外部のセンサ・メモリ・PMIC | `hw/src/sensor/<part>.rs` 等(機能軸)+ manifest | 複数バス対応はモデルをディレクトリにして bind 別モジュール(bme280 型) |
-| バススイッチ・mux(PCA9548 など) | `hw/src/i2c/<part>.rs` | ports に role = bridge を宣言 |
+| 外部のセンサ・メモリ・PMIC | `hw/src/part/<domain>/<part>.rs`(部品の正体軸)+ manifest | 複数バス対応は 1 モデル + bind 複数(bme280 型、ADR 0031 §5) |
+| バススイッチ・mux(PCA9548 など) | `hw/src/part/mux/<part>.rs` | 上流は I2cTarget、下流は fabric のバス実体 |
 | クロスバ・ブリッジ(AXI, APB) | プロトコルのモデルは `interconnect`、SoC 固有の設定は soc の記述 | 配置・優先度は記述側 |
 | IOMMU / SMMU | `catalog/ip/arm/...` + `contract/bus` の変換ロール | DMA マスタごとの視点で表現 |
 | 割り込みコントローラ | 独立 IP は `hw/src/intc/`、コア密結合(NVIC)は `isa/<arch>` 側 | 境界は「CPU と別に存在できるか」 |

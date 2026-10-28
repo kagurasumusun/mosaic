@@ -2,10 +2,11 @@
 
 Rust 主体の大規模汎用仮想マシン。リポジトリ名を暫定のプロジェクト名・クレート接頭辞として使用しています。
 
-CPU 実行は Unicorn Engine、ディレクトリ構成は QEMU を参照モデルとする
-（ADR 0024: デバイスは機能軸 `hw/`、機械はアーキ軸 `machine/`、
-ISA と CPU モデルは `isa/`、エンジンは `accel/`）。テストは実イメージのみ
-（ADR 0022）。
+CPU 実行は Unicorn Engine のみ（ADR 0030）。ディレクトリ構成は QEMU を
+参照モデルとしつつ、`hw` の内側は責務別に分ける（ADR 0031: CPU が
+アドレス空間から直接叩く `hw/src/ip/<function>/`、ファブリック経由で
+しか到達できない `hw/src/part/<domain>/`、2 ドメイン以上から使う共有
+コア `hw/src/modelkit/`）。テストは実イメージのみ（ADR 0022）。
 
 ## システムエミュレータとして使う
 
@@ -64,7 +65,7 @@ cargo xtask doctor
 必要な native ビルド依存、GPL-2.0 と制限は [Unicorn ガイド](docs/guides/unicorn.md)
 を参照してください。
 
-## 構造（QEMU 型ディレクトリ軸、ADR 0024）
+## 構造（責務別分類、ADR 0031）
 
 ```
 crates/            ワークスペースクレートはすべてこの下（ADR 0028）
@@ -80,18 +81,26 @@ crates/            ワークスペースクレートはすべてこの下（ADR 
         proto/  x86・arm32・arm64・riscv Linux・Cortex-M・multiboot・FDT
     runtime/       アドレス空間・イベント・クロック・Machine … QEMU system/
     isa/{arm,aarch64,x86,riscv}/  ISA 語彙 + CPU モデル   … QEMU target/ *
-    accel/{unicorn,armv7m,conformance}/  実行エンジン      … QEMU accel/
-    hw/            デバイスモデル。機能別 1 ディレクトリ   … QEMU hw/<function>/
-        char/ display/ dma/ flash/ gpio/ i2c/ i3c/ ide/ input/
-        intc/ mailbox/ misc/ net/ nvram/ pci/ rtc/ sd/ sensor/
-        ssi/ timer/ usb/ virtio/ + catalog.rs（モデル自己登録）
+    accel/{unicorn,conformance}/  実行エンジンは Unicorn 1 本（ADR 0030）
+    hw/            ハードウェアモデル。責務別 3 軸（ADR 0031）
+        ip/<function>/  CPU がアドレス空間経由で直接叩くレジスタモデル
+            char/ spi/ i2c/ gpio/ intc/ timer/ rtc/ dma/ sd/ usb/ net/
+            pci/ ide/ nvram/ mailbox/ wdt/ virtio/ display/ audio/ input/
+            clock/ platform/
+        part/<domain>/  ファブリック経由でしか到達できない部品（正体軸）
+            sensor/ memory/ storage/ expander/ mux/ rtc/ adc/ dac/ audio/
+            display/ input/ net/ power/ motion/ fan/ led/ security/ nfc/
+            instrument/ serial/ can/ i3c/ ec/
+        modelkit/   2 ドメイン以上から使う共有コア
+            primecell_id・i2c_pointer・pwm_device_core・unmapped_policy
     machine/       機械モデル（SoC とボード）。アーキ別     … QEMU hw/<arch>/
         arm/stm32f103/    i386/pc/
     describe/      manifest → MachineGraph（IR、clk は block.port 参照可）
     assemble/      IR → 実行時インスタンス（engine 結合・HostAttachments）
     tests/ xtask/  実イメージ boot テスト・CI 検査ツール
     host/ ops/ bridge/ ffi/  将来層のプレースホルダ（chardev/ui/monitor 等）
-manifests/         manifest データ木（コードと同じ形にミラー）
+manifests/         manifest データ木（コードと同じ形にミラー:
+                   hw/ip/<fn>/・hw/part/<domain>/・hw/modelkit/）
 firmware/          ファームウェアの記述                    … QEMU pc-bios/
 docs/ third_party/ ci-reports/
 ```
@@ -99,9 +108,16 @@ docs/ third_party/ ci-reports/
 \* QEMU の `target/` に相当しますが、cargo が `target/` をビルド出力として
 予約しているため `isa/` という名前です。
 
-**モデル追加は定型作業**（ADR 0024 §5 + ADR 0025）: 機能デバイスは
-`hw/src/<function>/<model>.rs` 1 ファイル + `<function>/catalog.rs` 1 行 +
-manifest 1 ファイル。機械は manifest（部品・wire・`rcc.gate-apb2-iopa` 形式の
+**分類の規則（ADR 0031）**: 部品の居場所は「何であるか」で決まり、どの
+バスで話すか（`bindings`）は属性に過ぎない。多バス部品（BME280 型）は
+1 モデル + bind 複数で表し、同一チップの別モデル化は禁止。`misc` のような
+受け皿は存在しない — どこにも置けない部品が出たらドメインを ADR で追加する。
+
+**モデル追加は定型作業**（ADR 0024 §5 + ADR 0025 + ADR 0031）:
+アドレス空間に載るデバイスは `hw/src/ip/<function>/<model>.rs` 1 ファイル +
+`ip/<function>/catalog.rs` 1 行 + `manifests/hw/ip/<function>/<model>.toml`、
+ファブリック部品は `hw/src/part/<domain>/<model>.rs` + manifest（ボードが
+ファブリック配線で接続）。機械は manifest（部品・wire・`rcc.gate-apb2-iopa` 形式の
 クロック配線）+ 固有情報（どの UART がコンソールか等）のみで、モデルの生成知識
 （IRQ・クロック・パラメータ）はカタログ側が持つためボードに再利用される。
 既存のどこかのディレクトリに機能が溶け込むことはありません。
@@ -117,7 +133,7 @@ manifest 1 ファイル。機械は manifest（部品・wire・`rcc.gate-apb2-io
 - 決定論的イベントキュー、ノード専用 Ctx、遅延 signal、型付きキュースナップショット。
 - Region 木 → FlatView、優先度 overlay、境界・permission・device offset 解決。
 - Unicorn アダプタ（2.1.5、ARM/AArch64/x86/RISC-V、x86 例外エントリと
-  ポート I/O、CPU モデル固定）、native ARMv7-M インタプリタ、conformance 枠。
+  ポート I/O、CPU モデル固定）と、エンジン契約の回帰フィクスチャ（conformance）。
 - `EngineBus` callback と `mmio_map` による engine 側 MMIO region、バス故障の記録と Fault 停止。
 - デバイスアリーナ（take-out と再入拒否）、RAM/ROM バッキング、FlatView 経由の
   MMIO ディスパッチ、タイマ・signal の配線と配送を持つ `Machine`。
@@ -136,10 +152,17 @@ manifest 1 ファイル。機械は manifest（部品・wire・`rcc.gate-apb2-io
   CRC 検証・FAT12/16/32 LFN・initramfs cpio 連結）、proto 8 種（x86 Linux
   boot_params・ARM32 Linux+ATAGS・AArch64 Image header・RISC-V・Cortex-M リセット
   列・multiboot 情報構造・FDT/DTB 解析と in-place fixup）。
-- モデルカタログ（ADR 0025）: 各機能ディレクトリの `catalog.rs` が 30+ モデルを
-  自己登録（QEMU TYPE_INFO 相当）。`ModelEntry::outputs` が RCC 43 ゲート等の
-  ベンダー出力表を公開し、宣言的 `clk` 配線を可能にする。stm32f103 ボードは
-  ファクトリクロージャ 0 個で manifest とカタログだけで組まれている。
+- モデルカタログ（ADR 0025 + ADR 0031）: 各 `ip` 機能ディレクトリと
+  `part` ドメインの `catalog.rs` が全モデルを自己登録（QEMU TYPE_INFO 相当、
+  コード側カタログと manifest 側カタログの一致を CI が検査）。
+  `ModelEntry::outputs` が RCC 43 ゲート等のベンダー出力表を公開し、
+  宣言的 `clk` 配線を可能にする。stm32f103 ボードはファクトリクロージャ
+  0 個で manifest とカタログだけで組まれている。
+- 複合部品の実モデル（ADR 0031 §3 の実証）: TCA9548A 8 チャネル I2C
+  スイッチ（上流 I2cTarget・下流 8 セグメントの I2cBus、part/mux）、
+  MCP23017 16 ビット GPIO エキスパンダ（I2C レジスタバンク + GpioPort
+  16 本、part/expander）— 1 つの部品が複数ファブリックを橋渡しする
+  構成を、共通基盤との統一された連携方法で実装。
 - 個別モデル: NS16550A（FIFO・モデム線・ループバック）、VGA（レジスタ・
   VRAM アパーチャ・VBE）、8042 + PS/2 キーボード/マウス、HPET、8237A DMA、
   PL031 RTC、CFI NOR フラッシュ、SD カード（SD/eMMC 両プロトコル）+ SDHCI +
@@ -163,6 +186,7 @@ cargo run --locked --package mosaic-runtime --example snapshot # checkpoint / re
 ### 次の実装
 
 機械の追加（`virt` AArch64、`goldfish` Android、実機忠実の `versatile-pb`）、
+part 側カタログの spawn 対応と board からの宣言的 `conn` 接続の拡充、
 catalog 全モデルの State 化と checkpoint 対象拡大、永続化と State migration、
 命令数と VTime を結ぶ clock tree、Unicorn 2.1.x に無い外部割り込み注入、
 Linux/Android/Windows の各機械での実イメージ到達点更新

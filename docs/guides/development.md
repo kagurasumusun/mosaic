@@ -23,7 +23,7 @@ level = 3            # 下の表のレベル
 | contract | 2 | 12 契約モジュール |
 | isa | 2 | isa/arm, isa/x86（+ contract への唯一の同位依存） |
 | block | 2 | ISO9660 形式 |
-| runtime / accel / hw | 3 | Machine / unicorn, armv7m / デバイスモデル |
+| runtime / accel / hw | 3 | Machine / unicorn のみ（ADR 0030）/ デバイスモデル（ip・part・modelkit、ADR 0031） |
 | describe | 4 | manifest → MachineGraph |
 | assemble | 5 | IR → 実体、engine 結合 |
 | machine | 6 | arm/stm32f103, i386/pc |
