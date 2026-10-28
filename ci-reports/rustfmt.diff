@@ -1,0 +1,59 @@
+diff --git a/crates/hw/src/ip/intc/gic_v3.rs b/crates/hw/src/ip/intc/gic_v3.rs
+index eb18f2e..c78e6b6 100644
+--- a/crates/hw/src/ip/intc/gic_v3.rs
++++ b/crates/hw/src/ip/intc/gic_v3.rs
+@@ -198,12 +198,7 @@ impl GicV3 {
+     /// here; `on_signal` then maps the (source, signal) pair back to the
+     /// INTID. Without this binding, `on_signal` falls back to `signal.0`
+     /// as the INTID (the legacy convention).
+-    pub fn bind_spi_input(
+-        &mut self,
+-        intid: u32,
+-        source: mosaic_exec::NodeId,
+-        signal: SignalId,
+-    ) {
++    pub fn bind_spi_input(&mut self, intid: u32, source: mosaic_exec::NodeId, signal: SignalId) {
+         self.spi_inputs.insert((source, signal), intid);
+     }
+ 
+diff --git a/crates/machine/src/manifest.rs b/crates/machine/src/manifest.rs
+index 297ebc4..6ac8dfd 100644
+--- a/crates/machine/src/manifest.rs
++++ b/crates/machine/src/manifest.rs
+@@ -318,10 +318,7 @@ fn parse_block(value: &toml::Value) -> Result<BlockInstance, String> {
+                 let source = source.as_str().ok_or(
+                     "block.clk: clock source must be a string (a clock net or a block.port reference)",
+                 )?;
+-                map.insert(
+-                    input.clone(),
+-                    ConfigValue::String(source.to_owned()),
+-                );
++                map.insert(input.clone(), ConfigValue::String(source.to_owned()));
+             }
+             map
+         }
+@@ -352,8 +349,7 @@ fn parse_region(value: &toml::Value) -> Result<RegionDescriptor, String> {
+         Some(value) => Some(
+             value
+                 .as_integer()
+-                .ok_or("region.priority: expected an integer")?
+-                as i32,
++                .ok_or("region.priority: expected an integer")? as i32,
+         ),
+     };
+     Ok(RegionDescriptor {
+diff --git a/crates/mosaic/src/lib.rs b/crates/mosaic/src/lib.rs
+index b19dd4c..f307943 100644
+--- a/crates/mosaic/src/lib.rs
++++ b/crates/mosaic/src/lib.rs
+@@ -463,9 +463,7 @@ fn run_virt64(config: &SystemConfig) -> Result<SystemReport, String> {
+         }
+         let kernel = match &config.boot {
+             BootSource::DirectKernel(kernel) => kernel,
+-            BootSource::Order(_) => {
+-                return Err("the virt64 machine boots with -kernel only".into())
+-            }
++            BootSource::Order(_) => return Err("the virt64 machine boots with -kernel only".into()),
+         };
+         if kernel.initrd.is_some() {
+             return Err("the virt64 machine has no initramfs concept yet".into());

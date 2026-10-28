@@ -5,5 +5,5 @@
 [1m[32m   Compiling[0m mosaic-hw v0.1.0 (/home/runner/work/mosaic/mosaic/crates/hw)
 [1m[32m   Compiling[0m mosaic-machine v0.1.0 (/home/runner/work/mosaic/mosaic/crates/machine)
 [1m[32m   Compiling[0m mosaic v0.1.0 (/home/runner/work/mosaic/mosaic/crates/mosaic)
-[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 17.74s
+[1m[32m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 25.17s
 [1m[32m     Running[0m `target/debug/mosaic -cdrom crates/tests/assets/tinycore-16-core.iso -m 64M --instruction-limit 8000000 --report ci-reports/front-end.json -q`
