@@ -2,7 +2,7 @@
 //! only recorded. Parts that raise no signals simply pass `&mut TestCtx`.
 
 use mosaic_contract::model::{ContextError, Ctx};
-use mosaic_exec::{EventId, SignalId, VDelta, VTime};
+use mosaic_exec::{EventId, NodeId, SignalId, VDelta, VTime};
 
 /// Signal-edge recorder shared by the part-core unit tests.
 #[derive(Default)]
@@ -30,6 +30,17 @@ impl Ctx for TestCtx {
 
     fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError> {
         self.edges.push((signal, high));
+        Ok(())
+    }
+
+    fn set_signal_from(
+        &mut self,
+        node: NodeId,
+        signal: SignalId,
+        high: bool,
+    ) -> Result<(), ContextError> {
+        self.edges.push((signal, high));
+        let _ = node;
         Ok(())
     }
 }

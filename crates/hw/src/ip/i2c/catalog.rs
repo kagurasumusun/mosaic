@@ -7,7 +7,7 @@ use crate::ip::i2c::am335x_i2c::Am335XI2C;
 use crate::ip::i2c::dw_apb_i2c::{DwApbI2c, DwApbI2cParams};
 use crate::ip::i2c::efm32_i2c::Efm32I2C;
 use crate::ip::i2c::esp32_i2c::Esp32I2C;
-use crate::ip::i2c::i2c_f1::I2CF1;
+use crate::ip::i2c::i2c_f1::{I2cF1, I2cF1Params};
 use crate::ip::i2c::i2c_f4::I2CF4;
 use crate::ip::i2c::i2c_f7::I2CF7;
 use crate::ip::i2c::i2c_h7::I2CH7;
@@ -112,11 +112,18 @@ fn spawn_lpc43xx_i2c(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), 
     machine.register_device(ctx.node, Box::new(device))?;
     Ok(())
 }
-/// Default spawn for i2c-f1: reads the irq output from the catalog
-/// output table and registers the device with the machine.
+/// STM32F1 I2C (RM0008): `ev`/`er` IRQ outputs, the RCC `clock` gate input
+/// and an `i2c` initiator face the board wires target parts onto (ADR 0032).
 fn spawn_i2c_f1(ctx: &InstantiateCtx, machine: &mut Machine) -> Result<(), MaterializeError> {
-    let irq = ctx.output("irq")?;
-    let device = I2CF1::new(irq);
+    let ev = ctx.output("ev")?;
+    let er = ctx.output("er")?;
+    // The controller always masters its segment: an empty bus is a valid
+    // master with nothing attached.
+    let initiator = SharedI2c::new(ctx.i2c_segment("i2c"));
+    let mut device = I2cF1::new(I2cF1Params::new(ev, er), Box::new(initiator));
+    if let Some(wire) = ctx.incoming.iter().find(|wire| wire.port == "clock") {
+        device.bind_clock(wire.source, wire.signal);
+    }
     machine.register_device(ctx.node, Box::new(device))?;
     Ok(())
 }

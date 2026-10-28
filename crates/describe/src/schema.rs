@@ -384,12 +384,39 @@ pub struct BoardConnection {
     pub kind: String,
 }
 
+/// One port face a board wires onto a part instance (ADR 0032).
+///
+/// A part's connection surface is a *set* of faces: the transport it sits
+/// on (`i2c`/`spi` target faces), the lines it drives or observes (`gpio`
+/// faces, one per line), its interrupt outputs (`irq` faces) and its clock
+/// inputs (`clock` faces). `to` always names the *other end* of the wire;
+/// the edge direction is derived from the kind.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PartFace {
+    /// Face name on the model, as its manifest `[ports]` declares
+    /// (for example `i2c`, `gpio`, or a mux's `down0`).
+    pub port: String,
+    /// Face kind: `i2c`, `spi`, `gpio`, `irq` or `clock`.
+    pub kind: String,
+    /// The far endpoint: an initiator face (`soc.i2c1:i2c`,
+    /// `board.mux:down2`), a net (`wire:…`), a sink (`soc.scs.inputs:31`)
+    /// or a clock source (`rcc.gate-apb1-i2c1`).
+    pub to: String,
+    /// Line index of a `gpio` face; none for the other kinds.
+    pub index: Option<u64>,
+    /// Output pin name of an `irq` face; none for the other kinds.
+    pub pin: Option<String>,
+    /// Free wiring parameters (`address`, `pull`, `cs`, …) carried onto
+    /// the graph edge and read by the model's spawn.
+    pub parameters: BTreeMap<String, ConfigValue>,
+}
+
+/// A part instance on a board: one model, zero or more wired faces.
 #[derive(Clone, Debug)]
 pub struct PartInstance {
     pub name: String,
     pub use_id: String,
-    pub bind: String,
-    pub conn: BTreeMap<String, ConfigValue>,
+    pub faces: Vec<PartFace>,
 }
 
 impl BoardManifest {
@@ -422,104 +449,136 @@ impl BoardManifest {
             non_empty("conn.to", &connection.to)?;
             non_empty("conn.kind", &connection.kind)?;
         }
+        // Face wiring keeps one address per (upstream bus endpoint) so two
+        // parts cannot claim the same I2C address on the same segment.
         let mut bus_addresses = BTreeSet::new();
-        let mut chip_selects = BTreeSet::new();
         for part in &self.part {
             validate_local_name("part.name", &part.name)?;
             unique_name("part.name", &part.name, &mut part_names)?;
             validate_catalog_id("part.use", &part.use_id, &["part"])?;
-            non_empty("part.bind", &part.bind)?;
-            if part.conn.is_empty() {
+            let mut face_keys = BTreeSet::new();
+            for face in &part.faces {
+                validate_part_face(&part.name, face, &mut face_keys, &mut bus_addresses)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validate one `[[part.face]]` against the grammar of ADR 0032.
+fn validate_part_face(
+    part: &str,
+    face: &PartFace,
+    face_keys: &mut BTreeSet<(String, Option<u64>, Option<String>)>,
+    bus_addresses: &mut BTreeSet<(String, i64)>,
+) -> Result<(), DescriptorError> {
+    validate_local_name("part.face.port", &face.port)?;
+    non_empty("part.face.to", &face.to)?;
+    let key = (face.port.clone(), face.index, face.pin.clone());
+    if !face_keys.insert(key) {
+        return Err(DescriptorError::new(
+            "part.face",
+            format!(
+                "part {part:?} wires face {:?} (index {:?}, pin {:?}) twice",
+                face.port, face.index, face.pin
+            ),
+        ));
+    }
+    match face.kind.as_str() {
+        "i2c" | "spi" => {
+            // The far end must name an initiator *face*, so the endpoint
+            // needs a port path: `soc.i2c1:i2c`, not a bare node.
+            let endpoint = parse_endpoint(&face.to, "soc").map_err(|mut error| {
+                error.message = format!("face {:?}: {}", face.port, error.message);
+                error
+            })?;
+            if endpoint.port.is_empty() {
                 return Err(DescriptorError::new(
-                    "part.conn",
-                    format!("part {:?} must declare connection parameters", part.name),
+                    "part.face.to",
+                    format!(
+                        "face {:?} of part {part:?} must reference an initiator face \
+                         (for example 'soc.i2c1:i2c'), not the bare node {:?}",
+                        face.port, face.to
+                    ),
                 ));
             }
-            let bus = part.conn.get("bus").and_then(ConfigValue::as_str);
-            match part.bind.as_str() {
-                "i2c" => {
-                    let bus = bus.ok_or_else(|| {
-                        DescriptorError::new(
-                            "part.conn.bus",
-                            format!("I2C part {:?} must declare a string bus", part.name),
-                        )
-                    })?;
-                    non_empty("part.conn.bus", bus)?;
-                    let address = part
-                        .conn
-                        .get("addr")
-                        .and_then(ConfigValue::as_integer)
-                        .ok_or_else(|| {
-                            DescriptorError::new(
-                                "part.conn.addr",
-                                format!("I2C part {:?} must declare an integer address", part.name),
-                            )
-                        })?;
-                    if !(0..=0x3ff).contains(&address) {
-                        return Err(DescriptorError::new(
-                            "part.conn.addr",
-                            format!(
-                                "part {:?} has an out-of-range I2C address {address:#x}",
-                                part.name
-                            ),
-                        ));
-                    }
-                    let key = (bus.to_owned(), address);
-                    if !bus_addresses.insert(key.clone()) {
-                        return Err(DescriptorError::new(
-                            "part.conn.addr",
-                            format!("duplicate I2C address {:#x} on bus {:?}", address, key.0),
-                        ));
-                    }
-                }
-                "spi" => {
-                    let bus = bus.ok_or_else(|| {
-                        DescriptorError::new(
-                            "part.conn.bus",
-                            format!("SPI part {:?} must declare a string bus", part.name),
-                        )
-                    })?;
-                    non_empty("part.conn.bus", bus)?;
-                    let cs = part
-                        .conn
-                        .get("cs")
-                        .and_then(ConfigValue::as_integer)
-                        .ok_or_else(|| {
-                            DescriptorError::new(
-                                "part.conn.cs",
-                                format!(
-                                    "SPI part {:?} must declare an integer chip-select",
-                                    part.name
-                                ),
-                            )
-                        })?;
-                    if cs < 0 {
-                        return Err(DescriptorError::new(
-                            "part.conn.cs",
-                            format!("part {:?} has a negative chip-select index", part.name),
-                        ));
-                    }
-                    let key = (bus.to_owned(), cs);
-                    if !chip_selects.insert(key.clone()) {
-                        return Err(DescriptorError::new(
-                            "part.conn.cs",
-                            format!("duplicate SPI chip-select {cs} on bus {:?}", key.0),
-                        ));
-                    }
-                }
-                other => {
+            if face.kind == "i2c" {
+                let address = face
+                    .parameters
+                    .get("address")
+                    .and_then(ConfigValue::as_integer);
+                let Some(address) = address else {
                     return Err(DescriptorError::new(
-                        "part.bind",
+                        "part.face.address",
                         format!(
-                            "part {:?} uses unsupported binding kind {:?}; expected i2c or spi",
-                            part.name, other
+                            "I2C face {:?} of part {part:?} must declare an integer address",
+                            face.port
+                        ),
+                    ));
+                };
+                if !(0..=0x3ff).contains(&address) {
+                    return Err(DescriptorError::new(
+                        "part.face.address",
+                        format!(
+                            "face {:?} of part {part:?} has an out-of-range I2C address {address:#x}",
+                            face.port
+                        ),
+                    ));
+                }
+                if !bus_addresses.insert((face.to.clone(), address)) {
+                    return Err(DescriptorError::new(
+                        "part.face.address",
+                        format!(
+                            "duplicate I2C address {address:#x} on the segment {:?} wired by \
+                             face {:?} of part {part:?}",
+                            face.to, face.port
                         ),
                     ));
                 }
             }
         }
-        Ok(())
+        "gpio" => {
+            if face.index.is_none() {
+                return Err(DescriptorError::new(
+                    "part.face.index",
+                    format!(
+                        "gpio face {:?} of part {part:?} must declare a line index",
+                        face.port
+                    ),
+                ));
+            }
+            if !face.to.starts_with("wire:") {
+                return Err(DescriptorError::new(
+                    "part.face.to",
+                    format!(
+                        "gpio face {:?} of part {part:?} must reference a net (wire:…), \
+                         found {:?}",
+                        face.port, face.to
+                    ),
+                ));
+            }
+        }
+        "irq" => {
+            let Some(pin) = &face.pin else {
+                return Err(DescriptorError::new(
+                    "part.face.pin",
+                    format!("irq face of part {part:?} must declare the output pin name"),
+                ));
+            };
+            validate_local_name("part.face.pin", pin)?;
+        }
+        "clock" => {}
+        other => {
+            return Err(DescriptorError::new(
+                "part.face.kind",
+                format!(
+                    "part {part:?} uses unsupported face kind {other:?}; expected i2c, spi, \
+                     gpio, irq or clock"
+                ),
+            ));
+        }
     }
+    Ok(())
 }
 
 fn validate_catalog_id(

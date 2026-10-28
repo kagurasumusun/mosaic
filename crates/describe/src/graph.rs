@@ -262,9 +262,144 @@ impl MachineGraph {
                         id: format!("board.{}", part.name),
                         kind: GraphNodeKind::Part,
                         catalog_id: Some(part.use_id.clone()),
-                        parameters: part.conn.clone(),
+                        parameters: BTreeMap::new(),
                     },
                 )?;
+            }
+            // Face wiring (ADR 0032): each `[[part.face]]` becomes one edge
+            // whose direction follows the face kind. Parts may be wired onto
+            // several fabrics at once — the faces are the wiring, not the
+            // model's directory.
+            let block_names: BTreeSet<&str> =
+                soc.block.iter().map(|block| block.name.as_str()).collect();
+            for part in &board.part {
+                for face in &part.faces {
+                    let part_node = format!("board.{}", part.name);
+                    match face.kind.as_str() {
+                        "i2c" | "spi" => {
+                            let endpoint = parse_endpoint(&face.to, "soc")?;
+                            if !nodes.contains_key(&endpoint.node_id) {
+                                return Err(DescriptorError::new(
+                                    "part.face.to",
+                                    format!(
+                                        "face {:?} of part {:?} references unknown initiator \
+                                         node {:?}",
+                                        face.port, part.name, endpoint.node_id
+                                    ),
+                                ));
+                            }
+                            edges.push(GraphEdge {
+                                id: format!("face.{}.{}", part.name, face.port),
+                                from_node: endpoint.node_id,
+                                from_port: endpoint.port,
+                                to_node: part_node,
+                                to_port: face.port.clone(),
+                                kind: face.kind.clone(),
+                                parameters: face.parameters.clone(),
+                            });
+                        }
+                        "gpio" => {
+                            let index = face.index.unwrap_or(0);
+                            ensure_external_node(&mut nodes, &face.to)?;
+                            if !nodes.contains_key(&face.to) {
+                                return Err(DescriptorError::new(
+                                    "part.face.to",
+                                    format!(
+                                        "gpio face {:?} of part {:?} references unknown net {:?}",
+                                        face.port, part.name, face.to
+                                    ),
+                                ));
+                            }
+                            let mut parameters = face.parameters.clone();
+                            parameters.insert("index".into(), ConfigValue::Integer(index as i64));
+                            edges.push(GraphEdge {
+                                id: format!("face.{}.{}.{}", part.name, face.port, index),
+                                from_node: part_node,
+                                from_port: face.port.clone(),
+                                to_node: face.to.clone(),
+                                to_port: String::new(),
+                                kind: "gpio".into(),
+                                parameters,
+                            });
+                        }
+                        "irq" => {
+                            let Some(pin) = &face.pin else {
+                                return Err(DescriptorError::new(
+                                    "part.face.pin",
+                                    format!(
+                                        "irq face of part {:?} must declare the output pin name",
+                                        part.name
+                                    ),
+                                ));
+                            };
+                            let endpoint = parse_endpoint(&face.to, "soc")?;
+                            ensure_external_node(&mut nodes, &endpoint.node_id)?;
+                            if !nodes.contains_key(&endpoint.node_id) {
+                                return Err(DescriptorError::new(
+                                    "part.face.to",
+                                    format!(
+                                        "irq face {:?} of part {:?} references unknown sink \
+                                         node {:?}",
+                                        face.port, part.name, endpoint.node_id
+                                    ),
+                                ));
+                            }
+                            edges.push(GraphEdge {
+                                id: format!("face.{}.{}.{}", part.name, face.port, pin),
+                                from_node: part_node,
+                                from_port: pin.clone(),
+                                to_node: endpoint.node_id,
+                                to_port: endpoint.port,
+                                kind: "irq".into(),
+                                parameters: face.parameters.clone(),
+                            });
+                        }
+                        "clock" => {
+                            // A clock source is either a peer block's output
+                            // port (`rcc.gate-apb1-i2c1`) or an abstract
+                            // clock net name — the same two shapes a block's
+                            // `clk` accepts.
+                            let (from_node, from_port) = match face.to.split_once('.') {
+                                Some((device, port)) if block_names.contains(device) => {
+                                    (format!("soc.{device}"), port.to_owned())
+                                }
+                                _ => {
+                                    let clock_node = format!("clock.{}", face.to);
+                                    if !nodes.contains_key(&clock_node) {
+                                        insert_graph_node(
+                                            &mut nodes,
+                                            GraphNode {
+                                                id: clock_node.clone(),
+                                                kind: GraphNodeKind::ClockSignal,
+                                                catalog_id: None,
+                                                parameters: BTreeMap::new(),
+                                            },
+                                        )?;
+                                    }
+                                    (clock_node, "out".into())
+                                }
+                            };
+                            edges.push(GraphEdge {
+                                id: format!("face.{}.{}", part.name, face.port),
+                                from_node,
+                                from_port,
+                                to_node: part_node,
+                                to_port: face.port.clone(),
+                                kind: "clock".into(),
+                                parameters: face.parameters.clone(),
+                            });
+                        }
+                        other => {
+                            return Err(DescriptorError::new(
+                                "part.face.kind",
+                                format!(
+                                    "part {:?} uses unsupported face kind {other:?}",
+                                    part.name
+                                ),
+                            ));
+                        }
+                    }
+                }
             }
             for connection in &board.conn {
                 let source = parse_endpoint(&connection.port, "soc")?;
@@ -298,29 +433,6 @@ impl MachineGraph {
                     kind: connection.kind.clone(),
                     parameters: BTreeMap::new(),
                 });
-            }
-            for part in &board.part {
-                if let Some(bus) = part.conn.get("bus").and_then(ConfigValue::as_str) {
-                    let source = parse_endpoint(bus, "soc")?;
-                    if !nodes.contains_key(&source.node_id) {
-                        return Err(DescriptorError::new(
-                            "part.conn.bus",
-                            format!(
-                                "part {:?} references unknown bus node {:?}",
-                                part.name, source.node_id
-                            ),
-                        ));
-                    }
-                    edges.push(GraphEdge {
-                        id: format!("part.{}.bus", part.name),
-                        from_node: source.node_id,
-                        from_port: source.port,
-                        to_node: format!("board.{}", part.name),
-                        to_port: part.bind.clone(),
-                        kind: part.bind.clone(),
-                        parameters: part.conn.clone(),
-                    });
-                }
             }
         }
 

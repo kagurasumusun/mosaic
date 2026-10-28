@@ -9,6 +9,12 @@ summary = 'Digital humidity, pressure and temperature sensor (I2C / SPI)'
 bindings = ['i2c', 'spi']
 provenance = { doc = 'Bosch BME280 datasheet', confidence = 'high' }
 
+# 多トランスポート部品 (ADR 0032): 1 モデルが i2c / spi 両方のターゲット面を
+# 持つ。ボードは SDO ストラップの実機挙動に合わせてどちらか一方を配線する。
+[ports]
+i2c = { contract = 'i2c/target', role = 'target' }
+spi = { contract = 'spi/target', role = 'target' }
+
 # I2C: アドレスは SDO ピンで 0x76 / 0x77。書き込みフレームの先頭バイトが
 # レジスタポインタで、読み書きはポインタを自動インクリメントする。
 [i2c]

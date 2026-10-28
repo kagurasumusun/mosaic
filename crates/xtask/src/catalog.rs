@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mosaic_describe::{
     AddressSpaceView, BlockInstance, BoardConnection, BoardIdentity, BoardManifest, ConfigValue,
-    CpuInstance, GraphNode, GraphNodeKind, IrqRoute, MachineGraph, PartInstance, Placement,
-    RegionDescriptor, RegionKind, SocIdentity, SocManifest,
+    CpuInstance, GraphNode, GraphNodeKind, IrqRoute, MachineGraph, PartFace, PartInstance,
+    Placement, RegionDescriptor, RegionKind, SocIdentity, SocManifest,
 };
 
 /// Check the normalized graph against catalog endpoint declarations. This is
@@ -415,6 +415,7 @@ pub(super) fn validate_leaf_catalog_manifest(
                 root,
                 &[
                     "part",
+                    "ports",
                     "i2c",
                     "spi",
                     "onewire",
@@ -515,6 +516,108 @@ pub(super) fn validate_leaf_catalog_manifest(
             reject_unknown(provenance, &["doc", "confidence"], "part.provenance")?;
             string(provenance, "doc", "part.provenance")?;
             string(provenance, "confidence", "part.provenance")?;
+
+            // Port faces (ADR 0032): one table per face. A target face's
+            // fabric must be declared in bindings, and every binding must
+            // have a matching target face — the two lists cannot drift.
+            if let Some(ports) = root.get("ports") {
+                let ports = ports
+                    .as_table()
+                    .ok_or_else(|| "ports: expected a table of faces".to_owned())?;
+                let mut target_fabrics = BTreeSet::new();
+                for (name, face) in ports {
+                    let face = face
+                        .as_table()
+                        .ok_or_else(|| format!("ports.{name}: expected a face table"))?;
+                    reject_unknown(
+                        face,
+                        &["contract", "role", "count", "pins"],
+                        &format!("ports.{name}"),
+                    )?;
+                    let role = string(face, "role", &format!("ports.{name}"))?;
+                    // Target and initiator faces name their contract
+                    // (`i2c/target`); source faces follow the ip-side irq
+                    // convention (role + pins, no contract).
+                    let contract = face
+                        .get("contract")
+                        .and_then(toml::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    match role.as_str() {
+                        "target" => {
+                            if contract.is_empty() {
+                                return Err(format!(
+                                    "ports.{name}: target face must name a contract"
+                                ));
+                            }
+                            let fabric = contract
+                                .split_once('/')
+                                .map(|(fabric, _)| fabric.to_owned())
+                                .unwrap_or(contract.clone());
+                            if !bindings.iter().any(|binding| *binding == fabric) {
+                                return Err(format!(
+                                    "ports.{name}: target face on {fabric:?} but part does not \
+                                     declare that binding"
+                                ));
+                            }
+                            target_fabrics.insert(fabric);
+                        }
+                        "initiator" => {}
+                        "provider" => {
+                            if contract.is_empty() {
+                                return Err(format!(
+                                    "ports.{name}: provider face must name a contract"
+                                ));
+                            }
+                        }
+                        "source" => {
+                            // Signal outputs (irq convention): pins, no contract.
+                            if !face.contains_key("pins") {
+                                return Err(format!(
+                                    "ports.{name}: source face must declare its pins"
+                                ));
+                            }
+                        }
+
+                        other => {
+                            return Err(format!(
+                                "ports.{name}: unknown role {other:?}; expected target, \
+                                 initiator, provider or source"
+                            ));
+                        }
+                    }
+                    if let Some(count) = face.get("count") {
+                        let count = count
+                            .as_integer()
+                            .ok_or_else(|| format!("ports.{name}.count: expected an integer"))?;
+                        if count < 0 {
+                            return Err(format!("ports.{name}.count: negative count"));
+                        }
+                    }
+                    if let Some(pins) = face.get("pins") {
+                        if role != "source" {
+                            return Err(format!(
+                                "ports.{name}.pins: only source faces declare output pins"
+                            ));
+                        }
+                        let pin_list = pins
+                            .as_array()
+                            .ok_or_else(|| format!("ports.{name}.pins: expected an array"))?;
+                        if pin_list.is_empty() {
+                            return Err(format!("ports.{name}.pins: empty pin list"));
+                        }
+                        for pin in pin_list {
+                            if pin.as_str().is_none() {
+                                return Err(format!("ports.{name}.pins: expected strings"));
+                            }
+                        }
+                    }
+                }
+            } else if !bindings.is_empty() {
+                // Parts without a [ports] table keep the bindings-only shape
+                // (declared, not yet spawn-registered); the face grammar is
+                // required only for parts a board can wire today.
+            }
 
             if let Some(i2c) = root.get("i2c") {
                 if !bindings.iter().any(|binding| binding.as_str() == "i2c") {
@@ -1554,21 +1657,54 @@ pub(super) fn parse_board(value: &toml::Value) -> Result<BoardManifest, String> 
             let item = item
                 .as_table()
                 .ok_or_else(|| format!("{scope}: expected a table"))?;
-            reject_unknown(item, &["name", "use", "bind", "conn"], &scope)?;
-            let conn = match item.get("conn") {
-                Some(value) => value
-                    .as_table()
-                    .ok_or_else(|| format!("{scope}.conn: expected a table"))?
-                    .iter()
-                    .map(|(key, value)| (key.clone(), config_value(value)))
-                    .collect(),
-                None => BTreeMap::new(),
-            };
+            reject_unknown(item, &["name", "use", "face"], &scope)?;
+            let faces = optional_array(&toml::Value::Table(item.clone()), "face", &scope)?
+                .into_iter()
+                .enumerate()
+                .map(|(face_index, face)| {
+                    let face_scope = format!("{scope}.face[{face_index}]");
+                    let face = face
+                        .as_table()
+                        .ok_or_else(|| format!("{face_scope}: expected a table"))?;
+                    // The face grammar owns five keys; every other key is a
+                    // wiring parameter (address, pull, cs, …) for the spawn.
+                    let owned = ["port", "kind", "to", "index", "pin"];
+                    let mut parameters = BTreeMap::new();
+                    for (key, value) in face {
+                        if owned.contains(&key.as_str()) {
+                            continue;
+                        }
+                        parameters.insert(key.clone(), config_value(value));
+                    }
+                    Ok(PartFace {
+                        port: string(face, "port", &face_scope)?,
+                        kind: string(face, "kind", &face_scope)?,
+                        to: string(face, "to", &face_scope)?,
+                        index: match face.get("index") {
+                            None => None,
+                            Some(value) => Some(
+                                value
+                                    .as_integer()
+                                    .and_then(|index| u64::try_from(index).ok())
+                                    .ok_or_else(|| {
+                                        format!(
+                                            "{face_scope}.index: expected a non-negative integer"
+                                        )
+                                    })?,
+                            ),
+                        },
+                        pin: match face.get("pin") {
+                            None => None,
+                            Some(_) => Some(string(face, "pin", &face_scope)?),
+                        },
+                        parameters,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
             Ok(PartInstance {
                 name: string(item, "name", &scope)?,
                 use_id: string(item, "use", &scope)?,
-                bind: string(item, "bind", &scope)?,
-                conn,
+                faces,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -1880,14 +2016,20 @@ summary = 'parser fixture'
 [[part]]
 name = 'env0'
 use = 'part:test/device'
-bind = 'i2c'
-conn = { bus = 'soc.not-a-device', addr = 0x48 }
+[[part.face]]
+port = 'i2c'
+kind = 'i2c'
+to = 'soc.not-a-device:i2c'
+address = 0x48
 "#,
         )
         .unwrap();
         let board = parse_board(&board).unwrap();
         let error = mosaic_describe::MachineGraph::build(&soc, Some(&board)).unwrap_err();
-        assert!(error.message.contains("unknown bus node"), "{error:?}");
+        assert!(
+            error.message.contains("unknown initiator node"),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -1947,13 +2089,13 @@ size = 4096
         ))
         .unwrap();
         let soc = parse_soc(&soc).unwrap();
-        assert_eq!(soc.block.len(), 4);
+        assert_eq!(soc.block.len(), 5);
         assert_eq!(soc.cpu.len(), 1);
         assert_eq!(soc.cpu[0].use_id, "cpu:arm/cortex-m3");
 
         let graph = mosaic_describe::MachineGraph::build(&soc, None).unwrap();
         assert_eq!(graph.board_id, None);
-        assert_eq!(graph.regions.len(), 7);
+        assert_eq!(graph.regions.len(), 8);
         assert!(graph.nodes.iter().any(|node| node.id == "soc.usart1"));
         assert!(graph.nodes.iter().any(|node| node.id == "view.sysbus"));
         assert!(graph.edges.iter().any(|edge| {

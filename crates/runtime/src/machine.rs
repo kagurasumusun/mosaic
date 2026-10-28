@@ -564,6 +564,20 @@ impl Machine {
         if !self.arena.is_registered(source) {
             return Err(MachineError::UnknownNode(source));
         }
+        self.connect_output(source, signal, sink)
+    }
+
+    /// Wire an output whose source is not an arena device: a
+    /// fabric-attached part (ADR 0032) that emits through another node's
+    /// context with [`Ctx::set_signal_from`]. The wiring table is the same
+    /// one [`Machine::connect`] keeps; only the source presence differs,
+    /// because a part's faces, not the arena, carry it.
+    pub fn connect_output(
+        &mut self,
+        source: NodeId,
+        signal: SignalId,
+        sink: NodeId,
+    ) -> Result<(), MachineError> {
         // A wired input lands on an arena device (single instance, Ctx-bound
         // delivery) or on a registered host sink node; anything else is a
         // wiring mistake that must fail at construction time.

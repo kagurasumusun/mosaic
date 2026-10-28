@@ -1,8 +1,8 @@
 [identity]
 id = 'ip:st/i2c-f1'
-summary = "STM32F1 I2C"
-spec = ['vendor datasheet']
-variants = []
+summary = 'STM32F1 I2C (RM0008): CR1/CR2/OAR1/OAR2/DR/SR1/SR2/CCR/TRISE, master TX/RX with repeated start, EV/ER interrupts'
+spec = ['ST RM0008']
+variants = ['STM32F103 medium density (I2C1/I2C2)']
 
 [tags]
 function = ['i2c']
@@ -10,7 +10,13 @@ fidelity = 'functional'
 verified = 'spec-tested'
 
 [ports]
-mmio = { role = 'target', size = 0x100 }
-irq = { role = 'source', pins = ['irq'] }
+mmio = { role = 'target', size = 0x24 }
+irq = { role = 'source', pins = ['ev', 'er'] }
+clock = { contract = 'model/signal', role = 'endpoint', count = 1 }
+i2c = { contract = 'i2c/initiator', role = 'initiator' }
 
 [params]
+# Master-receiver burst approximation: DR reads are served from a
+# pre-fetched burst (ADR 0032 §機能近似). Drivers that rewrite the register
+# pointer before each read are unaffected by the excess.
+rx-burst = { type = 'usize', default = 32 }

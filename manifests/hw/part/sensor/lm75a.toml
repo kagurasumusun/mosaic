@@ -9,6 +9,10 @@ summary = 'Digital temperature sensor and thermal watchdog with I2C interface'
 bindings = ['i2c']
 provenance = { doc = 'NXP LM75A datasheet', confidence = 'high' }
 
+[ports]
+i2c = { contract = 'i2c/target', role = 'target' }
+irq = { role = 'source', pins = ['os'] }
+
 # I2C: アドレスは A0-A2 ピンで 0x48..0x4F。書き込みフレームの先頭バイトが
 # ポインタ（2 ビット、0=Temp / 1=Conf / 2=Thyst / 3=Tos）で、以降のデータ
 # バイトはポインタレジスタへ自動インクリメントで書き込まれる。

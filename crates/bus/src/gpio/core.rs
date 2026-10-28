@@ -42,7 +42,9 @@ struct NetInner {
 }
 
 /// Concrete digital net. Output adapters created through [`GpioNet::port`]
-/// share the net, keeping one single-threaded ownership group.
+/// share the net, keeping one single-threaded ownership group. Cloning
+/// shares the same state (the inner Arc), the way [`I2cBus::shared`] does.
+#[derive(Clone)]
 pub struct GpioNet {
     inner: Arc<Mutex<NetInner>>,
 }

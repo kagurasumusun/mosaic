@@ -13,8 +13,8 @@ mod schema;
 pub use graph::{GraphEdge, GraphNode, GraphNodeKind, GraphRegion, MachineGraph};
 pub use schema::{
     AddressSpaceView, BlockInstance, BoardConnection, BoardIdentity, BoardManifest, ConfigValue,
-    CpuInstance, DescriptorError, IrqRoute, PartInstance, Placement, RegionDescriptor, RegionKind,
-    SocIdentity, SocManifest,
+    CpuInstance, DescriptorError, IrqRoute, PartFace, PartInstance, Placement, RegionDescriptor,
+    RegionKind, SocIdentity, SocManifest,
 };
 
 #[cfg(test)]

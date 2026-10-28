@@ -9,16 +9,21 @@
 
 mod bus;
 mod clockbind;
+mod faces;
 mod irq;
 mod materialize;
 
 pub use bus::MachineBus;
 pub use clockbind::instruction_period;
+pub use faces::{FabricStore, GpioLineJoin};
 pub use irq::{EngineIrqSink, IrqMailbox, IrqMailboxState};
 pub use materialize::{
     materialize, AssembledMachine, CpuLine, DeferredEdge, DeviceFactory, DeviceRegistry,
     HostAttachments, IncomingWire, InstantiateCtx, MaterializeError,
 };
+/// Face and node parameters share the describe crate's open value type;
+/// spawns read it without depending on describe directly.
+pub use mosaic_describe::ConfigValue;
 
 mod driver;
 #[cfg(feature = "unicorn")]

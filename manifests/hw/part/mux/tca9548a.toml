@@ -8,6 +8,12 @@ summary = '8-channel I2C bus switch with a single control register'
 bindings = ['i2c']
 provenance = { doc = 'TI TCA9548A datasheet', confidence = 'high' }
 
+# 多面部品 (ADR 0032): 上流は 1 つの i2c ターゲット面、下流 8 チャネルは
+# それぞれ独立した i2c イニシエータ面 (セグメントバス)。
+[ports]
+i2c = { contract = 'i2c/target', role = 'target' }
+down = { contract = 'i2c/initiator', role = 'initiator', count = 8 }
+
 # アドレスは A0-A2 ピンで 0x70..0x77。制御レジスタへの書き込み 1 バイトで
 # チャネルを切り替える。電源投入時は全チャネル切断（制御レジスタ 0x00）。
 [i2c]

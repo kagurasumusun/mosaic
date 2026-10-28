@@ -1,5 +1,6 @@
-//! Microchip MCP23017 16-bit I2C I/O expander — a two-fabric composite
-//! part (ADR 0031 §3, `part/expander`).
+//! Microchip MCP23017 16-bit I2C I/O expander — a multi-face composite
+//! part (ADR 0031 §3, ADR 0032): one I2C target face, sixteen GPIO line
+//! faces and one IRQ output face, all in one model.
 //!
 //! Clean-room from the MCP23017 data sheet (DS20001952): an I2C target at
 //! a strap-selected address (0x20..0x27) whose register bank maps 16 GPIO
@@ -7,32 +8,44 @@
 //! semantics the Linux `pinctrl-mcp23s08` driver touches on bring-up:
 //!
 //! * `IODIRA/IODIRB` (0x00/0x01) — direction, 1 = input (reset state);
-//! * `IPOLA/IPOLB` (0x02/0x03) — input polarity inversion;
+//! * `IPOLA/IPOLB` (0x02/0x03) — input polarity inversion (stored);
 //! * `GPINTENA/GPINTENB` (0x04/0x05), `DEFVALA/DEFVALB` (0x06/0x07),
-//!   `INTCONA/INTCONB` (0x08/0x09) — interrupt-on-change setup (levels
-//!   recorded; the IRQ line itself waits for the signal wiring);
+//!   `INTCONA/INTCONB` (0x08/0x09) — interrupt-on-change setup;
 //! * `IOCON` (0x0A/0x0B) — configuration bits accepted and read back;
 //! * `GPPUA/GPPUB` (0x0C/0x0D) — pull-up enables;
 //! * `INTFA/INTFB` (0x0E/0x0F), `INTCAPA/INTCAPB` (0x10/0x11) — interrupt
-//!   flags and captures (functional: INTCAP read clears the pair);
+//!   flags and captures (functional: INTCAP read clears the pair's flags);
 //! * `GPIOA/GPIOB` (0x12/0x13) — read inputs / drive outputs;
 //! * `OLATA/OLATB` (0x14/0x15) — output latch read-back.
 //!
-//! The register bank is one flat 22-byte file addressed by pointer: write
-//! frames set the pointer with the first byte and stream the rest with
-//! auto-increment, reads stream from the pointer — the same convention the
-//! sensor parts use, one addressing shape across the fabric.
+//! ## The three faces (ADR 0032)
 //!
-//! The GPIO side is 16 lines a board wires into the GPIO net fabric
-//! through [`Mcp23017::pin`], so one part bridges I2C and GPIO without
-//! either fabric knowing the other — the part is one model, the fabrics
-//! stay strangers to each other (ADR 0031 §1).
+//! * **`i2c`** — the register bank, a pointer-addressed 22-byte file: write
+//!   frames set the pointer with the first byte and stream the rest with
+//!   auto-increment, reads stream from the pointer.
+//! * **`gpio`** — 16 lines. A board wires each line into a [`GpioNet`] by
+//!   face; the joined net terminal is the line's electrical face. Guest
+//!   output writes drive the net, net changes update the input read-back
+//!   and raise INT per GPINTEN/DEFVAL/INTCON (data sheet §1.6.7 —
+//!   IOC-on-change with INTCAP capture).
+//! * **`irq`** — the `int` output: level-asserted while any INTF bit is
+//!   set, cleared when every INTF is cleared. IOCON.INTPOL/ODR (active
+//!   level and open-drain shape) are stored but not electrically modeled.
+//!
+//! The expander never enters a machine's device arena: its faces carry it.
+//! The bus owns the I2C face, the nets own the line faces.
 
 use std::sync::{Arc, Mutex};
 
-use mosaic_contract::gpio::{GpioError, GpioPort, PinConfig, PinLevel};
+use mosaic_assemble::GpioLineJoin;
+use mosaic_bus::gpio::core::GpioNet;
+use mosaic_contract::gpio::{
+    DriveMode, GpioError, GpioPort, GpioSink, PinConfig, PinDirection, PinLevel, Pull,
+};
 use mosaic_contract::i2c::{Ack, I2cAddr, I2cError, I2cTarget};
 use mosaic_contract::model::Ctx;
+use mosaic_contract::net::{DigitalNet, NetNode};
+use mosaic_exec::SignalId;
 
 /// Register file size (0x00..=0x15).
 pub const REGISTERS: usize = 0x16;
@@ -67,8 +80,15 @@ pub mod iocon {
 /// Number of GPIO lines the expander owns.
 pub const PINS: usize = 16;
 
+/// The net-side drive port for one joined line.
+type LinePort = mosaic_bus::gpio::core::GpioNetPort;
+
 /// An MCP23017: one I2C target, sixteen GPIO lines in two ports.
 pub struct Mcp23017 {
+    /// The part's graph node — INT is emitted under this origin because the
+    /// expander's callbacks run inside whichever node drives the fabric
+    /// (ADR 0032, `Ctx::set_signal_from`).
+    node: mosaic_exec::NodeId,
     addr: I2cAddr,
     /// 8-bit register file, pointer-addressed; the interleaved layout
     /// (reset state, IOCON.BANK = 0) puts port B at the odd offsets.
@@ -77,6 +97,10 @@ pub struct Mcp23017 {
     /// Resolved levels of the 16 lines as the net (or the guest) last
     /// settled them; input read-back and output drive both use them.
     levels: [PinLevel; PINS],
+    /// The `int` output signal, when the board wired the irq face.
+    int: Option<SignalId>,
+    /// Last driven level of `int` (dedup).
+    int_level: bool,
 }
 
 impl Mcp23017 {
@@ -84,26 +108,39 @@ impl Mcp23017 {
     /// select 0x20..=0x27; the MCP23S17 SPI twin is a separate part
     /// number, not a second bind of this one.
     pub fn new(addr: u8) -> Result<Self, I2cError> {
+        Self::with_irq(addr, None)
+    }
+
+    /// An expander whose `int` output drives `signal` (the board wires the
+    /// irq face; the spawn resolves the signal there).
+    pub fn with_irq(addr: u8, int: Option<SignalId>) -> Result<Self, I2cError> {
+        Self::with_node_and_irq(mosaic_exec::NodeId(0), addr, int)
+    }
+
+    /// An expander that knows its graph node, so `int` is emitted under
+    /// its own origin (the spawn wires this).
+    pub fn with_node_and_irq(
+        node: mosaic_exec::NodeId,
+        addr: u8,
+        int: Option<SignalId>,
+    ) -> Result<Self, I2cError> {
         if !(0x20..=0x27).contains(&addr) {
             return Err(I2cError::BadAddress);
         }
         let mut regs = [0u8; REGISTERS];
-        // Reset state: all lines inputs, everything else zeroed.
-        for base in [
-            reg::IODIR,
-            reg::IPOL,
-            reg::GPINTEN,
-            reg::DEFVAL,
-            reg::INTCON,
-        ] {
-            regs[base] = 0xFF;
-            regs[base + 1] = 0xFF;
-        }
+        // Reset state (DS20001952 table 3-1): all lines inputs; the
+        // polarity, interrupt-on-change, default-value and
+        // interrupt-control registers power up clear.
+        regs[reg::IODIR] = 0xFF;
+        regs[reg::IODIR + 1] = 0xFF;
         Ok(Self {
+            node,
             addr: I2cAddr::seven(addr)?,
             regs,
             pointer: 0,
             levels: [PinLevel::Low; PINS],
+            int,
+            int_level: false,
         })
     }
 
@@ -112,9 +149,10 @@ impl Mcp23017 {
         self.addr
     }
 
-    /// Line *n* (0..15) as a GPIO-net port, for board wiring: drive and
-    /// release go through the output latch exactly like GPIO register
-    /// writes, reads return the resolved line level.
+    /// Line *n* (0..15) as a GPIO-net port, for direct wiring in tests:
+    /// drive and release go through the output latch exactly like GPIO
+    /// register writes, reads return the resolved line level. Boards wire
+    /// the same electrical face declaratively through the `gpio` faces.
     pub fn pin(shared: &Arc<Mutex<Self>>, pin: usize) -> Result<Mcp23017Pin, String> {
         if pin >= PINS {
             return Err(format!("MCP23017 pin {pin} out of range 0..{PINS}"));
@@ -139,6 +177,75 @@ impl Mcp23017 {
 
     fn is_output(&self, pin: usize) -> bool {
         (self.regs[reg::IODIR + Self::port_of(pin)] >> Self::bit_of(pin)) & 1 == 0
+    }
+
+    /// Apply an externally settled level to one line (the net side): update
+    /// the input read-back and run the interrupt-on-change logic (data
+    /// sheet §1.6.7).
+    fn observe_line(&mut self, ctx: &mut dyn Ctx, pin: usize, level: PinLevel) {
+        if pin >= PINS || self.levels[pin] == level {
+            return;
+        }
+        let port = Self::port_of(pin);
+        let bit = Self::bit_of(pin);
+        self.levels[pin] = level;
+        if self.regs[reg::GPINTEN + port] & (1 << bit) == 0 {
+            return;
+        }
+        // INTCON bit: 0 = change from previous, 1 = compare against DEFVAL.
+        let fires = if self.regs[reg::INTCON + port] & (1 << bit) != 0 {
+            let default_high = self.regs[reg::DEFVAL + port] & (1 << bit) != 0;
+            (level == PinLevel::High) != default_high
+        } else {
+            true
+        };
+        if fires {
+            self.regs[reg::INTF + port] |= 1 << bit;
+            let captured = self.gpio_byte(port);
+            self.regs[reg::INTCAP + port] = captured;
+        }
+        self.refresh_int(ctx);
+    }
+
+    /// The GPIO read image of one port: inputs report the resolved line
+    /// level, outputs their own latch.
+    fn gpio_byte(&self, port: usize) -> u8 {
+        let mut byte = 0u8;
+        for bit in 0..8usize {
+            let pin = port * 8 + bit;
+            let high = if self.is_output(pin) {
+                (self.regs[reg::OLAT + port] >> bit) & 1 == 1
+            } else {
+                self.levels[pin] == PinLevel::High
+            };
+            byte |= (high as u8) << bit;
+        }
+        byte
+    }
+
+    /// Recompute the `int` output from INTF and drive the signal.
+    fn refresh_int(&mut self, ctx: &mut dyn Ctx) {
+        let Some(signal) = self.int else {
+            return;
+        };
+        let asserted = self.regs[reg::INTF] != 0 || self.regs[reg::INTF + 1] != 0;
+        if asserted != self.int_level && ctx.set_signal_from(self.node, signal, asserted).is_ok() {
+            self.int_level = asserted;
+        }
+    }
+
+    /// A line joining the net adopts the net's resolved level (input).
+    fn adopt_net_level(&mut self, pin: usize, net: &GpioNet) {
+        if pin >= PINS {
+            return;
+        }
+        self.levels[pin] = match net.level() {
+            mosaic_contract::net::NetLevel {
+                level: PinLevel::High,
+                ..
+            } => PinLevel::High,
+            _ => PinLevel::Low,
+        };
     }
 }
 
@@ -180,6 +287,24 @@ impl I2cTarget for Mcp23017 {
                     }
                 }
             }
+            if self.pointer == reg::IODIR || self.pointer == reg::IODIR + 1 {
+                // Direction writes re-settle the joined nets.
+                let port = self.pointer - reg::IODIR;
+                for bit in 0..8usize {
+                    let pin = port * 8 + bit;
+                    if self.is_output(pin) {
+                        self.levels[pin] = if (self.regs[reg::OLAT + port] >> bit) & 1 == 1 {
+                            PinLevel::High
+                        } else {
+                            PinLevel::Low
+                        };
+                    }
+                }
+            }
+            if self.pointer == reg::INTCAP || self.pointer == reg::INTCAP + 1 {
+                // Reading INTCAP through a write-then-read cycle is the
+                // capture-clear path; a write side keeps it minimal.
+            }
             self.pointer = (self.pointer + 1).min(REGISTERS - 1);
         }
         Ok(Ack::Ack)
@@ -187,27 +312,14 @@ impl I2cTarget for Mcp23017 {
 
     fn target_read(
         &mut self,
-        _ctx: &mut dyn Ctx,
+        ctx: &mut dyn Ctx,
         _addr: &I2cAddr,
         buf: &mut [u8],
     ) -> Result<Ack, I2cError> {
         for (i, slot) in buf.iter_mut().enumerate() {
             let index = (self.pointer + i).min(REGISTERS - 1);
             if index == reg::GPIO || index == reg::GPIO + 1 {
-                // GPIO reads: inputs report the resolved line level,
-                // outputs their own latch (data sheet §1.6.5).
-                let port = index - reg::GPIO;
-                let mut byte = 0u8;
-                for bit in 0..8usize {
-                    let pin = port * 8 + bit;
-                    let high = if self.is_output(pin) {
-                        (self.regs[reg::OLAT + port] >> bit) & 1 == 1
-                    } else {
-                        self.levels[pin] == PinLevel::High
-                    };
-                    byte |= (high as u8) << bit;
-                }
-                *slot = byte;
+                *slot = self.gpio_byte(index - reg::GPIO);
             } else if index == reg::INTCAP || index == reg::INTCAP + 1 {
                 // Reading INTCAP clears the interrupt condition for that
                 // port: flag and capture both (data sheet §1.6.6).
@@ -219,13 +331,12 @@ impl I2cTarget for Mcp23017 {
             }
         }
         self.pointer = (self.pointer + buf.len()).min(REGISTERS - 1);
+        self.refresh_int(ctx);
         Ok(Ack::Ack)
     }
 }
 
-/// One expander line as a GPIO-net port. Boards wire these the way they
-/// wire a controller's pins; the expander is a *source* of lines, while
-/// the controllers stay in `crate::ip::gpio`.
+/// One expander line as a GPIO-net port (tests and manual board wiring).
 pub struct Mcp23017Pin {
     expander: Arc<Mutex<Mcp23017>>,
     pin: usize,
@@ -271,12 +382,174 @@ impl GpioPort for Mcp23017Pin {
     }
 }
 
+/// The net observer for one line: net changes feed the input read-back and
+/// the interrupt-on-change logic.
+struct Mcp23017LineSink {
+    expander: Arc<Mutex<Mcp23017>>,
+    pin: usize,
+}
+
+impl GpioSink for Mcp23017LineSink {
+    fn level_changed(&mut self, ctx: &mut dyn Ctx, level: PinLevel) {
+        let mut expander = self.expander.lock().unwrap();
+        expander.observe_line(ctx, self.pin, level);
+    }
+}
+
+/// The expander's shared ownership group: the register core plus the
+/// joined net drive ports.
+///
+/// The ports live *beside* the core, not inside it, so the I2C face can
+/// release the core's lock before driving the nets — a drive re-enters the
+/// expander through its own line sink (the net resolves and notifies every
+/// observer, including this line), and a lock held across that re-entry
+/// would deadlock. The machine is single-threaded; the mutexes only
+/// satisfy shared ownership across the faces (ADR 0032).
+pub struct Mcp23017Shared {
+    expander: Arc<Mutex<Mcp23017>>,
+    ports: Arc<Mutex<[Option<LinePort>; PINS]>>,
+}
+
+impl Mcp23017Shared {
+    /// An expander whose `int` output (when wired) is emitted under `node`.
+    pub fn new(
+        node: mosaic_exec::NodeId,
+        address: u8,
+        int: Option<SignalId>,
+    ) -> Result<Self, I2cError> {
+        Ok(Self {
+            expander: Arc::new(Mutex::new(Mcp23017::with_node_and_irq(node, address, int)?)),
+            ports: Arc::new(Mutex::new(Default::default())),
+        })
+    }
+
+    /// The register core, for tests and board diagnostics.
+    pub fn expander(&self) -> &Arc<Mutex<Mcp23017>> {
+        &self.expander
+    }
+
+    /// The I2C target face: the bus owns this wrapper.
+    pub fn i2c_face(self: &Arc<Self>) -> Mcp23017I2c {
+        Mcp23017I2c {
+            shared: Arc::clone(self),
+        }
+    }
+
+    /// One GPIO line face: the face pass joins it to the declared net.
+    pub fn line_face(self: &Arc<Self>, pin: usize) -> Mcp23017Line {
+        Mcp23017Line {
+            shared: Arc::clone(self),
+            pin,
+        }
+    }
+
+    /// Drive (or release) every output line's net after a register write
+    /// that may have changed directions or latches. Must run *outside* the
+    /// expander's lock: each drive notifies this line's own sink, which
+    /// re-enters the core to observe the settled level.
+    fn sync_nets(&self, ctx: &mut dyn Ctx) {
+        // Snapshot the drive image under the core lock, then release it.
+        let mut drives = [(false, PinLevel::Low); PINS];
+        {
+            let expander = self.expander.lock().unwrap();
+            for (pin, slot) in drives.iter_mut().enumerate() {
+                *slot = (expander.is_output(pin), expander.levels[pin]);
+            }
+        }
+        let mut ports = self.ports.lock().unwrap();
+        for (pin, (output, level)) in drives.iter().enumerate() {
+            let Some(port) = ports[pin].as_mut() else {
+                continue;
+            };
+            if *output {
+                let _ = port.drive(ctx, *level);
+            } else {
+                let _ = port.release(ctx);
+            }
+        }
+    }
+}
+
+/// The `i2c` face: register semantics under the core lock, net drives
+/// after it is released.
+pub struct Mcp23017I2c {
+    shared: Arc<Mcp23017Shared>,
+}
+
+impl I2cTarget for Mcp23017I2c {
+    fn matches(&self, addr: &I2cAddr) -> bool {
+        self.shared.expander.lock().unwrap().matches(addr)
+    }
+    fn target_write(
+        &mut self,
+        ctx: &mut dyn Ctx,
+        addr: &I2cAddr,
+        bytes: &[u8],
+    ) -> Result<Ack, I2cError> {
+        let result = self
+            .shared
+            .expander
+            .lock()
+            .unwrap()
+            .target_write(ctx, addr, bytes);
+        // Registers settled; propagate the output image to the nets with
+        // the core lock released (see Mcp23017Shared::sync_nets).
+        self.shared.sync_nets(ctx);
+        result
+    }
+    fn target_read(
+        &mut self,
+        ctx: &mut dyn Ctx,
+        addr: &I2cAddr,
+        buf: &mut [u8],
+    ) -> Result<Ack, I2cError> {
+        self.shared
+            .expander
+            .lock()
+            .unwrap()
+            .target_read(ctx, addr, buf)
+    }
+}
+
+/// The `gpio` face of one line: joins the net the board declared (ADR
+/// 0032). Unwired lines simply never join — the expander runs on.
+pub struct Mcp23017Line {
+    shared: Arc<Mcp23017Shared>,
+    pin: usize,
+}
+
+impl GpioLineJoin for Mcp23017Line {
+    fn join(&mut self, net: &mut GpioNet, node: NetNode) {
+        let sink = Mcp23017LineSink {
+            expander: Arc::clone(&self.shared.expander),
+            pin: self.pin,
+        };
+        if net.attach_sink(node, Box::new(sink)).is_ok() {
+            self.shared.ports.lock().unwrap()[self.pin] = Some(net.port(
+                node,
+                PinConfig::new(
+                    PinDirection::Output,
+                    Pull::None,
+                    DriveMode::PushPull,
+                    PinLevel::Low,
+                ),
+            ));
+            self.shared
+                .expander
+                .lock()
+                .unwrap()
+                .adopt_net_level(self.pin, net);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testutil::TestCtx;
     use mosaic_bus::i2c::core::I2cBus;
     use mosaic_contract::i2c::I2cInitiator;
+    use mosaic_contract::net::DigitalNet;
 
     fn expander_on_bus(addr: u8) -> (I2cBus, Arc<Mutex<Mcp23017>>) {
         let shared = Arc::new(Mutex::new(Mcp23017::new(addr).unwrap()));
@@ -458,5 +731,59 @@ mod tests {
         ));
         // Out-of-range pins are rejected outright.
         assert!(Mcp23017::pin(&shared, 16).is_err());
+    }
+
+    #[test]
+    fn joined_net_lines_drive_and_observe() {
+        // One net, the expander's line 5, and an external push-pull driver.
+        let shared =
+            Arc::new(Mcp23017Shared::new(mosaic_exec::NodeId(0), 0x20, Some(SignalId(7))).unwrap());
+        let mut ctx = TestCtx::default();
+        // Enable interrupt-on-change on GPIOA5 (GPINTENA bit 5).
+        {
+            let mut e = shared.expander().lock().unwrap();
+            e.regs[reg::GPINTEN] = 1 << 5;
+        }
+        // Join the line face to the net (what the face pass does).
+        let mut net = GpioNet::new();
+        let node = net.attach(mosaic_contract::net::NetPull::Up);
+        let mut line = shared.line_face(5);
+        line.join(&mut net, node);
+        // With the pull-up the joined input reads high.
+        assert_eq!(shared.expander().lock().unwrap().levels[5], PinLevel::High);
+
+        // An external driver pulls the line low: INTCAP captures, INTF sets.
+        let driver_node = net.attach(mosaic_contract::net::NetPull::None);
+        let mut driver = net.port(
+            driver_node,
+            PinConfig::new(
+                PinDirection::Output,
+                Pull::None,
+                DriveMode::PushPull,
+                PinLevel::Low,
+            ),
+        );
+        driver.drive(&mut ctx, PinLevel::Low).unwrap();
+        {
+            let e = shared.expander().lock().unwrap();
+            assert_eq!(e.regs[reg::INTF], 1 << 5);
+            // Only line 5 is on a net; the rest read their undriven Low.
+            assert_eq!(e.regs[reg::INTCAP], 0x00);
+        }
+        // The int signal was asserted through the ctx.
+        assert!(ctx.edges.contains(&(SignalId(7), true)));
+
+        // Release the external driver, then a guest output on the same line
+        // drives the net back high through the I2C face (register write
+        // settles, then the net image propagates outside the core lock).
+        driver.release(&mut ctx).unwrap();
+        let mut face = shared.i2c_face();
+        face.target_write(&mut ctx, &I2cAddr::seven(0x20).unwrap(), &[0x00, 0xDF])
+            .unwrap(); // IODIRA: line 5 output, rest inputs
+        face.target_write(&mut ctx, &I2cAddr::seven(0x20).unwrap(), &[0x14, 0x20])
+            .unwrap(); // OLATA: line 5 high
+        face.target_write(&mut ctx, &I2cAddr::seven(0x20).unwrap(), &[0x12, 0x20])
+            .unwrap(); // GPIOA: line 5 high
+        assert_eq!(net.level().level, PinLevel::High);
     }
 }

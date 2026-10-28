@@ -6,7 +6,11 @@ CPU 実行は Unicorn Engine のみ（ADR 0030）。ディレクトリ構成は 
 参照モデルとしつつ、`hw` の内側は責務別に分ける（ADR 0031: CPU が
 アドレス空間から直接叩く `hw/src/ip/<function>/`、ファブリック経由で
 しか到達できない `hw/src/part/<domain>/`、2 ドメイン以上から使う共有
-コア `hw/src/modelkit/`）。テストは実イメージのみ（ADR 0022）。
+コア `hw/src/modelkit/`）。モデルの接続面は「ポート面」に統一
+（ADR 0032: 1 つの部品が i2c + gpio×16 + irq のように複数の面を持ち、
+ボードは `[[part.face]]` で面ごとに配線する。部品もカタログから
+spawn され、fabric エッジは結合パスで必ず解決される）。テストは
+実イメージのみ（ADR 0022）。
 
 ## システムエミュレータとして使う
 
@@ -113,14 +117,18 @@ docs/ third_party/ ci-reports/
 1 モデル + bind 複数で表し、同一チップの別モデル化は禁止。`misc` のような
 受け皿は存在しない — どこにも置けない部品が出たらドメインを ADR で追加する。
 
-**モデル追加は定型作業**（ADR 0024 §5 + ADR 0025 + ADR 0031）:
+**モデル追加は定型作業**（ADR 0024 §5 + ADR 0025 + ADR 0031 + ADR 0032）:
 アドレス空間に載るデバイスは `hw/src/ip/<function>/<model>.rs` 1 ファイル +
 `ip/<function>/catalog.rs` 1 行 + `manifests/hw/ip/<function>/<model>.toml`、
-ファブリック部品は `hw/src/part/<domain>/<model>.rs` + manifest（ボードが
-ファブリック配線で接続）。機械は manifest（部品・wire・`rcc.gate-apb2-iopa` 形式の
-クロック配線）+ 固有情報（どの UART がコンソールか等）のみで、モデルの生成知識
-（IRQ・クロック・パラメータ）はカタログ側が持つためボードに再利用される。
-既存のどこかのディレクトリに機能が溶け込むことはありません。
+ファブリック部品は `hw/src/part/<domain>/<model>.rs` + spawn 登録 +
+`[ports]` 付き manifest。機械は manifest（部品・面ごとの wire・
+`rcc.gate-apb2-iopa` 形式のクロック配線）+ 固有情報（どの UART がコンソールか等）
+のみで、モデルの生成知識（IRQ・クロック・パラメータ・面）はカタログ側が持つため
+ボードに再利用される。既存のどこかのディレクトリに機能が溶け込むことはありません。
+複数インターフェースを持つ部品（MCP23017 型: I2C ターゲット + GPIO 16 本 +
+INT、TCA9548A 型: 上流 I2C + 下流 8 セグメント、BME280 型: I2C/SPI 両対応）は
+1 モデル + 複数ポート面として宣言・spawn・配線され、面ごとに別モデルや別管理
+方法が生えることはありません。
 
 ### 実装済み
 
@@ -158,11 +166,19 @@ docs/ third_party/ ci-reports/
   `ModelEntry::outputs` が RCC 43 ゲート等のベンダー出力表を公開し、
   宣言的 `clk` 配線を可能にする。stm32f103 ボードはファクトリクロージャ
   0 個で manifest とカタログだけで組まれている。
-- 複合部品の実モデル（ADR 0031 §3 の実証）: TCA9548A 8 チャネル I2C
-  スイッチ（上流 I2cTarget・下流 8 セグメントの I2cBus、part/mux）、
-  MCP23017 16 ビット GPIO エキスパンダ（I2C レジスタバンク + GpioPort
-  16 本、part/expander）— 1 つの部品が複数ファブリックを橋渡しする
-  構成を、共通基盤との統一された連携方法で実装。
+- 複合部品の実モデル（ADR 0031 §3 + ADR 0032 の実証）: TCA9548A
+  8 チャネル I2C スイッチ（上流 i2c ターゲット面 + 下流 `down0..7`
+  イニシエータ面、part/mux）、MCP23017 16 ビット GPIO エキスパンダ
+  （i2c 面 + gpio 16 ライン面 + int 出力面、GPINTEN/DEFVAL/INTCON に
+  従う割り込みオン・チェンジ、part/expander）、BME280（i2c/spi 両
+  ターゲット面）、LM75A（i2c 面 + os サーモスタット出力）— いずれも
+  カタログ spawn + `[[part.face]]` 宣言的配線で組み込まれ、ボードは
+  生成コードを書かない。
+- `ip:st/i2c-f1` を RM0008 §27 の実装に置換（旧: 16 バイトのスクラッチ
+  RAM）: CR1/CR2/OAR1/OAR2/DR/SR1/SR2/CCR/TRISE、SB/ADDR/BTF/TxE/RxNE
+  のマスタ送受信・リスタート付き読み出し、EV/ER の 2 本の IRQ 出力、
+  RCC APB1 クロックゲート、`i2c` イニシエータ面。STM32F103 SoC マップに
+  I2C1（0x40005400、NVIC 31/32）を追加。
 - 個別モデル: NS16550A（FIFO・モデム線・ループバック）、VGA（レジスタ・
   VRAM アパーチャ・VBE）、8042 + PS/2 キーボード/マウス、HPET、8237A DMA、
   PL031 RTC、CFI NOR フラッシュ、SD カード（SD/eMMC 両プロトコル）+ SDHCI +

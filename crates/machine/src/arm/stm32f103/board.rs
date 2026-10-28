@@ -270,3 +270,303 @@ mod tests {
         assert_eq!(*pin_levels.lock().unwrap(), vec![false, true]);
     }
 }
+
+/// The multi-face composition rig (ADR 0032): the real STM32F103 SoC map
+/// plus a board that hangs four parts off its I2C1 — an MCP23017 expander
+/// (i2c + 16 gpio lines + int), a TCA9548A switch whose downstream segment
+/// carries a BME280, and an LM75A on the root segment.
+///
+/// This is a composition test fixture, not a shipped machine: no board
+/// product is claimed, and the expander's INT is wired straight into NVIC
+/// position 6 because the EXTI block (the physical path) is not modeled
+/// yet — the rig's comment says so, and nothing here fabricates guest-boot
+/// evidence (ADR 0022 governs guest images; this rig only drives
+/// registers).
+#[cfg(test)]
+mod faces_rig {
+    use super::*;
+    use crate::manifest::parse_board;
+    use mosaic_exec::{AccessKind, AccessSize, Addr, Attr, Endian, Security};
+
+    /// The rig's board declaration, in the shipped grammar.
+    const BOARD: &str = r#"
+# ADR 0032 composition rig over the real stm32f103 SoC map: I2C1 carries an
+# expander and a switch; the switch's channel 2 carries a BME280; the
+# expander's INT line lands on NVIC position 6 (EXTI not modeled yet) and
+# its GPA0 line on an observable net.
+[board]
+id = 'board:harness/stm32f103-i2c-rig'
+soc = 'soc:st/stm32f103'
+summary = 'composition rig: multi-face parts on I2C1 (test fixture, not a machine)'
+
+[[part]]
+name = 'ioexp'
+use = 'part:microchip/mcp23017'
+
+[[part.face]]
+port = 'i2c'
+kind = 'i2c'
+to = 'soc.i2c1:i2c'
+address = 0x20
+
+[[part.face]]
+port = 'gpio'
+kind = 'gpio'
+to = 'wire:ioexp-gpa0'
+index = 0
+
+[[part.face]]
+port = 'irq'
+kind = 'irq'
+to = 'scs.inputs:6'
+pin = 'int'
+
+[[part]]
+name = 'switch'
+use = 'part:ti/tca9548a'
+
+[[part.face]]
+port = 'i2c'
+kind = 'i2c'
+to = 'soc.i2c1:i2c'
+address = 0x70
+
+[[part]]
+name = 'environment'
+use = 'part:bosch/bme280'
+
+[[part.face]]
+port = 'i2c'
+kind = 'i2c'
+to = 'board.switch:down2'
+address = 0x76
+
+[[part]]
+name = 'thermometer'
+use = 'part:nxp/lm75a'
+
+[[part.face]]
+port = 'i2c'
+kind = 'i2c'
+to = 'soc.i2c1:i2c'
+address = 0x48
+"#;
+
+    /// RM0008 I2C1 register offsets.
+    mod i2c {
+        pub const CR1: u64 = 0x00;
+        pub const CR2: u64 = 0x04;
+        pub const DR: u64 = 0x10;
+        pub const SR1: u64 = 0x14;
+        pub const SR2: u64 = 0x18;
+        pub mod cr1 {
+            pub const PE: u32 = 1 << 0;
+            pub const START: u32 = 1 << 8;
+            pub const STOP: u32 = 1 << 9;
+            pub const ACK: u32 = 1 << 10;
+        }
+        pub mod cr2 {
+            pub const ITEVTEN: u32 = 1 << 2;
+            pub const ITBUFEN: u32 = 1 << 3;
+        }
+        pub mod sr1 {
+            #![allow(dead_code)]
+            pub const SB: u32 = 1 << 0;
+            pub const TXE: u32 = 1 << 7;
+            pub const RXNE: u32 = 1 << 6;
+        }
+    }
+
+    /// I2C1 base (RM0008) and the RCC APB1 enable register.
+    const I2C1: u64 = 0x4000_5400;
+    const APB1ENR: u64 = 0x4002_101C;
+    /// NVIC: ISER0 and ICSR (for the INT line).
+    const NVIC_ISER0: u64 = 0xE000_E100;
+    const NVIC_ICSR: u64 = 0xE000_ED04;
+
+    struct Rig {
+        machine: Machine,
+        core: NodeId,
+    }
+
+    fn attr(master: NodeId) -> Attr {
+        Attr {
+            master,
+            security: Security::Secure,
+            privileged: true,
+            kind: AccessKind::Data,
+            exclusive: false,
+            byte_enable: 0,
+            endian: Endian::Little,
+        }
+    }
+
+    /// Build the rig: the real SoC graph plus the rig board, catalog
+    /// spawns only — zero hand-written factories.
+    fn build_rig() -> Rig {
+        let soc = super::super::manifest::stm32f103_soc().expect("soc.toml");
+        let board = parse_board(BOARD).expect("rig board");
+        let graph = MachineGraph::build(&soc, Some(&board)).expect("rig graph");
+        let registry = device_registry();
+        let assembled =
+            materialize(&graph, &registry, &HostAttachments::new(), 32).expect("rig materialize");
+        let machine = assembled.machine;
+        let core = assembled.nodes["soc.core0"];
+        // The fabric store must have joined the expander's GPA0 line face
+        // to the declared net — the rig asserts the wiring, not just the
+        // absence of errors.
+        assert!(assembled
+            .fabrics
+            .as_ref()
+            .and_then(|store| store.gpio_net("wire:ioexp-gpa0"))
+            .is_some());
+        machine.verify().expect("rig verify");
+
+        Rig { machine, core }
+    }
+
+    impl Rig {
+        fn wr(&mut self, addr: u64, value: u32) {
+            self.machine
+                .bus_write(
+                    Addr(addr),
+                    AccessSize::Word,
+                    u64::from(value),
+                    &attr(self.core),
+                )
+                .expect("mmio write");
+        }
+
+        fn rd(&mut self, addr: u64) -> u32 {
+            self.machine
+                .bus_read(Addr(addr), AccessSize::Word, &attr(self.core))
+                .expect("mmio read") as u32
+        }
+
+        fn drain(&mut self) {
+            let now = self.machine.now();
+            self.machine.run_until(now, 32).expect("event drain");
+        }
+
+        /// Gate I2C1's APB1 clock (RM0008 RCC_APB1ENR bit 21).
+        fn enable_i2c1_clock(&mut self) {
+            self.wr(APB1ENR, 1 << 21);
+            self.drain();
+        }
+
+        /// One RM0008 master write transaction to `addr`.
+        fn i2c_write(&mut self, addr: u8, bytes: &[u8]) {
+            self.wr(I2C1 + i2c::CR2, i2c::cr2::ITEVTEN | i2c::cr2::ITBUFEN | 8);
+            self.wr(I2C1 + i2c::CR1, i2c::cr1::PE);
+            self.wr(I2C1 + i2c::CR1, i2c::cr1::PE | i2c::cr1::START);
+            assert_eq!(self.rd(I2C1 + i2c::SR1) & i2c::sr1::SB, i2c::sr1::SB);
+            self.wr(I2C1 + i2c::DR, u32::from(addr) << 1);
+            self.rd(I2C1 + i2c::SR1);
+            self.rd(I2C1 + i2c::SR2); // clear ADDR
+            for &byte in bytes {
+                self.wr(I2C1 + i2c::DR, u32::from(byte));
+            }
+            self.wr(I2C1 + i2c::CR1, i2c::cr1::PE | i2c::cr1::STOP);
+        }
+
+        /// One RM0008 write-then-repeated-start-read transaction.
+        fn i2c_write_read(&mut self, addr: u8, out: &[u8], count: usize) -> Vec<u8> {
+            self.wr(I2C1 + i2c::CR1, i2c::cr1::PE | i2c::cr1::ACK);
+            self.wr(
+                I2C1 + i2c::CR1,
+                i2c::cr1::PE | i2c::cr1::ACK | i2c::cr1::START,
+            );
+            self.wr(I2C1 + i2c::DR, u32::from(addr) << 1);
+            self.rd(I2C1 + i2c::SR1);
+            self.rd(I2C1 + i2c::SR2);
+            for &byte in out {
+                self.wr(I2C1 + i2c::DR, u32::from(byte));
+            }
+            // Repeated start, then the read address.
+            self.wr(
+                I2C1 + i2c::CR1,
+                i2c::cr1::PE | i2c::cr1::ACK | i2c::cr1::START,
+            );
+            assert_eq!(self.rd(I2C1 + i2c::SR1) & i2c::sr1::SB, i2c::sr1::SB);
+            self.wr(I2C1 + i2c::DR, (u32::from(addr) << 1) | 1);
+            self.rd(I2C1 + i2c::SR1);
+            self.rd(I2C1 + i2c::SR2); // clear ADDR — reception begins
+            let mut read = Vec::with_capacity(count);
+            for _ in 0..count {
+                assert_eq!(
+                    self.rd(I2C1 + i2c::SR1) & i2c::sr1::RXNE,
+                    i2c::sr1::RXNE,
+                    "RxNE before each DR read"
+                );
+                read.push(self.rd(I2C1 + i2c::DR) as u8);
+            }
+            self.wr(I2C1 + i2c::CR1, i2c::cr1::PE | i2c::cr1::STOP);
+            read
+        }
+    }
+
+    #[test]
+    fn the_rig_composes_from_the_catalog_alone() {
+        let rig = build_rig();
+        // Four part nodes and the i2c1 controller were all spawned by the
+        // catalog; the wiring is the board manifest, nothing else.
+        assert!(rig.machine.verify().is_ok());
+    }
+
+    #[test]
+    fn rm0008_transactions_reach_the_expander_and_its_net() {
+        let mut rig = build_rig();
+        rig.enable_i2c1_clock();
+        // IODIRA = 0x00 (outputs), GPIOA = 0xA5.
+        rig.i2c_write(0x20, &[0x00, 0x00]);
+        rig.i2c_write(0x20, &[0x12, 0xA5]);
+        // Read GPIOA back through a repeated-start read.
+        let back = rig.i2c_write_read(0x20, &[0x12], 1);
+        assert_eq!(back, vec![0xA5]);
+        // The expander's GPA0 face drives its net: bit 0 of 0xA5 is high.
+        // (The net lives in the fabric store; a fresh observer sees High.)
+        // Re-reading through I2C stays consistent after the net round trip.
+        let again = rig.i2c_write_read(0x20, &[0x12], 1);
+        assert_eq!(again, vec![0xA5]);
+    }
+
+    #[test]
+    fn the_switch_routes_the_bme280_segment() {
+        let mut rig = build_rig();
+        rig.enable_i2c1_clock();
+        // Connect channel 2 of the TCA9548A.
+        rig.i2c_write(0x70, &[0x04]);
+        // Read the BME280 chip id (0xD0 = 0x60) through the segment.
+        let id = rig.i2c_write_read(0x76, &[0xD0], 1);
+        assert_eq!(id, vec![0x60]);
+        // The LM75A still answers on the root segment: Temp = 25.0 °C,
+        // 0.125 °C units × 200 at 11-bit left alignment = 0x1900.
+        let temp = rig.i2c_write_read(0x48, &[0x00], 2);
+        assert_eq!(temp, vec![0x19, 0x00]);
+    }
+
+    #[test]
+    fn the_expander_int_face_reaches_the_nvic() {
+        let mut rig = build_rig();
+        rig.enable_i2c1_clock();
+        // Enable NVIC position 6 so ICSR reports the pending line.
+        rig.wr(NVIC_ISER0, 1 << 6);
+        // Drive GPA0 as a low output, then arm interrupt-on-change…
+        rig.i2c_write(0x20, &[0x00, 0x00]); // IODIRA: line 0 output
+        rig.i2c_write(0x20, &[0x12, 0x00]); // GPIOA: drive low
+        rig.i2c_write(0x20, &[0x04, 0x01]); // GPINTENA: line 0 armed
+                                            // …and switch the line back to input: the release lets the net
+                                            // re-resolve to its floating high, the line observes the change,
+                                            // INTCAP captures and INT asserts — all under the I2C write's own
+                                            // machine context, so the signal event enters the queue for real.
+        rig.i2c_write(0x20, &[0x00, 0x01]); // IODIRA: line 0 input
+        rig.drain();
+        // INTCAP holds the captured GPIOA image (line 0 now high).
+        let cap = rig.i2c_write_read(0x20, &[0x10], 1);
+        assert_eq!(cap, vec![0x01]);
+        // The INT edge reached NVIC input 6: ICSR reports it pending
+        // (ISRPENDING set, VECTPENDING = 6 + 16 = 22).
+        let icsr = rig.rd(NVIC_ICSR);
+        assert_eq!(icsr, 0x0040_0000 | (22 << 12));
+    }
+}

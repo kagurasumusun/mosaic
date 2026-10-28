@@ -24,6 +24,17 @@ at = { space = 'sysbus', base = 0x40021000 }
 # The RCC's CIR interrupt (RM0008 NVIC position 5) reaches the NVIC as a wire.
 irq = { pin = 'rcc', to = ['scs.inputs:5'] }
 
+# RM0008 §27: I2C1 at 0x40005400 on APB1, event/irq 31 / error irq 32.
+[[block]]
+name = 'i2c1'
+use = 'ip:st/i2c-f1'
+at = { space = 'sysbus', base = 0x40005400 }
+clk = { clock = 'rcc.gate-apb1-i2c1' }
+irq = [
+    { pin = 'ev', to = ['scs.inputs:31'] },
+    { pin = 'er', to = ['scs.inputs:32'] },
+]
+
 [[block]]
 name = 'gpioa'
 use = 'ip:st/gpio-f1'
@@ -80,6 +91,13 @@ name = 'rcc-mmio'
 target = 'rcc'
 base = 0x40021000
 size = 0x28
+kind = 'mmio'
+
+[[view.region]]
+name = 'i2c1-mmio'
+target = 'i2c1'
+base = 0x40005400
+size = 0x24
 kind = 'mmio'
 
 [[view.region]]

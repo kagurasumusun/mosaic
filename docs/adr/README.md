@@ -37,3 +37,4 @@
 | [0029](0029-fabric-expansion-step4-display-wireless-power-storage.md) | ファブリック拡張 step 4 — 表示/無線/音声/電力/ストレージ/計測の 12 種 (VGA/DVI/LVDS/SDIO/PDM/PWM/NAND/ISA/PCMCIA/UFS/HyperBus/GPIB) + 123 件の新モデル | 採用 |
 | [0030](0030-unicorn-only-cpu-execution.md) | CPU エミュレーションは Unicorn Engine に一本化（自前 armv7m を削除、契約は不変） | 採用 |
 | [0031](0031-hw-responsibility-taxonomy.md) | ハードウェアモデルの責務別分類 — `hw` を `ip / part / core` へ再編（ファブリック軸の排除、misc 廃止、重複統合、manifest ミラー強化） | 採用 |
+| [0032](0032-multi-face-model-ports.md) | 多面モデルのポート面 — ip/part を貫く統一接続面（`[[part.face]]` 多面配線、部品 spawn、face 結合パス、RM0008 i2c-f1 の実装による実証） | 採用 |

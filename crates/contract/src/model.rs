@@ -51,6 +51,22 @@ pub trait Ctx: Send {
 
     /// Queue an outgoing signal at now. Never invoke its sink synchronously.
     fn set_signal(&mut self, signal: SignalId, high: bool) -> Result<(), ContextError>;
+
+    /// Queue a signal that belongs to *another* node — a fabric-attached
+    /// part (ADR 0032) whose callback runs inside the context of whichever
+    /// node drives the fabric. The part names itself as the origin so the
+    /// wiring table resolves the output it owns. Contexts that cannot host
+    /// foreign origins (capture-only harnesses) report exhaustion and the
+    /// caller treats the undelivered edge as a no-op.
+    fn set_signal_from(
+        &mut self,
+        node: mosaic_exec::NodeId,
+        signal: SignalId,
+        high: bool,
+    ) -> Result<(), ContextError> {
+        let _ = (node, signal, high);
+        Err(ContextError::ResourceExhausted)
+    }
 }
 
 /// Drive an optional output signal while preserving runtime failures.

@@ -7,6 +7,7 @@
 
 pub mod arm;
 pub mod i386;
+pub mod manifest;
 
 /// One machine type the front-end can select (QEMU's `MODULE_INFO` metadata).
 pub struct MachineInfo {

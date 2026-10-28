@@ -7,24 +7,70 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use mosaic_describe::{GraphNodeKind, MachineGraph, RegionKind};
+use mosaic_describe::{GraphEdge, GraphNodeKind, MachineGraph, RegionKind};
 use mosaic_exec::{Addr, Mapping, MemoryKind, NodeId, Permissions, SignalId};
 use mosaic_runtime::{AddressError, FlatView, Machine, MachineError, Region};
+
+use crate::faces::{connect_faces, FabricStore};
 
 /// Why a declared machine could not be instantiated.
 #[derive(Debug)]
 pub enum MaterializeError {
-    DuplicateFactory { catalog_id: String },
-    MissingFactory { catalog_id: String, node: String },
-    MissingNode { node: String },
-    MissingView { cpu: String, view: String },
-    MissingOutput { node: String, port: String },
-    Fanout { node: String, port: String },
-    UnsupportedSink { edge: String, node: String },
+    DuplicateFactory {
+        catalog_id: String,
+    },
+    MissingFactory {
+        catalog_id: String,
+        node: String,
+    },
+    MissingNode {
+        node: String,
+    },
+    MissingView {
+        cpu: String,
+        view: String,
+    },
+    MissingOutput {
+        node: String,
+        port: String,
+    },
+    Fanout {
+        node: String,
+        port: String,
+    },
+    UnsupportedSink {
+        edge: String,
+        node: String,
+    },
     MultipleViews,
     Address(AddressError),
     Machine(MachineError),
-    Bind { node: String, detail: String },
+    Bind {
+        node: String,
+        detail: String,
+    },
+    /// An i2c/spi edge references an initiator face whose spawn never
+    /// claimed or offered a segment bus (ADR 0032).
+    MissingSegment {
+        node: String,
+        port: String,
+    },
+    /// An i2c/spi edge references a target face the part never exposed.
+    MissingTargetFace {
+        node: String,
+        port: String,
+    },
+    /// A gpio edge references a line the part never exposed.
+    MissingGpioLine {
+        node: String,
+        port: String,
+        index: u64,
+    },
+    /// A face joined its fabric but the fabric rejected the attachment.
+    FaceAttach {
+        edge: String,
+        detail: String,
+    },
 }
 
 impl fmt::Display for MaterializeError {
@@ -54,6 +100,19 @@ impl fmt::Display for MaterializeError {
             Self::Address(error) => write!(f, "address map: {error:?}"),
             Self::Machine(error) => write!(f, "machine: {error:?}"),
             Self::Bind { node, detail } => write!(f, "bind {node:?}: {detail}"),
+            Self::MissingSegment { node, port } => write!(
+                f,
+                "node {node:?} masters no fabric segment on face {port:?}; its spawn must \
+                 claim or offer one before parts can attach (ADR 0032)"
+            ),
+            Self::MissingTargetFace { node, port } => write!(
+                f,
+                "node {node:?} never exposed the target face {port:?} an edge wires onto"
+            ),
+            Self::MissingGpioLine { node, port, index } => {
+                write!(f, "node {node:?} never exposed gpio line {port:?}[{index}]")
+            }
+            Self::FaceAttach { edge, detail } => write!(f, "face edge {edge:?}: {detail}"),
         }
     }
 }
@@ -89,7 +148,6 @@ impl IncomingWire {
 
 /// What a factory may observe while constructing one node. Borrows die when
 /// `instantiate` returns; do not store them on the model.
-#[derive(Debug)]
 pub struct InstantiateCtx<'a> {
     pub graph_id: &'a str,
     pub catalog_id: &'a str,
@@ -101,6 +159,28 @@ pub struct InstantiateCtx<'a> {
     pub parameters: &'a BTreeMap<String, mosaic_describe::ConfigValue>,
     /// The machine harness's host-side endpoints, by node name.
     pub hosts: &'a HostAttachments,
+    /// Fabric faces this node *receives* (i2c/spi target faces wired onto
+    /// it, with their wiring parameters — ADR 0032).
+    pub incoming_faces: &'a [&'a GraphEdge],
+    /// Fabric faces this node *masters* (i2c/spi edges leaving it).
+    pub outgoing_faces: &'a [&'a GraphEdge],
+    /// The fabric faces every spawn shares (segments, nets, exposures).
+    /// The factory signature passes a shared context, so the store sits
+    /// behind a mutex the face methods lock per call.
+    pub fabrics: &'a std::sync::Mutex<FabricStore>,
+}
+
+impl std::fmt::Debug for InstantiateCtx<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InstantiateCtx")
+            .field("graph_id", &self.graph_id)
+            .field("catalog_id", &self.catalog_id)
+            .field("node", &self.node)
+            .field("incoming", &self.incoming.len())
+            .field("incoming_faces", &self.incoming_faces.len())
+            .field("outgoing_faces", &self.outgoing_faces.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for HostAttachments {
@@ -379,6 +459,10 @@ pub struct AssembledMachine {
     pub outputs: BTreeMap<(String, String), SignalId>,
     pub cpu_lines: Vec<CpuLine>,
     pub deferred: Vec<DeferredEdge>,
+    /// Fabric faces after the join pass: mux segments, declared nets and
+    /// unclaimed exposures (ADR 0032). None keeps the pre-face shape for
+    /// callers that have not opted in.
+    pub fabrics: Option<FabricStore>,
     /// First `NodeId` not used by the graph. Host sinks may start here.
     pub next_node: u32,
 }
@@ -390,6 +474,7 @@ impl fmt::Debug for AssembledMachine {
             .field("outputs", &self.outputs)
             .field("cpu_lines", &self.cpu_lines)
             .field("deferred", &self.deferred)
+            .field("fabrics", &self.fabrics.is_some())
             .field("next_node", &self.next_node)
             .finish_non_exhaustive()
     }
@@ -413,6 +498,9 @@ pub fn materialize(
     let view = default_view(graph, &views)?;
     let mut machine = Machine::new(view.clone(), queue_capacity);
     add_backings(graph, &nodes, &mut machine)?;
+    // The factory signature hands spawns a shared context, so the store the
+    // face methods mutate lives behind a mutex until every spawn is done.
+    let fabric_cells = std::sync::Mutex::new(FabricStore::default());
     instantiate(
         graph,
         registry,
@@ -421,8 +509,16 @@ pub fn materialize(
         &incoming,
         hosts,
         &mut machine,
+        &fabric_cells,
     )?;
+    let mut fabrics = fabric_cells
+        .into_inner()
+        .map_err(|_| MaterializeError::FaceAttach {
+            edge: "<materialize>".into(),
+            detail: "fabric store mutex poisoned".into(),
+        })?;
     let cpu_lines = connect_wires(graph, &nodes, &assigned, registry, &mut machine)?;
+    connect_faces(graph, &nodes, &mut fabrics)?;
     attach_cpu_views(graph, &nodes, &views, &mut machine)?;
     machine.verify()?;
 
@@ -435,7 +531,12 @@ pub fn materialize(
     let deferred = graph
         .edges
         .iter()
-        .filter(|edge| !matches!(edge.kind.as_str(), "irq" | "clock" | "address-space"))
+        .filter(|edge| {
+            !matches!(
+                edge.kind.as_str(),
+                "irq" | "clock" | "address-space" | "i2c" | "spi" | "gpio"
+            )
+        })
         .map(|edge| DeferredEdge {
             id: edge.id.clone(),
             kind: edge.kind.clone(),
@@ -449,6 +550,7 @@ pub fn materialize(
         outputs,
         cpu_lines,
         deferred,
+        fabrics: Some(fabrics),
         next_node,
     })
 }
@@ -714,7 +816,16 @@ fn instantiate(
     incoming: &BTreeMap<String, Vec<IncomingWire>>,
     hosts: &HostAttachments,
     machine: &mut Machine,
+    fabrics: &std::sync::Mutex<FabricStore>,
 ) -> Result<(), MaterializeError> {
+    // Face slices per node: target faces arrive (with wiring parameters),
+    // initiator faces leave (a controller checks whether any target rides
+    // it before preferring its host attachment).
+    let face_edges: Vec<&GraphEdge> = graph
+        .edges
+        .iter()
+        .filter(|edge| matches!(edge.kind.as_str(), "i2c" | "spi" | "gpio"))
+        .collect();
     let empty_outputs = BTreeMap::new();
     let empty_incoming = Vec::new();
     for node in &graph.nodes {
@@ -736,6 +847,16 @@ fn instantiate(
                     catalog_id: catalog_id.to_owned(),
                     node: node.id.clone(),
                 })?;
+        let incoming_faces: Vec<&GraphEdge> = face_edges
+            .iter()
+            .copied()
+            .filter(|edge| edge.to_node == node.id)
+            .collect();
+        let outgoing_faces: Vec<&GraphEdge> = face_edges
+            .iter()
+            .copied()
+            .filter(|edge| edge.from_node == node.id)
+            .collect();
         let ctx = InstantiateCtx {
             graph_id: &node.id,
             catalog_id,
@@ -745,6 +866,9 @@ fn instantiate(
             incoming: incoming.get(&node.id).unwrap_or(&empty_incoming),
             parameters: &node.parameters,
             hosts,
+            incoming_faces: &incoming_faces,
+            outgoing_faces: &outgoing_faces,
+            fabrics,
         };
         factory.instantiate(&ctx, machine)?;
     }
@@ -826,7 +950,13 @@ fn connect_wires(
                         .ok_or_else(|| MaterializeError::MissingNode {
                             node: edge.to_node.clone(),
                         })?;
-                machine.connect(source, signal, sink)?;
+                // Parts have no arena presence (their faces carry them),
+                // so their outputs wire through the part-source path.
+                if kinds.get(edge.from_node.as_str()).copied() == Some(GraphNodeKind::Part) {
+                    machine.connect_output(source, signal, sink)?;
+                } else {
+                    machine.connect(source, signal, sink)?;
+                }
             }
             _ => {
                 return Err(MaterializeError::UnsupportedSink {

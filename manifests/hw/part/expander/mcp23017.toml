@@ -1,4 +1,5 @@
-# MCP23017 16-bit I2C I/O expander
+# MCP23017 16-bit I2C I/O expander — a multi-face part (ADR 0032):
+# one I2C target face, sixteen GPIO line faces and one IRQ output.
 [part]
 id = 'part:microchip/mcp23017'
 origin = 'microchip'
@@ -7,6 +8,10 @@ summary = "MCP23017 16-bit I2C I/O expander"
 bindings = ["i2c"]
 provenance = { doc = 'vendor datasheet', confidence = 'high' }
 
+[ports]
+i2c = { contract = 'i2c/target', role = 'target' }
+gpio = { contract = 'gpio/port', role = 'provider', count = 16 }
+irq = { role = 'source', pins = ['int'] }
+
 [i2c]
 addresses = [32, 33, 34, 35, 36, 37, 38, 39]
-

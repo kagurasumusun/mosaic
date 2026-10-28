@@ -62,6 +62,20 @@ impl Ctx for ModelContext<'_> {
         )?;
         Ok(())
     }
+
+    fn set_signal_from(
+        &mut self,
+        node: NodeId,
+        signal: SignalId,
+        high: bool,
+    ) -> Result<(), ContextError> {
+        // The named origin is a fabric-attached part; its outputs were
+        // registered when the wiring was connected, so membership is the
+        // machine's bookkeeping, not this context's owner-local set.
+        self.queue
+            .schedule(node, self.queue.now(), EventKind::Signal { signal, high })?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
