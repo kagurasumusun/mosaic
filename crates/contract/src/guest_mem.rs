@@ -53,7 +53,7 @@ impl RamWindow {
 
 impl GuestMemory for RamWindow {
     fn read_bytes(&self, address: u64, out: &mut [u8]) -> Result<(), GuestMemError> {
-        let start = (address - self.base) as usize;
+        let start = self.window_index(address, out.len())?;
         let guard = self
             .bytes
             .lock()
@@ -66,7 +66,7 @@ impl GuestMemory for RamWindow {
     }
 
     fn write_bytes(&mut self, address: u64, data: &[u8]) -> Result<(), GuestMemError> {
-        let start = (address - self.base) as usize;
+        let start = self.window_index(address, data.len())?;
         let mut guard = self
             .bytes
             .lock()
@@ -76,6 +76,25 @@ impl GuestMemory for RamWindow {
             .ok_or(GuestMemError::Unmapped { address })?;
         slice.copy_from_slice(data);
         Ok(())
+    }
+}
+
+impl RamWindow {
+    /// The byte index of `address` inside the window, or the unmapped
+    /// error when the address falls below the base or past the end.
+    fn window_index(&self, address: u64, length: usize) -> Result<usize, GuestMemError> {
+        let offset = address
+            .checked_sub(self.base)
+            .ok_or(GuestMemError::Unmapped { address })?;
+        let start = usize::try_from(offset).map_err(|_| GuestMemError::Unmapped { address })?;
+        let end = start
+            .checked_add(length)
+            .ok_or(GuestMemError::Unmapped { address })?;
+        let size = self.bytes.lock().map(|bytes| bytes.len()).unwrap_or(0);
+        if end > size {
+            return Err(GuestMemError::Unmapped { address });
+        }
+        Ok(start)
     }
 }
 

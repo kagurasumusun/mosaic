@@ -144,6 +144,6 @@ mod tests {
     fn readonly_image_rejects_writes() {
         let mut image = MemoryImage::readonly(vec![0; 512]);
         assert_eq!(image.write_at(0, &[1]), Err(BlockError::ReadOnly));
-        assert_eq!(image.readonly(), true);
+        assert!(image.readonly());
     }
 }
