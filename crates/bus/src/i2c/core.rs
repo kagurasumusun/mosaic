@@ -62,6 +62,13 @@ impl I2cBus {
         &self.phases
     }
 
+    /// Whether any attached target would answer this address. Mux parts
+    /// probe their downstream segments with this to extend the reachable
+    /// address set (their own `matches` unions the enabled segments).
+    pub fn resolves(&self, addr: &I2cAddr) -> bool {
+        self.target_index(addr).is_some()
+    }
+
     fn target_index(&self, addr: &I2cAddr) -> Option<usize> {
         self.targets.iter().position(|target| target.matches(addr))
     }

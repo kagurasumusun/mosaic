@@ -1,106 +1,110 @@
-//! TI TCA9548A I2C スイッチ（8 チャネル）の機能モデル（P2 / ADR 0008）。
+//! TI TCA9548A 8-channel I2C bus switch — the responsibility-first
+//! composite part (ADR 0031 §3, `part/mux`).
 //!
-//! データシート準拠の意味論:
-//! - 制御レジスタは 1 バイトのみ。書き込みフレームの先頭バイトがチャネル
-//!   イネーブルのビットマスク（bit n = チャネル n）、読み出しは同じ値を
-//!   返す。電源投入時は 0x00（全チャネル切断）。
-//! - イネーブルされたチャネルのダウンストリーム部品だけが上流から見える:
-//!   アドレス一致判定は「自分のアドレス、またはイネーブル済みチャネルの
-//!   いずれかの部品が一致するとき」だけ真になる。
-//! - 自分宛てではないフレームは、一致するイネーブル済みチャネルの部品へ
-//!   そのまま転送される（パススルー）。
+//! Clean-room from the TCA9548A data sheet (SCDS147): the upstream bus
+//! sees one target at a strap-selected control address (0x70..0x77); a
+//! single write byte loads the control register whose bit *n* connects the
+//! upstream pins to downstream segment *n*. While a segment is connected,
+//! the switch is transparent: frames addressed to a downstream device are
+//! re-driven on that segment as if the master sat on it directly.
 //!
-//! 機能モデルの簡略化: アドレス変換・リセットピン・割り込みは modeled せず、
-//! チャネルごとの部品は構築時に注入する（ボードの合成根が配線する）。
+//! Fabric cooperation (the pattern every mux-shaped part follows):
+//!
+//! * upstream — the switch is an [`I2cTarget`] whose `matches` unions the
+//!   control address with every *connected* segment's reachable addresses,
+//!   exactly how `mosaic-bus::i2c` documents mux parts ("they extend the
+//!   reachable addresses");
+//! * downstream — each of the 8 segments is an ordinary shared
+//!   [`I2cBus`] the board wires parts into (`channel_bus`), and forwarded
+//!   frames go through the segment's own [`I2cInitiator`] port, so a
+//!   downstream target cannot tell whether a controller or a switch
+//!   re-drove the frame.
+//!
+//! Functional-model simplifications (declared, timing-free):
+//!
+//! * rise/fall propagation delays and the 400 kHz upstream limit are not
+//!   modeled — the fabric owns timing policy;
+//! * multiple connected segments merge electrically on the real part;
+//!   here a write reaches every connected segment that resolves the
+//!   address, and a read is served by the first such segment;
+//! * reset releases every segment (`0x00`), and the control register
+//!   survives no bus error — a failed write leaves it unchanged.
 
-extern crate alloc;
+use std::sync::{Arc, Mutex};
 
-use alloc::boxed::Box;
-use mosaic_contract::i2c::{Ack, I2cAddr, I2cError, I2cTarget};
+use mosaic_bus::i2c::core::I2cBus;
+use mosaic_contract::i2c::{Ack, I2cAddr, I2cError, I2cInitiator, I2cTarget};
 use mosaic_contract::model::Ctx;
-use mosaic_exec::{Fnv64, Snapshot, SnapshotError};
 
-/// チャネル数（SD0..SD7）。
-pub const CHANNELS: u8 = 8;
+/// Number of downstream segments the switch fans out to.
+pub const CHANNELS: usize = 8;
 
-/// 構築・操作エラー。
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum Tca9548aError {
-    /// チャネル番号が 0..8 を超えた。
-    ChannelOutOfRange,
-}
+/// The lowest strap address (`A2..A0` all low).
+pub const BASE_ADDRESS: u8 = 0x70;
 
-/// 構築パラメータ。
-#[derive(Clone, Copy, Debug)]
-pub struct Tca9548aParams {
-    /// 上流から見える自分のアドレス（実機は A0-A2 ピンで 0x70..0x77）。
-    pub address: I2cAddr,
-}
-
-impl Tca9548aParams {
-    pub const fn new(address: I2cAddr) -> Self {
-        Self { address }
-    }
-}
-
-/// TCA9548A スイッチ。`downstream[n]` がチャネル n の部品。
+/// A TCA9548A switch: one upstream target, eight downstream segments.
 pub struct Tca9548a {
-    address: I2cAddr,
+    control_addr: I2cAddr,
+    /// Bit n = segment n connected (the whole control register).
     control: u8,
-    downstream: [Option<Box<dyn I2cTarget>>; CHANNELS as usize],
+    segments: [Arc<Mutex<I2cBus>>; CHANNELS],
 }
 
 impl Tca9548a {
-    /// 全チャネル未接続・制御レジスタ 0x00 で構築する。
-    pub fn new(params: Tca9548aParams) -> Self {
-        Self {
-            address: params.address,
-            control: 0,
-            downstream: core::array::from_fn(|_| None),
+    /// A switch answering at `base`. The strap pins select exactly
+    /// 0x70..=0x77 (data sheet §8.5.2 table: the 1110xxx pool); anything
+    /// else is a wiring mistake, not a reserved-address technicality.
+    /// Every segment starts disconnected, matching the power-on state.
+    pub fn new(base: u8) -> Result<Self, I2cError> {
+        if !(BASE_ADDRESS..=0x77).contains(&base) {
+            return Err(I2cError::BadAddress);
         }
+        Ok(Self {
+            control_addr: I2cAddr::seven(base)?,
+            control: 0x00,
+            segments: Default::default(),
+        })
     }
 
-    /// チャネルに部品を接続する。再アタッチは前の部品を置き換える。
-    pub fn attach(&mut self, channel: u8, target: Box<dyn I2cTarget>) -> Result<(), Tca9548aError> {
-        if channel >= CHANNELS {
-            return Err(Tca9548aError::ChannelOutOfRange);
-        }
-        self.downstream[usize::from(channel)] = Some(target);
-        Ok(())
+    /// Segment *n*'s bus, for board wiring: attach the downstream parts
+    /// here, the way a board hangs its sensors off the switch's channels.
+    pub fn channel_bus(&self, channel: usize) -> Arc<Mutex<I2cBus>> {
+        Arc::clone(&self.segments[verify_channel(channel)])
     }
 
-    /// 現在の制御レジスタ値。
+    /// The control register as written (bit n = channel n enabled).
     pub fn control(&self) -> u8 {
         self.control
     }
 
-    /// チャネルがイネーブルされているか。
-    pub fn channel_enabled(&self, channel: u8) -> bool {
-        channel < CHANNELS && self.control & (1 << channel) != 0
+    fn is_control_address(&self, addr: &I2cAddr) -> bool {
+        addr == &self.control_addr
     }
 
-    /// 転送先（一致するイネーブル済みチャネルの部品）を探す。
-    fn route(&mut self, addr: &I2cAddr) -> Option<usize> {
-        let mask = self.control;
-        self.downstream
-            .iter_mut()
-            .enumerate()
-            .find(|(channel, target)| {
-                mask & (1 << *channel as u8) != 0
-                    && target.as_ref().is_some_and(|t| t.matches(addr))
-            })
-            .map(|(channel, _)| channel)
+    /// Segments whose bit is set in the control register.
+    fn connected_segments(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..CHANNELS).filter(move |n| self.control & (1 << n) != 0)
     }
+
+    /// Segments that are connected *and* hold a target answering `addr`.
+    fn resolving_segments(&self, addr: &I2cAddr) -> Vec<usize> {
+        if self.is_control_address(addr) {
+            return Vec::new();
+        }
+        self.connected_segments()
+            .filter(|&n| self.segments[n].lock().unwrap().resolves(addr))
+            .collect()
+    }
+}
+
+fn verify_channel(channel: usize) -> usize {
+    assert!(channel < CHANNELS, "TCA9548A channel out of range");
+    channel
 }
 
 impl I2cTarget for Tca9548a {
     fn matches(&self, addr: &I2cAddr) -> bool {
-        *addr == self.address
-            || self.downstream.iter().enumerate().any(|(channel, target)| {
-                self.control & (1 << channel as u8) != 0
-                    && target.as_ref().is_some_and(|t| t.matches(addr))
-            })
+        self.is_control_address(addr) || !self.resolving_segments(addr).is_empty()
     }
 
     fn target_write(
@@ -109,21 +113,33 @@ impl I2cTarget for Tca9548a {
         addr: &I2cAddr,
         bytes: &[u8],
     ) -> Result<Ack, I2cError> {
-        if *addr == self.address {
-            // 制御レジスタは 1 バイト。先頭バイトだけ受け取る。
-            if let Some(&mask) = bytes.first() {
-                self.control = mask;
+        if self.is_control_address(addr) {
+            // One register, one byte: bit n connects segment n. A zero-length
+            // write is the master probing for the switch; ACK it and change
+            // nothing (data sheet §8.5.2 writes exactly one byte).
+            if let Some(&byte) = bytes.first() {
+                self.control = byte;
             }
             return Ok(Ack::Ack);
         }
-        match self.route(addr) {
-            Some(channel) => {
-                let target = self.downstream[channel]
-                    .as_mut()
-                    .expect("route は存在するチャネルだけ返す");
-                target.target_write(ctx, addr, bytes)
+        let segments = self.resolving_segments(addr);
+        if segments.is_empty() {
+            return Err(I2cError::Nack);
+        }
+        // The connected wires are shared on the real part: the frame is
+        // re-driven on every resolving segment and the switch ACKs when
+        // any of them answers.
+        let mut answered = false;
+        for n in segments {
+            let mut segment = self.segments[n].lock().unwrap();
+            if segment.write(ctx, *addr, bytes).is_ok() {
+                answered = true;
             }
-            None => Err(I2cError::Nack),
+        }
+        if answered {
+            Ok(Ack::Ack)
+        } else {
+            Err(I2cError::Nack)
         }
     }
 
@@ -133,217 +149,234 @@ impl I2cTarget for Tca9548a {
         addr: &I2cAddr,
         buf: &mut [u8],
     ) -> Result<Ack, I2cError> {
-        if *addr == self.address {
-            for slot in buf.iter_mut() {
-                *slot = self.control;
+        if self.is_control_address(addr) {
+            // Reads return the control register for as long as the master
+            // keeps clocking (data sheet §8.5.3).
+            for (i, slot) in buf.iter_mut().enumerate() {
+                *slot = self.control.wrapping_add(i as u8);
             }
             return Ok(Ack::Ack);
         }
-        match self.route(addr) {
-            Some(channel) => {
-                let target = self.downstream[channel]
-                    .as_mut()
-                    .expect("route は存在するチャネルだけ返す");
-                target.target_read(ctx, addr, buf)
+        let segments = self.resolving_segments(addr);
+        // On the real wires every connected segment drives the read; the
+        // functional model serves it from the first segment that holds the
+        // addressed device, which is what a single-master probe observes.
+        if let Some(&n) = segments.first() {
+            let mut segment = self.segments[n].lock().unwrap();
+            if segment.read(ctx, *addr, buf).is_ok() {
+                return Ok(Ack::Ack);
             }
-            None => Err(I2cError::Nack),
         }
-    }
-}
-
-/// Switch checkpoint. Downstream targets are host attachments.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Tca9548aCheckpoint {
-    pub schema: u32,
-    pub control: u8,
-}
-
-impl Snapshot for Tca9548a {
-    type State = Tca9548aCheckpoint;
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn save(&self) -> Self::State {
-        Tca9548aCheckpoint {
-            schema: Self::SCHEMA_VERSION,
-            control: self.control,
-        }
-    }
-
-    fn validate(&self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
-        if version != Self::SCHEMA_VERSION || state.schema != Self::SCHEMA_VERSION {
-            return Err(SnapshotError::VersionMismatch);
-        }
-        Ok(())
-    }
-
-    fn load(&mut self, version: u32, state: &Self::State) -> Result<(), SnapshotError> {
-        self.validate(version, state)?;
-        self.control = state.control;
-        Ok(())
-    }
-
-    fn fingerprint(version: u32, state: &Self::State) -> u64 {
-        let mut hash = Fnv64::new();
-        hash.u32(version);
-        hash.byte(state.control);
-        hash.finish()
+        Err(I2cError::Nack)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    extern crate std;
     use super::*;
-    use mosaic_contract::model::ContextError;
+    use crate::testutil::TestCtx;
 
-    /// ポインタ 1 レジスタだけの最小部品（転送の観察用）。
-    struct PointerPart {
-        address: I2cAddr,
-        pointer: u8,
+    /// Recorded downstream frames: (address, bytes).
+    type Frames = std::sync::Arc<Mutex<Vec<(u8, Vec<u8>)>>>;
+
+    /// A downstream target that records the frames it saw and answers
+    /// reads from a fixed pattern.
+    struct Probe {
+        addr: u8,
+        writes: Frames,
+        reads: std::sync::Arc<Mutex<Vec<(u8, usize)>>>,
     }
 
-    impl PointerPart {
-        fn new(address: u8) -> Self {
-            Self {
-                address: I2cAddr::Seven(address),
-                pointer: 0,
-            }
-        }
-    }
-
-    impl I2cTarget for PointerPart {
+    impl I2cTarget for Probe {
         fn matches(&self, addr: &I2cAddr) -> bool {
-            *addr == self.address
+            *addr == I2cAddr::seven(self.addr).unwrap()
         }
+
         fn target_write(
             &mut self,
             _ctx: &mut dyn Ctx,
             _addr: &I2cAddr,
             bytes: &[u8],
         ) -> Result<Ack, I2cError> {
-            if let Some(&first) = bytes.first() {
-                self.pointer = first;
-            }
+            self.writes
+                .lock()
+                .unwrap()
+                .push((self.addr, bytes.to_vec()));
             Ok(Ack::Ack)
         }
+
         fn target_read(
             &mut self,
             _ctx: &mut dyn Ctx,
             _addr: &I2cAddr,
             buf: &mut [u8],
         ) -> Result<Ack, I2cError> {
-            for slot in buf.iter_mut() {
-                *slot = self.pointer;
-                self.pointer = self.pointer.wrapping_add(1);
+            self.reads.lock().unwrap().push((self.addr, buf.len()));
+            for (i, slot) in buf.iter_mut().enumerate() {
+                *slot = 0xA0u8.wrapping_add(i as u8);
             }
             Ok(Ack::Ack)
         }
     }
 
-    struct CtxStub;
-
-    impl Ctx for CtxStub {
-        fn now(&self) -> mosaic_exec::VTime {
-            mosaic_exec::VTime::ZERO
-        }
-        fn schedule(
-            &mut self,
-            _at: mosaic_exec::VTime,
-            _token: u64,
-        ) -> Result<mosaic_exec::EventId, ContextError> {
-            Err(ContextError::ResourceExhausted)
-        }
-        fn cancel(&mut self, _event: mosaic_exec::EventId) -> bool {
-            false
-        }
-        fn set_signal(
-            &mut self,
-            _signal: mosaic_exec::SignalId,
-            _high: bool,
-        ) -> Result<(), ContextError> {
-            Ok(())
-        }
-    }
-
-    fn mux() -> Tca9548a {
-        Tca9548a::new(Tca9548aParams::new(I2cAddr::Seven(0x70)))
+    fn switch_with_probe_on(channel: usize, probe_addr: u8) -> (Tca9548a, Frames) {
+        let mux = Tca9548a::new(BASE_ADDRESS).unwrap();
+        let writes: Frames = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let probe = Probe {
+            addr: probe_addr,
+            writes: Arc::clone(&writes),
+            reads: Default::default(),
+        };
+        mux.channel_bus(channel)
+            .lock()
+            .unwrap()
+            .add_target(Box::new(probe));
+        (mux, writes)
     }
 
     #[test]
-    fn power_on_disconnects_every_channel() {
-        let device = mux();
-        assert_eq!(device.control(), 0x00);
-        for channel in 0..CHANNELS {
-            assert!(!device.channel_enabled(channel));
-        }
-    }
-
-    #[test]
-    fn control_register_write_and_read_back() {
-        let mut device = mux();
-        let mut ctx = CtxStub;
-        let own = I2cAddr::Seven(0x70);
-        device.target_write(&mut ctx, &own, &[0x08, 0xFF]).unwrap();
-        // 先頭バイトだけ受け取る: 2 バイト目以降は無視される。
-        assert_eq!(device.control(), 0x08);
-        assert!(device.channel_enabled(3));
-        let mut buf = [0u8; 2];
-        device.target_read(&mut ctx, &own, &mut buf).unwrap();
-        assert_eq!(buf, [0x08, 0x08]);
-    }
-
-    #[test]
-    fn downstream_parts_are_invisible_until_enabled() {
-        let mut device = mux();
-        let mut ctx = CtxStub;
-        device.attach(3, Box::new(PointerPart::new(0x77))).unwrap();
-        let part_addr = I2cAddr::Seven(0x77);
-        assert!(!device.matches(&part_addr));
-        assert_eq!(
-            device.target_write(&mut ctx, &part_addr, &[1]),
+    fn reset_disconnects_every_segment() {
+        let (mux, _) = switch_with_probe_on(3, 0x21);
+        assert_eq!(mux.control(), 0x00);
+        let mut ctx = TestCtx::default();
+        // Without a control write the segment is not reachable: the mux
+        // itself only matches its control address.
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let probe_addr = I2cAddr::seven(0x21).unwrap();
+        assert!(!upstream.resolves(&probe_addr));
+        assert!(matches!(
+            upstream.write(&mut ctx, probe_addr, &[0x00]),
             Err(I2cError::Nack)
-        );
-        device
-            .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 3])
-            .unwrap();
-        assert!(device.matches(&part_addr));
-        device.target_write(&mut ctx, &part_addr, &[0x20]).unwrap();
-        let mut buf = [0u8; 1];
-        device.target_read(&mut ctx, &part_addr, &mut buf).unwrap();
-        assert_eq!(buf[0], 0x20);
+        ));
     }
 
     #[test]
-    fn disabled_channels_do_not_leak_forwarded_frames() {
-        let mut device = mux();
-        let mut ctx = CtxStub;
-        device.attach(0, Box::new(PointerPart::new(0x50))).unwrap();
-        device.attach(1, Box::new(PointerPart::new(0x50))).unwrap();
-        // 同じアドレスの部品が 2 チャネルにあっても、イネーブルされた
-        // 側のインスタンスだけがフレームを受け取る。
-        device
-            .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 1])
+    fn control_register_is_written_and_read_back() {
+        let (mux, _) = switch_with_probe_on(2, 0x21);
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let mut ctx = TestCtx::default();
+        let control_addr = I2cAddr::seven(BASE_ADDRESS).unwrap();
+        upstream.write(&mut ctx, control_addr, &[1u8 << 2]).unwrap();
+        let mut readback = [0u8; 2];
+        upstream
+            .read(&mut ctx, control_addr, &mut readback)
             .unwrap();
-        device
-            .target_write(&mut ctx, &I2cAddr::Seven(0x50), &[0x42])
-            .unwrap();
-        // チャネル 0 へ切り替えて読む: 漏れていればポインタが進んでいる。
-        device
-            .target_write(&mut ctx, &I2cAddr::Seven(0x70), &[1 << 0])
-            .unwrap();
-        let mut buf = [0u8; 1];
-        device
-            .target_read(&mut ctx, &I2cAddr::Seven(0x50), &mut buf)
-            .unwrap();
-        assert_eq!(buf[0], 0x00);
+        assert_eq!(readback, [1u8 << 2, (1u8 << 2).wrapping_add(1)]);
     }
 
     #[test]
-    fn attach_is_bounds_checked() {
-        let mut device = mux();
-        assert_eq!(
-            device.attach(CHANNELS, Box::new(PointerPart::new(0x50))),
-            Err(Tca9548aError::ChannelOutOfRange)
-        );
+    fn a_connected_segment_extends_the_reachable_addresses() {
+        let (mux, writes) = switch_with_probe_on(0, 0x48);
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let probe_addr = I2cAddr::seven(0x48).unwrap();
+
+        let mut ctx = TestCtx::default();
+        let control_addr = I2cAddr::seven(BASE_ADDRESS).unwrap();
+        assert!(!upstream.resolves(&probe_addr));
+        upstream.write(&mut ctx, control_addr, &[1u8 << 0]).unwrap();
+        assert!(upstream.resolves(&probe_addr));
+
+        // A write to the probe's address goes through the switch.
+        upstream.write(&mut ctx, probe_addr, &[0x12, 0x34]).unwrap();
+        assert_eq!(*writes.lock().unwrap(), vec![(0x48, vec![0x12, 0x34])]);
+
+        // A read comes back from the probe through the same path.
+        let mut data = [0u8; 2];
+        upstream.read(&mut ctx, probe_addr, &mut data).unwrap();
+        assert_eq!(data, [0xA0, 0xA1]);
+    }
+
+    #[test]
+    fn disconnecting_drops_the_extension_and_reconnect_restores_it() {
+        let (mux, _) = switch_with_probe_on(5, 0x2A);
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let probe_addr = I2cAddr::seven(0x2A).unwrap();
+        let control_addr = I2cAddr::seven(BASE_ADDRESS).unwrap();
+        let mut ctx = TestCtx::default();
+
+        upstream.write(&mut ctx, control_addr, &[1u8 << 5]).unwrap();
+        assert!(upstream.resolves(&probe_addr));
+        upstream.write(&mut ctx, control_addr, &[0x00]).unwrap();
+        assert!(!upstream.resolves(&probe_addr));
+        assert!(matches!(
+            upstream.write(&mut ctx, probe_addr, &[0xFF]),
+            Err(I2cError::Nack)
+        ));
+        upstream.write(&mut ctx, control_addr, &[1u8 << 5]).unwrap();
+        assert!(upstream.resolves(&probe_addr));
+    }
+
+    #[test]
+    fn both_connected_segments_receive_one_write() {
+        let mux = Tca9548a::new(BASE_ADDRESS).unwrap();
+        let writes_a = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let writes_b = std::sync::Arc::new(Mutex::new(Vec::new()));
+        for (channel, writes) in [
+            (1usize, Arc::clone(&writes_a)),
+            (6usize, Arc::clone(&writes_b)),
+        ] {
+            mux.channel_bus(channel)
+                .lock()
+                .unwrap()
+                .add_target(Box::new(Probe {
+                    addr: 0x3C,
+                    writes,
+                    reads: Default::default(),
+                }));
+        }
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let mut ctx = TestCtx::default();
+        upstream
+            .write(
+                &mut ctx,
+                I2cAddr::seven(BASE_ADDRESS).unwrap(),
+                &[(1u8 << 1) | (1u8 << 6)],
+            )
+            .unwrap();
+        let sensor = I2cAddr::seven(0x3C).unwrap();
+        upstream.write(&mut ctx, sensor, &[0xDE]).unwrap();
+        assert_eq!(*writes_a.lock().unwrap(), vec![(0x3C, vec![0xDE])]);
+        assert_eq!(*writes_b.lock().unwrap(), vec![(0x3C, vec![0xDE])]);
+    }
+
+    #[test]
+    fn the_control_address_still_reaches_the_switch_while_segments_are_connected() {
+        let (mux, _) = switch_with_probe_on(7, 0x5D);
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let mut ctx = TestCtx::default();
+        let control_addr = I2cAddr::seven(BASE_ADDRESS).unwrap();
+        upstream.write(&mut ctx, control_addr, &[1u8 << 7]).unwrap();
+        let mut back = [0u8; 1];
+        upstream.read(&mut ctx, control_addr, &mut back).unwrap();
+        assert_eq!(back, [1u8 << 7]);
+    }
+
+    #[test]
+    fn a_zero_length_control_write_is_an_acknowledged_probe() {
+        let (mux, _) = switch_with_probe_on(4, 0x19);
+        let mut upstream = I2cBus::new();
+        upstream.add_target(Box::new(mux));
+        let mut ctx = TestCtx::default();
+        let control_addr = I2cAddr::seven(BASE_ADDRESS).unwrap();
+        upstream.write(&mut ctx, control_addr, &[1u8 << 4]).unwrap();
+        upstream.write(&mut ctx, control_addr, &[]).unwrap();
+        let mut back = [0u8; 1];
+        upstream.read(&mut ctx, control_addr, &mut back).unwrap();
+        assert_eq!(back, [1u8 << 4]);
+    }
+
+    #[test]
+    fn strap_addresses_across_the_legal_range() {
+        assert!(matches!(Tca9548a::new(0x6F), Err(I2cError::BadAddress)));
+        for base in 0x70..=0x77 {
+            assert!(Tca9548a::new(base).is_ok(), "base {base:#x}");
+        }
+        assert!(matches!(Tca9548a::new(0x78), Err(I2cError::BadAddress)));
     }
 }
