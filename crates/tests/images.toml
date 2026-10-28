@@ -137,7 +137,7 @@ note = "32-bit Alpine, same PC machine"
 id = "linux/alpine-virt-aarch64"
 os = "linux"
 distro = "Alpine Linux 3.21 virt (aarch64)"
-machine = "virt-64"
+machine = "virt64"
 arch = "aarch64"
 source = "download"
 file = "alpine-virt-3.21.3-aarch64.iso"
@@ -147,7 +147,7 @@ boot = "cdrom"
 budget = 50_000_000
 expect = []
 status = "machine-pending"
-note = "needs the virt-64 machine: pl011 + GICv2 + a device tree"
+note = "the virt64 machine exists (ADR 0033 wave 3) with PL011 + GICv3 + virtio-mmio; AArch64 external IRQ injection is not in Unicorn 2.1.x (ADR 0009), so a real Linux boot stops at WFI. Bring-up resumes when the engine can deliver the GIC's IRQ/FIQ into the core."
 
 [[image]]
 id = "linux/alpine-virt-armv7"

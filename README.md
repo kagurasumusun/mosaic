@@ -186,7 +186,10 @@ INT、TCA9548A 型: 上流 I2C + 下流 8 セグメント、BME280 型: I2C/SPI 
   PIC/PIT/RTC/PL011/PL061/SP804/PL190/GICv2/SCS ほか。
 - 機械: `-M pc`（BIOS INT サービス、ISA ポート空間、VGA text、El Torito・
   ブートセクタ・bzImage 直接起動）、`-M stm32f103`（RM0008 マップ、
-  `-kernel` のベクタテーブル起動）。
+  `-kernel` のベクタテーブル起動）、`-M virt64`（AArch64 virt: Cortex-A53 +
+  GICv3 + PL011 + virtio-mmio、arm64 Image ヘッダ起動、ADR 0033 wave 3）、
+  `-M riscv-virt`（RISC-V virt: SiFive U54 + CLINT + PLIC + PL011 +
+  virtio-mmio、フラットイメージ起動、`arch-riscv` feature、ADR 0033 wave 3）。
 - 実イメージ実績（ADR 0022 の台帳参照）: Tiny Core / Alpine / SliTaz /
   Debian / Android-x86 が ISOLINUX バナー以降、FreeDOS はカーネル完全起動、
   ReactOS は FreeLoader、Tiny Core カーネル直接起動はメモリマップ受理まで。
@@ -201,10 +204,14 @@ cargo run --locked --package mosaic-runtime --example snapshot # checkpoint / re
 
 ### 次の実装
 
-機械の追加（`virt` AArch64、`goldfish` Android、実機忠実の `versatile-pb`）、
-part 側カタログの spawn 対応と board からの宣言的 `conn` 接続の拡充、
-catalog 全モデルの State 化と checkpoint 対象拡大、永続化と State migration、
-命令数と VTime を結ぶ clock tree、Unicorn 2.1.x に無い外部割り込み注入、
+機械の追加（`goldfish` Android、実機忠実の `versatile-pb`、`rpi3`、
+`microvm` x86 virtio-mmio）、PCI ECAM ホストのレジスタ実装と virtio-pci
+legacy/modern トランスポート（ADR 0033 wave 4）、AHCI、stdvga + VBE の
+モード切り替え拡張（wave 5）、STM32 F4/F7/H7 ファミリのスケルトン置換
+（wave 6）、part 側カタログの spawn 対応と board からの宣言的 `conn` 接続
+の拡充、catalog 全モデルの State 化と checkpoint 対象拡大、永続化と State
+migration、命令数と VTime を結ぶ clock tree、Unicorn 2.1.x に無い外部割込み
+注入（AArch64/RISC-V の実 OS 起動がこれでブロックされている、ADR 0009）、
 Linux/Android/Windows の各機械での実イメージ到達点更新
 （[docs/os-targets.md](docs/os-targets.md)）。
 
